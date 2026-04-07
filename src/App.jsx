@@ -259,14 +259,8 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
 // After publishing, the URL below will always return live data.
 
 const SHEET_ID = "1IUw6O-7XuvDvEB0tcaYlnYAMYnHpzWHAoGdYLCv-2cw";
-const PUBLISHED_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS0jlKc3eSKKKQddg_osIdsrEr4TigsVp74H7PzmaF7wPZA4JeD1_wLTT01e5fybabrUck01fXoWuHD/pub?gid=0&single=true&output=csv";
-
-// Fallback: used only if the sheet fetch fails
-const FALLBACK_STUDENTS = [
-  { sno: "1", name: "alim",  phone: "7904082982", email: "alimbacker16@gmail.com", course: "ms office" },
-  { sno: "2", name: "akbar", phone: "9443420806", email: "akbar@gmail.com",        course: "python"    },
-  { sno: "3", name: "haji",  phone: "9489486081", email: "hahi@gamil.com",         course: ""          },
-];
+// Direct CSV export URL — works when sheet is shared as "Anyone with link can view"
+const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
 
 const parseCSV = (text) => {
   const lines = text.trim().split("\n").filter(l => l.trim());
@@ -289,23 +283,52 @@ const parseCSV = (text) => {
   }).filter(s => s.name);
 };
 
-const STUDENTS_CACHE_KEY = "allbee_students_cache";
-
 const fetchStudents = async () => {
+  // Method 1: Direct fetch (works on Vercel-hosted app, no CORS issue there)
   try {
-    const res = await fetch(PUBLISHED_CSV_URL, {
-      signal: AbortSignal.timeout(8000),
-      cache: "no-cache",
-    });
+    const res = await fetch(SHEET_CSV_URL, { cache: "no-cache" });
     if (res.ok) {
       const text = await res.text();
       const students = parseCSV(text);
-      if (students.length > 0) return students;
+      if (students.length > 0) {
+        console.log("✓ Sheet loaded directly:", students.length, "students");
+        return students;
+      }
     }
   } catch (e) {
-    console.warn("Sheet fetch failed, using fallback:", e.message);
+    console.warn("Direct fetch failed:", e.message);
   }
-  return FALLBACK_STUDENTS;
+
+  // Method 2: Via /api/chat proxy (Claude reads the sheet)
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        system: `You are a data tool. Fetch this Google Sheets CSV URL and return ONLY a JSON array, no markdown, no explanation.
+Each item must have: sno, name, phone, email, course.
+Skip the header row. Example: [{"sno":"1","name":"alim","phone":"7904082982","email":"x@y.com","course":"ms office"}]`,
+        message: `Fetch and return student data from: ${SHEET_CSV_URL}`,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text = (data.text || "").replace(/\`\`\`json|\`\`\`/g, "").trim();
+      const students = JSON.parse(text);
+      if (Array.isArray(students) && students.length > 0) {
+        console.log("✓ Sheet loaded via proxy:", students.length, "students");
+        return students.map(s => ({
+          sno: String(s.sno ?? ""), name: String(s.name ?? "").trim(),
+          phone: String(s.phone ?? "").replace(/\D/g, ""),
+          email: String(s.email ?? "").trim(), course: String(s.course ?? "").trim(),
+        })).filter(s => s.name);
+      }
+    }
+  } catch (e) {
+    console.warn("Proxy fetch failed:", e.message);
+  }
+
+  throw new Error("Could not load student data. Please check your internet connection.");
 };
 
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
