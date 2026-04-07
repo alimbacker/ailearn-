@@ -106,17 +106,28 @@ const globalStyles = `
 const STORAGE_KEY = "allbee_history";
 const USER_KEY    = "allbee_user";
 
-const saveHistory = (entry) => {
+// In-memory fallback store (used when window.storage is unavailable)
+const _memStore = {};
+const _storage = {
+  get:    async (k) => { try { return await window.storage.get(k); } catch { return _memStore[k] ? { value: _memStore[k] } : null; } },
+  set:    async (k, v) => { try { return await window.storage.set(k, v); } catch { _memStore[k] = v; return { value: v }; } },
+  delete: async (k) => { try { return await window.storage.delete(k); } catch { delete _memStore[k]; return { deleted: true }; } },
+};
+
+const saveHistory = async (entry) => {
   try {
-    const hist = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const res = await _storage.get(STORAGE_KEY);
+    const hist = res ? JSON.parse(res.value) : [];
     hist.unshift({ ...entry, id: Date.now(), timestamp: new Date().toISOString() });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(hist.slice(0, 100)));
+    await _storage.set(STORAGE_KEY, JSON.stringify(hist.slice(0, 100)));
   } catch { /* silent */ }
 };
 
-const getHistory = () => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
+const getHistory = async () => {
+  try {
+    const res = await _storage.get(STORAGE_KEY);
+    return res ? JSON.parse(res.value) : [];
+  } catch { return []; }
 };
 
 const formatTime = (iso) => {
@@ -126,19 +137,14 @@ const formatTime = (iso) => {
 };
 
 const callClaude = async (systemPrompt, userMessage) => {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userMessage }]
-    })
+    body: JSON.stringify({ system: systemPrompt, message: userMessage }),
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error.message);
-  return data.content?.find(b => b.type === "text")?.text || "";
+  if (data.error) throw new Error(data.error);
+  return data.text || "";
 };
 
 // ─── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
@@ -246,33 +252,60 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
 };
 
 // ─── GOOGLE SHEET CONFIG ─────────────────────────────────────────────────────
-const SHEET_ID = "1IUw6O-7XuvDvEB0tcaYlnYAMYnHpzWHAoGdYLCv-2cw";
-const SHEET_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
+// ─── STUDENT DATABASE — Live sync from Google Sheet ─────────────────────────
+// Uses the published CSV URL — works from any browser without CORS issues.
+// REQUIRED ONE-TIME SETUP in Google Sheet:
+//   File → Share → Publish to web → Sheet1 → CSV → Publish → OK
+// After publishing, the URL below will always return live data.
 
-const fetchStudents = async () => {
-  const res = await fetch(SHEET_CSV_URL);
-  if (!res.ok) throw new Error("Sheet not reachable");
-  const text = await res.text();
+const SHEET_ID = "1IUw6O-7XuvDvEB0tcaYlnYAMYnHpzWHAoGdYLCv-2cw";
+const PUBLISHED_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS0jlKc3eSKKKQddg_osIdsrEr4TigsVp74H7PzmaF7wPZA4JeD1_wLTT01e5fybabrUck01fXoWuHD/pub?gid=0&single=true&output=csv";
+
+// Fallback: used only if the sheet fetch fails
+const FALLBACK_STUDENTS = [
+  { sno: "1", name: "alim",  phone: "7904082982", email: "alimbacker16@gmail.com", course: "ms office" },
+  { sno: "2", name: "akbar", phone: "9443420806", email: "akbar@gmail.com",        course: "python"    },
+  { sno: "3", name: "haji",  phone: "9489486081", email: "hahi@gamil.com",         course: ""          },
+];
+
+const parseCSV = (text) => {
   const lines = text.trim().split("\n").filter(l => l.trim());
-  // First line is header: sno, name, phone, email, course
   return lines.slice(1).map(line => {
     const cols = [];
-    let current = "", inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') { inQuote = !inQuote; }
-      else if (ch === "," && !inQuote) { cols.push(current.trim()); current = ""; }
-      else { current += ch; }
+    let cur = "", inQ = false;
+    for (const ch of line) {
+      if (ch === '"') { inQ = !inQ; }
+      else if (ch === "," && !inQ) { cols.push(cur.trim()); cur = ""; }
+      else { cur += ch; }
     }
-    cols.push(current.trim());
+    cols.push(cur.trim());
     return {
       sno:    cols[0] ?? "",
       name:   (cols[1] ?? "").trim(),
-      phone:  (cols[2] ?? "").trim(),
+      phone:  (cols[2] ?? "").replace(/\D/g, ""),
       email:  (cols[3] ?? "").trim(),
       course: (cols[4] ?? "").trim(),
     };
   }).filter(s => s.name);
+};
+
+const STUDENTS_CACHE_KEY = "allbee_students_cache";
+
+const fetchStudents = async () => {
+  try {
+    const res = await fetch(PUBLISHED_CSV_URL, {
+      signal: AbortSignal.timeout(8000),
+      cache: "no-cache",
+    });
+    if (res.ok) {
+      const text = await res.text();
+      const students = parseCSV(text);
+      if (students.length > 0) return students;
+    }
+  } catch (e) {
+    console.warn("Sheet fetch failed, using fallback:", e.message);
+  }
+  return FALLBACK_STUDENTS;
 };
 
 // ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
@@ -299,8 +332,17 @@ const LoginScreen = ({ onLogin }) => {
     setLoading(true);
     try {
       const students = await fetchStudents();
+      console.log("Fetched students:", students);
+      if (!students || students.length === 0) {
+        setError("⚠️ Student database is empty. Check your Google Sheet has data.");
+        setLoading(false); return;
+      }
       // Match by last 10 digits of phone
-      const match = students.find(s => s.phone.replace(/\D/g, "").slice(-10) === cleaned.slice(-10));
+      const match = students.find(s => {
+        const sp = s.phone.replace(/\D/g, "").slice(-10);
+        console.log("Comparing:", sp, "vs", cleaned.slice(-10));
+        return sp === cleaned.slice(-10);
+      });
       if (!match) {
         setError("📋 Phone number not registered. Please contact Allbee Solutions to register.");
         setLoading(false); return;
@@ -308,7 +350,8 @@ const LoginScreen = ({ onLogin }) => {
       setStudent(match);
       setStep("password");
     } catch (e) {
-      setError("❌ Could not connect to student database. Please check your internet and try again.");
+      console.error("fetchStudents error:", e);
+      setError("❌ Something went wrong. Please try again.");
     }
     setLoading(false);
   };
@@ -330,7 +373,7 @@ const LoginScreen = ({ onLogin }) => {
         course: student.course,
         avatar: student.name[0].toUpperCase(),
       };
-      localStorage.setItem(USER_KEY, JSON.stringify(user));
+      await _storage.set(USER_KEY, JSON.stringify(user));
       onLogin(user);
     }, 700);
   };
@@ -631,7 +674,7 @@ const COURSES = [
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
   const [hist, setHist] = useState([]);
-  useEffect(() => { setHist(getHistory()); }, []);
+  useEffect(() => { getHistory().then(setHist); }, []);
   const greetHour = new Date().getHours();
   const greet = greetHour < 12 ? "Good Morning" : greetHour < 17 ? "Good Afternoon" : "Good Evening";
 
@@ -757,7 +800,7 @@ const MSOfficeScreen = ({ onBack }) => {
     try {
       const result = await callClaude(PROMPTS[activeApp], input.trim());
       setOutput(result);
-      saveHistory({ feature: "msoffice", subFeature: activeApp, input: `[${app.label}] ${input.trim()}`, output: result });
+      await saveHistory({ feature: "msoffice", subFeature: activeApp, input: `[${app.label}] ${input.trim()}`, output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch { setError("Something went wrong. Try again! 😅"); }
     setLoading(false);
@@ -909,7 +952,7 @@ const FeatureScreen = ({ featureId, onBack }) => {
     try {
       const result = await callClaude(PROMPTS[featureId], input.trim());
       setOutput(result);
-      saveHistory({ feature: featureId, input: input.trim(), output: result });
+      await saveHistory({ feature: featureId, input: input.trim(), output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (e) {
       setError("Something went wrong. Please try again! 😅");
@@ -1021,19 +1064,19 @@ const HistoryScreen = ({ onBack }) => {
   const [expanded, setExpanded] = useState(null);
   const [confirmClear, setConfirmClear] = useState(false);
 
-  useEffect(() => { setHist(getHistory()); }, []);
+  useEffect(() => { getHistory().then(setHist); }, []);
 
   const filtered = filter === "all" ? hist : hist.filter(h => h.feature === filter);
 
-  const clearAll = () => {
-    localStorage.setItem(STORAGE_KEY, "[]");
+  const clearAll = async () => {
+    await _storage.set(STORAGE_KEY, "[]");
     setHist([]);
     setConfirmClear(false);
   };
 
-  const deleteOne = (id) => {
+  const deleteOne = async (id) => {
     const updated = hist.filter(h => h.id !== id);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    await _storage.set(STORAGE_KEY, JSON.stringify(updated));
     setHist(updated);
     if (expanded === id) setExpanded(null);
   };
@@ -1297,12 +1340,17 @@ const BottomNav = ({ view, onNav }) => {
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; }
-  });
+  const [user, setUser] = useState(null);
   const [view, setView] = useState("dashboard");
   const [activeFeature, setActiveFeature] = useState(null);
   const [courseQuestion, setCourseQuestion] = useState("");
+
+  // Load persisted user on mount
+  useEffect(() => {
+    _storage.get(USER_KEY).then(res => {
+      if (res) { try { setUser(JSON.parse(res.value)); } catch { /* ignore */ } }
+    });
+  }, []);
 
   useEffect(() => {
     const style = document.createElement("style");
@@ -1313,7 +1361,7 @@ export default function App() {
 
   if (!user) return <LoginScreen onLogin={u => { setUser(u); setView("dashboard"); }} />;
 
-  const logout = () => { localStorage.removeItem(USER_KEY); setUser(null); setView("dashboard"); };
+  const logout = async () => { await _storage.delete(USER_KEY); setUser(null); setView("dashboard"); };
 
   const handleNav = (v) => setView(v);
 
@@ -1372,7 +1420,7 @@ function CourseAskScreen({ onBack, prefill = "" }) {
     try {
       const result = await callClaude(PROMPTS.doubt, input.trim());
       setOutput(result);
-      saveHistory({ feature: "doubt", input: input.trim(), output: result });
+      await saveHistory({ feature: "doubt", input: input.trim(), output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch { setOutput("Something went wrong. Try again! 😅"); }
     setLoading(false);
