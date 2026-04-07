@@ -10,6 +10,10 @@ export default async function handler(req, res) {
   try {
     const { system, message } = req.body;
 
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: "ANTHROPIC_API_KEY is not set in Vercel environment variables." });
+    }
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -19,19 +23,26 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
+        max_tokens: 2000,
         system: system,
         messages: [{ role: "user", content: message }],
       }),
     });
 
     const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Anthropic API error:", data);
+      return res.status(response.status).json({ error: data?.error?.message || "Anthropic API error" });
+    }
+
     if (data.error) return res.status(400).json({ error: data.error.message });
 
     const text = data.content?.find(b => b.type === "text")?.text || "";
     return res.status(200).json({ text });
 
   } catch (e) {
+    console.error("Handler error:", e);
     return res.status(500).json({ error: e.message });
   }
 }
