@@ -19,7 +19,12 @@ export default async function handler(req, res) {
         messages: [
           {
             role: "user",
-            content: message
+            content: [
+              {
+                type: "text",
+                text: message
+              }
+            ]
           }
         ]
       })
@@ -27,13 +32,9 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    // SAFE response handling
-    if (!data.content || !data.content.length) {
+    if (!data || !data.content) {
       console.error("Anthropic error:", data);
-      return res.status(500).json({
-        error: "AI response invalid",
-        debug: data
-      });
+      return res.status(500).json({ error: "AI response invalid" });
     }
 
     const reply = data.content[0].text;
