@@ -14,7 +14,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01"
       },
       body: JSON.stringify({
-        model: "claude-3-sonnet-20240229",
+        model: "claude-3-haiku-20240307",
         max_tokens: 500,
         messages: [
           {
@@ -27,12 +27,21 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    res.status(200).json({
-      reply: data.content[0].text
-    });
+    // SAFE response handling
+    if (!data.content || !data.content.length) {
+      console.error("Anthropic error:", data);
+      return res.status(500).json({
+        error: "AI response invalid",
+        debug: data
+      });
+    }
+
+    const reply = data.content[0].text;
+
+    res.status(200).json({ reply });
 
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "AI request failed" });
+    console.error("Server error:", error);
+    res.status(500).json({ error: "Server error" });
   }
 }
