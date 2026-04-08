@@ -1,9 +1,11 @@
 export default async function handler(req, res) {
+
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
+
     const { message } = req.body;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -19,30 +21,26 @@ export default async function handler(req, res) {
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: message }
-            ]
+            content: message
           }
         ]
       })
     });
 
     const data = await response.json();
-    console.log("Anthropic response:", data);
 
-    if (!data?.content?.[0]?.text) {
-      return res.status(500).json({
-        error: "Invalid response from AI",
-        debug: data
-      });
+    if (!data.content) {
+      return res.status(500).json({ error: "AI response error", debug: data });
     }
 
-    return res.status(200).json({
-      reply: data.content[0].text
-    });
+    const reply = data.content[0].text;
 
-  } catch (err) {
-    console.error("Server error:", err);
-    return res.status(500).json({ error: "Server error" });
+    res.status(200).json({ reply });
+
+  } catch (error) {
+
+    res.status(500).json({ error: "Server error" });
+
   }
+
 }
