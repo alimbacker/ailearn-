@@ -125,9 +125,15 @@ const formatTime = (iso) => {
     d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 };
 
-// callAI — calls /api/chat which proxies to Gemini
+// ─── BACKEND URL ─────────────────────────────────────────────
+// For local development: "http://localhost:5000"
+// For production:        "https://your-backend.railway.app"  (or Render URL)
+// Or same-domain Vercel: "/api/chat"  (if using Vercel serverless)
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "http://localhost:5000";
+
+// callAI — sends request to Express backend → Gemini API
 const callAI = async (systemPrompt, userMessage) => {
-  const res = await fetch("/api/chat", {
+  const res = await fetch(`${BACKEND_URL}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ system: systemPrompt, message: userMessage }),
