@@ -21,12 +21,7 @@ export default async function handler(req, res) {
         messages: [
           {
             role: "user",
-            content: [
-              {
-                type: "text",
-                text: message
-              }
-            ]
+            content: message
           }
         ]
       })
@@ -36,7 +31,7 @@ export default async function handler(req, res) {
 
     console.log("Anthropic response:", data);
 
-    if (!data?.content?.[0]?.text) {
+    if (!data.content || !data.content.length) {
       return res.status(500).json({
         error: "AI response invalid",
         debug: data
