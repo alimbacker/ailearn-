@@ -17,11 +17,16 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
-        max_tokens: 300,
+        max_tokens: 200,
         messages: [
           {
             role: "user",
-            content: message
+            content: [
+              {
+                type: "text",
+                text: message
+              }
+            ]
           }
         ]
       })
@@ -29,17 +34,26 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    if (!data.content) {
-      return res.status(500).json({ error: "AI response error", debug: data });
+    console.log("Anthropic response:", data);
+
+    if (!data?.content?.[0]?.text) {
+      return res.status(500).json({
+        error: "AI response invalid",
+        debug: data
+      });
     }
 
-    const reply = data.content[0].text;
-
-    res.status(200).json({ reply });
+    return res.status(200).json({
+      reply: data.content[0].text
+    });
 
   } catch (error) {
 
-    res.status(500).json({ error: "Server error" });
+    console.error("Server error:", error);
+
+    return res.status(500).json({
+      error: "Server error"
+    });
 
   }
 
