@@ -125,7 +125,8 @@ const formatTime = (iso) => {
     d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 };
 
-const callClaude = async (systemPrompt, userMessage) => {
+// callAI — calls /api/chat which proxies to Gemini
+const callAI = async (systemPrompt, userMessage) => {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -135,6 +136,7 @@ const callClaude = async (systemPrompt, userMessage) => {
   if (data.error) throw new Error(data.error);
   return data.text || "";
 };
+const callClaude = callAI; // alias — all existing calls work unchanged
 
 // ─── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
 const PROMPTS = {
