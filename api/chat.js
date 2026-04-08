@@ -1,57 +1,70 @@
-export default async function handler(req, res) {
+// api/chat.js — Gemini API backend for Allbee Learn AI
+// Place this file at: your-project/api/chat.js
+// Set environment variable: GEMINI_API_KEY in Vercel dashboard
 
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "GEMINI_API_KEY not set in Vercel environment variables" });
   }
 
   try {
+    const { system, message } = req.body;
+    if (!message) return res.status(400).json({ error: "No message provided" });
 
-    const { message } = req.body;
+    // Gemini 2.0 Flash — fast & free tier available
+    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(GEMINI_URL, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an expert Microsoft Office trainer helping students learn Excel, Word and PowerPoint step-by-step."
-          },
+        // System instruction (like Anthropic's "system" param)
+        system_instruction: {
+          parts: [{ text: system || "You are a helpful assistant." }],
+        },
+        contents: [
           {
             role: "user",
-            content: message
-          }
+            parts: [{ text: message }],
+          },
         ],
-        temperature: 0.7
-      })
+        generationConfig: {
+          maxOutputTokens: 2000,
+          temperature: 0.7,
+        },
+      }),
     });
 
     const data = await response.json();
 
-    if (!data.choices) {
+    if (!response.ok) {
+      console.error("Gemini API error:", JSON.stringify(data));
       return res.status(500).json({
-        error: "AI response failed",
-        debug: data
+        error: data?.error?.message || "Gemini API error",
       });
     }
 
-    res.status(200).json({
-      reply: data.choices[0].message.content
-    });
+    // Extract text from Gemini response
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-  } catch (error) {
+    if (!text) {
+      console.error("Empty Gemini response:", JSON.stringify(data));
+      return res.status(500).json({ error: "No response from Gemini" });
+    }
 
-    console.error(error);
+    return res.status(200).json({ text });
 
-    res.status(500).json({
-      error: "Server error"
-    });
-
+  } catch (err) {
+    console.error("Handler error:", err.message);
+    return res.status(500).json({ error: err.message });
   }
-
 }
