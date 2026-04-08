@@ -19,24 +19,39 @@ export default async function handler(req, res) {
         messages: [
           {
             role: "system",
-            content: "You are an expert trainer helping students with Excel, Word and PowerPoint."
+            content:
+              "You are an expert Microsoft Office trainer helping students learn Excel, Word and PowerPoint step-by-step."
           },
           {
             role: "user",
             content: message
           }
-        ]
+        ],
+        temperature: 0.7
       })
     });
 
     const data = await response.json();
+
+    if (!data.choices) {
+      return res.status(500).json({
+        error: "AI response failed",
+        debug: data
+      });
+    }
 
     res.status(200).json({
       reply: data.choices[0].message.content
     });
 
   } catch (error) {
-    res.status(500).json({ error: "Server error" });
+
+    console.error(error);
+
+    res.status(500).json({
+      error: "Server error"
+    });
+
   }
 
 }
