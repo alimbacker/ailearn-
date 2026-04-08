@@ -8,17 +8,19 @@ export default async function handler(req, res) {
 
     const { message } = req.body;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "claude-3-haiku-20240307",
-        max_tokens: 200,
+        model: "gpt-4o-mini",
         messages: [
+          {
+            role: "system",
+            content: "You are an expert Microsoft Office trainer. Help with Excel, Word, and PowerPoint."
+          },
           {
             role: "user",
             content: message
@@ -29,26 +31,13 @@ export default async function handler(req, res) {
 
     const data = await response.json();
 
-    console.log("Anthropic response:", data);
-
-    if (!data.content || !data.content.length) {
-      return res.status(500).json({
-        error: "AI response invalid",
-        debug: data
-      });
-    }
-
-    return res.status(200).json({
-      reply: data.content[0].text
+    res.status(200).json({
+      reply: data.choices[0].message.content
     });
 
   } catch (error) {
 
-    console.error("Server error:", error);
-
-    return res.status(500).json({
-      error: "Server error"
-    });
+    res.status(500).json({ error: "Server error" });
 
   }
 
