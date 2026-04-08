@@ -15,15 +15,12 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: "claude-3-haiku-20240307",
-        max_tokens: 500,
+        max_tokens: 300,
         messages: [
           {
             role: "user",
             content: [
-              {
-                type: "text",
-                text: message
-              }
+              { type: "text", text: message }
             ]
           }
         ]
@@ -31,18 +28,21 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
+    console.log("Anthropic response:", data);
 
-    if (!data || !data.content) {
-      console.error("Anthropic error:", data);
-      return res.status(500).json({ error: "AI response invalid" });
+    if (!data?.content?.[0]?.text) {
+      return res.status(500).json({
+        error: "Invalid response from AI",
+        debug: data
+      });
     }
 
-    const reply = data.content[0].text;
+    return res.status(200).json({
+      reply: data.content[0].text
+    });
 
-    res.status(200).json({ reply });
-
-  } catch (error) {
-    console.error("Server error:", error);
-    res.status(500).json({ error: "Server error" });
+  } catch (err) {
+    console.error("Server error:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 }
