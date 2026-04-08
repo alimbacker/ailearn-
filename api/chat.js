@@ -19,7 +19,7 @@ export default async function handler(req, res) {
         messages: [
           {
             role: "system",
-            content: "You are an expert Microsoft Office trainer. Help with Excel, Word, and PowerPoint."
+            content: "You are an expert trainer helping students with Excel, Word and PowerPoint."
           },
           {
             role: "user",
@@ -36,9 +36,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-
     res.status(500).json({ error: "Server error" });
-
   }
 
 }
