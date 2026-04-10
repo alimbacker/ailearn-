@@ -128,20 +128,35 @@ const formatTime = (iso) => {
 // ─────────────────────────────────────────────────────────────
 //  callAI — sends to /api/chat (Vercel serverless function)
 //  The serverless function calls Gemini using your secret API key
-//  No API key needed here in the frontend code ✅
 // ─────────────────────────────────────────────────────────────
 const callAI = async (systemPrompt, userMessage) => {
-  const res = await fetch("/api/chat", {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ system: systemPrompt, message: userMessage }),
-  });
+  let res;
+  try {
+    res = await fetch("/api/chat", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ system: systemPrompt, message: userMessage }),
+    });
+  } catch (networkErr) {
+    throw new Error("Network error: Cannot reach /api/chat — " + networkErr.message);
+  }
 
   let data;
-  try { data = await res.json(); } catch { throw new Error("Server error — check your deployment"); }
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(`API returned non-JSON (status ${res.status}). Check Vercel logs.`);
+  }
 
-  if (!res.ok || data.error) throw new Error(data?.error || `HTTP ${res.status}`);
-  if (!data.text)            throw new Error("Empty response from AI");
+  if (!res.ok) {
+    throw new Error(data?.error || `API error (HTTP ${res.status})`);
+  }
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  if (!data.text) {
+    throw new Error("AI returned empty response. Check GEMINI_API_KEY in Vercel.");
+  }
 
   return data.text;
 };
@@ -825,7 +840,7 @@ const MSOfficeScreen = ({ onBack }) => {
       setOutput(result);
       saveHistory({ feature: "msoffice", subFeature: activeApp, input: `[${app.label}] ${input.trim()}`, output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-    } catch { setError("Something went wrong. Try again! 😅"); }
+    } catch (e) { setError("Error: " + (e.message || "Something went wrong. Try again!")); }
     setLoading(false);
   };
 
@@ -978,7 +993,7 @@ const FeatureScreen = ({ featureId, onBack }) => {
       saveHistory({ feature: featureId, input: input.trim(), output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (e) {
-      setError("Something went wrong. Please try again! 😅");
+      setError("Error: " + (e.message || "Something went wrong. Check console."));
     }
     setLoading(false);
   };
@@ -1440,7 +1455,7 @@ function CourseAskScreen({ onBack, prefill = "" }) {
       setOutput(result);
       saveHistory({ feature: "doubt", input: input.trim(), output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-    } catch { setOutput("Something went wrong. Try again! 😅"); }
+    } catch (e) { setOutput("Error: " + (e.message || "Something went wrong")); }
     setLoading(false);
   };
 
