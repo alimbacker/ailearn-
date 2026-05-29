@@ -1202,7 +1202,101 @@ const HistoryScreen = ({ onBack }) => {
 // ─── COURSES SCREEN ───────────────────────────────────────────────────────────
 const CoursesScreen = ({ onBack, onAskAI }) => {
   const [selected, setSelected] = useState(null);
+  const [lesson, setLesson]           = useState(null);  // { topic, c } currently being read
+  const [lessonText, setLessonText]   = useState("");
+  const [lessonLoading, setLessonLoading] = useState(false);
+  const [lessonError, setLessonError] = useState("");
 
+  // Fetch a topic lesson from the AI and show it for reading inside the app
+  const openLesson = async (course, topic, simpler = false) => {
+    setLesson({ topic, c: course });
+    setLessonText("");
+    setLessonError("");
+    setLessonLoading(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    try {
+      const sys = `You are a warm, patient expert teacher at AllBee Solutions. Teach in simple, clear English for a complete beginner (many learners are students and freshers in Tamil Nadu). Use short paragraphs and headings, real-world examples, and step-by-step explanations. Avoid heavy jargon; when you must use a technical word, explain it simply. ${simpler ? "Keep it EXTRA simple and short, like explaining to a 12-year-old." : ""} End the lesson with a short "Quick Summary" (2-3 lines) and one small "Try This" practice task.`;
+      const msg = `Teach me the topic "${topic}" from the "${course.title}" course. Explain what it is, why it matters, and how to do/use it, step by step, as a full beginner-friendly lesson.`;
+      const text = await callAI(sys, msg);
+      setLessonText(text);
+    } catch (e) {
+      setLessonError(e.message || "Could not load this lesson. Please try again.");
+    } finally {
+      setLessonLoading(false);
+    }
+  };
+
+  // ── LESSON READING VIEW ───────────────────────────────────────────────────
+  if (lesson) {
+    const c = lesson.c;
+    const idx = c.topics.indexOf(lesson.topic);
+    const nextTopic = idx >= 0 && idx < c.topics.length - 1 ? c.topics[idx + 1] : null;
+    return (
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 16px 100px" }}>
+        {/* Header */}
+        <div style={{ paddingTop: 20, paddingBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
+          <button onClick={() => { setLesson(null); setLessonText(""); setLessonError(""); }} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+            <Icon name="back" size={18} color="var(--slate-600)" />
+          </button>
+          <div style={{ fontSize: 13, color: "var(--slate-500)", fontWeight: 500 }}>Courses / {c.title} / <span style={{ color: c.color, fontWeight: 700 }}>{lesson.topic}</span></div>
+        </div>
+
+        {/* Lesson hero */}
+        <div style={{ background: c.gradient, borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 20, color: "white", position: "relative", overflow: "hidden" }} className="fade-in">
+          <div style={{ position: "absolute", right: -16, top: -16, fontSize: 90, opacity: 0.12, pointerEvents: "none" }}>{c.emoji}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, marginBottom: 6, letterSpacing: "0.05em" }}>📖 LESSON {String(idx + 1).padStart(2, "0")}</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>{lesson.topic}</div>
+        </div>
+
+        {/* Loading state */}
+        {lessonLoading && (
+          <div className="card" style={{ padding: "40px 24px", textAlign: "center" }}>
+            <span className="spinner spinner-blue" style={{ width: 28, height: 28, borderWidth: 3 }} />
+            <div style={{ marginTop: 14, fontSize: 14, color: "var(--slate-500)", fontWeight: 500 }}>Preparing your lesson on “{lesson.topic}”…</div>
+          </div>
+        )}
+
+        {/* Error state */}
+        {lessonError && !lessonLoading && (
+          <div className="card" style={{ padding: "20px 22px", marginBottom: 16, background: "var(--red-50)", border: "1px solid #fecaca" }}>
+            <div style={{ fontSize: 14, color: "var(--red-500)", fontWeight: 600, marginBottom: 12 }}>⚠️ {lessonError}</div>
+            <button className="btn-primary" onClick={() => openLesson(c, lesson.topic)} style={{ background: c.gradient, border: "none" }}>🔄 Try Again</button>
+          </div>
+        )}
+
+        {/* Lesson content */}
+        {lessonText && !lessonLoading && (
+          <>
+            <div className="output-box fade-in" style={{ marginBottom: 18 }}>{lessonText}</div>
+
+            {/* Lesson actions */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+              <button className="btn-secondary" onClick={() => openLesson(c, lesson.topic, true)} style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}>
+                🧒 Explain Simpler
+              </button>
+              <button className="btn-secondary" onClick={() => onAskAI(`I just read a lesson on "${lesson.topic}" from the "${c.title}" course. I have a doubt about it: `)} style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}>
+                ❓ Ask a Doubt
+              </button>
+            </div>
+
+            {/* Next topic */}
+            {nextTopic && (
+              <button className="btn-primary" onClick={() => openLesson(c, nextTopic)} style={{ width: "100%", justifyContent: "center", background: c.gradient, border: "none" }}>
+                Next Topic: {nextTopic} →
+              </button>
+            )}
+            {!nextTopic && (
+              <div style={{ textAlign: "center", padding: "16px", background: c.bg, borderRadius: "var(--radius-lg)", border: `1px solid ${c.color}25`, color: c.color, fontWeight: 600, fontSize: 14 }}>
+                🎉 You've reached the last topic of {c.title}!
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ── COURSE DETAIL VIEW ────────────────────────────────────────────────────
   if (selected) {
     const c = COURSES.find(x => x.id === selected);
     return (
@@ -1228,19 +1322,35 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
           </div>
         </div>
 
-        {/* Topics */}
+        {/* Topics — tap to read the lesson */}
         <div className="card fade-in" style={{ padding: "20px 22px", marginBottom: 16 }}>
-          <div className="section-label" style={{ marginBottom: 14 }}>📋 Course Topics</div>
+          <div className="section-label" style={{ marginBottom: 6 }}>📋 Course Topics</div>
+          <div style={{ fontSize: 12.5, color: "var(--slate-400)", marginBottom: 14 }}>Tap any topic to read a full beginner lesson 👇</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {c.topics.map((t, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: c.bg, borderRadius: "var(--radius-sm)", border: `1px solid ${c.color}18` }}>
+              <div
+                key={i}
+                onClick={() => openLesson(c, t)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", background: c.bg, borderRadius: "var(--radius-sm)", border: `1px solid ${c.color}18`, cursor: "pointer", transition: "all 0.18s" }}
+                onMouseEnter={e => { e.currentTarget.style.transform = "translateX(3px)"; e.currentTarget.style.borderColor = c.color; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "translateX(0)"; e.currentTarget.style.borderColor = `${c.color}18`; }}
+              >
                 <div style={{ width: 26, height: 26, background: c.gradient, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{String(i + 1).padStart(2, "0")}</div>
                 <div style={{ fontSize: 14, fontWeight: 500, color: "var(--slate-700)" }}>{t}</div>
-                <div style={{ marginLeft: "auto", flexShrink: 0 }}><Icon name="check" size={16} color={c.color} /></div>
+                <div style={{ marginLeft: "auto", flexShrink: 0, fontSize: 13, fontWeight: 700, color: c.color }}>Read →</div>
               </div>
             ))}
           </div>
         </div>
+
+        {/* Start learning — opens the first topic */}
+        <button
+          onClick={() => openLesson(c, c.topics[0])}
+          className="btn-primary"
+          style={{ width: "100%", justifyContent: "center", background: c.gradient, border: "none", marginBottom: 20 }}
+        >
+          📖 Start Learning — Topic 1
+        </button>
 
         {/* Best for */}
         <div className="card fade-in" style={{ padding: "18px 22px", marginBottom: 20, background: c.bg, border: `1.5px solid ${c.color}25` }}>
@@ -1252,8 +1362,8 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <button
             onClick={() => onAskAI(`Tell me everything about the "${c.title}" course at AllBee Solutions. What will I learn, how long will it take, and who is it best for?`)}
-            className="btn-primary"
-            style={{ flex: 1, justifyContent: "center", background: c.gradient, border: "none" }}
+            className="btn-secondary"
+            style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}
           >
             🤖 Ask AI about this Course
           </button>
@@ -1286,7 +1396,7 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
       <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 28, color: "white" }}>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}><img src={LOGO_SRC} alt="Allbee" style={{ width: 28, height: 28, objectFit: "contain", filter: "brightness(10)" }} /> Learn. Build. Get Hired.</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>
-          AllBee Solutions offers practical, job-focused courses designed for Tamil Nadu students & freshers. Tap any course to explore topics & get an AI-powered study plan!
+          AllBee Solutions offers practical, job-focused courses designed for Tamil Nadu students & freshers. Tap any course, then tap a topic to read a full AI lesson!
         </div>
       </div>
 
@@ -1345,7 +1455,7 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
       <div style={{ marginTop: 28, textAlign: "center", padding: "20px", background: "var(--blue-50)", borderRadius: "var(--radius-lg)", border: "1px solid var(--blue-100)" }}>
         <div style={{ width: 40, height: 40, margin: "0 auto 8px" }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--blue-800)", marginBottom: 4 }}>AI-Powered Learning Support</div>
-        <div style={{ fontSize: 13, color: "var(--blue-600)" }}>Every course comes with free AI doubt solving, study plans & viva prep through Allbee Learn AI!</div>
+        <div style={{ fontSize: 13, color: "var(--blue-600)" }}>Every course comes with free AI lessons, doubt solving, study plans & viva prep through Allbee Learn AI!</div>
       </div>
     </div>
   );
