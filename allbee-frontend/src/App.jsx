@@ -126,39 +126,64 @@ const formatTime = (iso) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-//  callAI — sends to /api/chat (Vercel serverless function)
-//  The serverless function calls Gemini using your secret API key
+//  callAI — FREE, NO API KEY.
+//  Calls Pollinations.ai directly from the browser (uses each
+//  user's own connection, so it isn't rate-limited like a shared
+//  server IP). Falls back to the /api/chat serverless route if the
+//  direct call fails (that route can use Ollama or a key if set up).
 // ─────────────────────────────────────────────────────────────
-const callAI = async (systemPrompt, userMessage) => {
-  let res;
-  try {
-    res = await fetch("/api/chat", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ system: systemPrompt, message: userMessage }),
-    });
-  } catch (networkErr) {
-    throw new Error("Network error: Cannot reach /api/chat — " + networkErr.message);
-  }
+const POLLINATIONS_MODEL = "openai"; // e.g. "openai", "mistral"
 
+// Attempt 1: free keyless AI straight from the browser.
+const callPollinationsDirect = async (systemPrompt, userMessage) => {
+  const body = {
+    model: POLLINATIONS_MODEL,
+    messages: [
+      { role: "system", content: systemPrompt || "You are a helpful assistant." },
+      { role: "user",   content: userMessage },
+    ],
+    referrer: "allbee",
+  };
+  const r = await fetch("https://text.pollinations.ai/openai", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+  });
+  const raw = await r.text();
+  if (!r.ok) throw new Error("Free AI HTTP " + r.status);
+  let text = "";
+  try { text = JSON.parse(raw)?.choices?.[0]?.message?.content || ""; }
+  catch { text = raw; }
+  if (!text.trim()) throw new Error("Free AI returned empty");
+  return text.trim();
+};
+
+// Attempt 2: the serverless route (Ollama / key-based, if configured).
+const callViaServer = async (systemPrompt, userMessage) => {
+  const res = await fetch("/api/chat", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ system: systemPrompt, message: userMessage }),
+  });
   let data;
-  try {
-    data = await res.json();
-  } catch {
-    throw new Error(`API returned non-JSON (status ${res.status}). Check Vercel logs.`);
-  }
-
-  if (!res.ok) {
-    throw new Error(data?.error || `API error (HTTP ${res.status})`);
-  }
-  if (data.error) {
-    throw new Error(data.error);
-  }
-  if (!data.text) {
-    throw new Error("AI returned empty response. Check GEMINI_API_KEY in Vercel.");
-  }
-
+  try { data = await res.json(); }
+  catch { throw new Error(`Server returned non-JSON (status ${res.status}).`); }
+  if (!res.ok || data.error) throw new Error(data?.error || `Server error (HTTP ${res.status})`);
+  if (!data.text) throw new Error("Server returned empty response.");
   return data.text;
+};
+
+const callAI = async (systemPrompt, userMessage) => {
+  try {
+    return await callPollinationsDirect(systemPrompt, userMessage);
+  } catch (directErr) {
+    // Direct free call failed — try the server route as a backup.
+    try {
+      return await callViaServer(systemPrompt, userMessage);
+    } catch (serverErr) {
+      throw new Error("AI is busy right now. Please wait a few seconds and try again.");
+    }
+  }
 };
 const callClaude = callAI; // alias — all existing calls work unchanged
 
@@ -709,6 +734,764 @@ const COURSES = [
   },
 ];
 
+// ─── PRE-WRITTEN LESSONS (load instantly, no AI needed) ───────────────────────
+// Keyed by course id -> topic title -> lesson text.
+const LESSONS = {
+  excel: {
+    "Excel Basics to Advanced": `Excel is a spreadsheet — a giant grid of boxes called "cells" where you store numbers, text and dates in rows and columns.
+
+📌 WHAT YOU LEARN
+• Cells, rows (1,2,3...) and columns (A,B,C...). Cell "B3" means column B, row 3.
+• Typing data, selecting cells, and copy/paste (Ctrl+C, Ctrl+V).
+• Saving your file (Ctrl+S) and using multiple sheets (tabs at the bottom).
+
+💡 WHY IT MATTERS
+Almost every office job uses Excel for bills, attendance, marks, stock and reports. Strong basics make everything else easy.
+
+🪜 FIRST STEPS
+1. Open Excel and type your name in cell A1.
+2. Press Enter — the box below (A2) gets selected.
+3. Type numbers down a column, then select them and look at the bottom bar — Excel auto-shows the Sum and Average.
+4. Use Ctrl+Z to undo any mistake.
+
+✅ QUICK SUMMARY
+Excel = rows + columns of cells. Master typing, selecting, saving and undo first — these are used in every advanced topic.
+
+✏️ TRY THIS
+Make a small table of 5 friends with their marks, then find the highest mark by eye. Next lesson you'll do it with a formula!`,
+
+    "Formulas & Functions": `A formula is an instruction that calculates a result for you. Every formula starts with the "=" sign.
+
+📌 KEY ONES TO KNOW
+• =SUM(A1:A10) → adds all values from A1 to A10.
+• =AVERAGE(A1:A10) → finds the average.
+• =MAX / =MIN → highest / lowest value.
+• =IF(A1>=35,"Pass","Fail") → makes a decision.
+• =VLOOKUP(value, table, column, FALSE) → finds matching data, like searching a price list.
+
+💡 WHY IT MATTERS
+Formulas turn Excel from a notebook into a calculator that updates automatically. Change one number and every result recalculates.
+
+🪜 HOW TO USE
+1. Click an empty cell.
+2. Type = then the function name and brackets, e.g. =SUM(
+3. Drag-select the cells you want, close the bracket ), press Enter.
+4. Copy a formula down a column to apply it to every row.
+
+✅ QUICK SUMMARY
+Start with "=", pick a function (SUM, AVERAGE, IF, VLOOKUP), give it the cells, press Enter. Results update by themselves.
+
+✏️ TRY THIS
+Make a marks column and use =IF(B2>=35,"Pass","Fail") to auto-grade each student.`,
+
+    "Pivot Tables": `A Pivot Table summarises a big messy table into a clean report in seconds — without any formula.
+
+📌 WHAT IT DOES
+If you have 1,000 sales rows, a pivot can instantly show "total sales per city" or "total per month". You just drag fields around.
+
+💡 WHY IT MATTERS
+Managers want summaries, not raw data. Pivot tables are the fastest way to answer "how much / how many per group" and they impress in interviews.
+
+🪜 HOW TO MAKE ONE
+1. Click any cell inside your data table.
+2. Go to Insert → PivotTable → OK.
+3. A side panel opens with your column names.
+4. Drag a category (e.g. City) into ROWS.
+5. Drag a number (e.g. Amount) into VALUES — it auto-totals.
+6. Drag another field into COLUMNS or FILTERS to slice further.
+
+✅ QUICK SUMMARY
+Insert → PivotTable, then drag fields into Rows, Columns and Values. Excel builds the summary automatically and updates when you refresh.
+
+✏️ TRY THIS
+Take a sales sheet and build a pivot showing total amount for each salesperson.`,
+
+    "Dashboards": `A dashboard is a single screen of charts and key numbers that tells a story at a glance — like a car's dashboard shows speed and fuel.
+
+📌 WHAT GOES IN ONE
+• Big "KPI" numbers (Total Sales, Total Orders).
+• A few charts (bar, line, pie).
+• Slicers/buttons so the viewer can filter by month or region.
+
+💡 WHY IT MATTERS
+Bosses don't read 5,000 rows. A clean dashboard shows the health of a business in 5 seconds. This is a high-value office skill.
+
+🪜 HOW TO BUILD
+1. First make pivot tables for each summary you need.
+2. Select a pivot → Insert → Chart (PivotChart).
+3. Repeat for 2–3 charts and arrange them neatly on one sheet.
+4. Add Slicers (PivotTable Analyze → Insert Slicer) so one click filters all charts.
+5. Add titles and use matching colours.
+
+✅ QUICK SUMMARY
+Dashboard = KPIs + charts + slicers on one tidy screen. Build pivots first, turn them into charts, connect slicers.
+
+✏️ TRY THIS
+Create a 2-chart dashboard: a bar chart of sales by city and a line chart of sales by month, with a slicer for the month.`,
+
+    "Data Cleaning": `Real data is messy — extra spaces, mixed CAPS, duplicates, blanks. Cleaning means fixing it so formulas and pivots work correctly.
+
+📌 COMMON FIXES
+• Remove Duplicates: Data → Remove Duplicates.
+• Trim spaces: =TRIM(A2) removes extra blank spaces.
+• Fix case: =PROPER(A2), =UPPER(A2), =LOWER(A2).
+• Split a column: Data → Text to Columns (e.g. split "Name City").
+• Find & Replace: Ctrl+H to fix repeated mistakes.
+
+💡 WHY IT MATTERS
+Dirty data gives wrong totals and broken VLOOKUPs. "Garbage in, garbage out." Clean data is the foundation of every report.
+
+🪜 A SIMPLE ROUTINE
+1. Make a copy of the sheet first (safety).
+2. Remove duplicates.
+3. TRIM and fix the case of text columns.
+4. Check for blanks and fill or remove them.
+5. Make sure dates and numbers are real numbers, not text.
+
+✅ QUICK SUMMARY
+Clean = no duplicates, no extra spaces, consistent case, correct data types. Always work on a copy.
+
+✏️ TRY THIS
+Take a name list with messy spacing and use =TRIM(PROPER(A2)) to clean it.`,
+
+    "Excel Automation Tips": `Automation means letting Excel repeat boring work for you, so you finish in seconds instead of hours.
+
+📌 EASY WAYS TO AUTOMATE
+• Flash Fill (Ctrl+E): type one example, Excel fills the pattern (e.g. extract first names).
+• Tables (Ctrl+T): formulas auto-copy to new rows.
+• Templates: save a ready-made format and reuse it.
+• Macros: record your clicks once and replay them with a button (View → Macros → Record Macro).
+
+💡 WHY IT MATTERS
+Office reports are often the same every day/week. Automation saves time and removes human mistakes — a skill bosses love.
+
+🪜 RECORD YOUR FIRST MACRO
+1. View → Macros → Record Macro, give it a name.
+2. Do your steps (format, sort, etc.).
+3. Stop Recording.
+4. Run it next time from Macros → Run. Save the file as .xlsm to keep macros.
+
+✅ QUICK SUMMARY
+Use Flash Fill and Tables for quick wins; record Macros for repeated multi-step jobs. Save as .xlsm for macros.
+
+✏️ TRY THIS
+Record a macro that adds bold headers and a colour to a table, then run it on a new sheet.`,
+
+    "Real-world Business Reports": `A business report combines everything — clean data, formulas, pivots and charts — into a document that helps people make decisions.
+
+📌 WHAT A GOOD REPORT HAS
+• A clear title and date.
+• Summary numbers at the top (totals, growth %).
+• Supporting tables and 1–2 charts.
+• A short note on what the numbers mean.
+
+💡 WHY IT MATTERS
+This is the actual job — companies pay for people who can turn raw data into clear answers like "sales grew 12% this month, mostly from Chennai."
+
+🪜 BUILD A MONTHLY SALES REPORT
+1. Clean the raw sales data.
+2. Make pivots: total per month, per product, per city.
+3. Add a chart for the trend.
+4. Put a summary line at the top: total, best product, growth %.
+5. Format neatly and save/print as PDF (File → Save As → PDF).
+
+✅ QUICK SUMMARY
+Report = clean data → summaries → charts → a plain-English insight, all on a neat page exported to PDF.
+
+✏️ TRY THIS
+Build a one-page monthly sales report with a total, a top-product line, and one trend chart.`,
+  },
+
+  python: {
+    "Python Basics": `Python is a programming language famous for reading almost like English, which makes it the best first language to learn.
+
+📌 FIRST THINGS
+• print("Hello") → shows text on screen.
+• Python runs your file line by line, top to bottom.
+• You write code in a file ending with .py (e.g. test.py).
+• Comments start with # and are ignored by Python (notes for humans).
+
+💡 WHY IT MATTERS
+Python powers websites, data analysis, AI and automation. Learn it once and many doors open.
+
+🪜 YOUR FIRST PROGRAM
+1. Install Python from python.org (or use an online editor like replit.com).
+2. Create a file hello.py.
+3. Type: print("Hello, I am learning Python")
+4. Run it — your message appears.
+
+✅ QUICK SUMMARY
+Python reads like English. Use print() to show output, # for comments, and run .py files top to bottom.
+
+✏️ TRY THIS
+Write a program that prints your name on one line and your goal on the next using two print() statements.`,
+
+    "Variables, Loops, Functions": `These three ideas are the heart of all programming.
+
+📌 THE THREE BUILDING BLOCKS
+• VARIABLE = a labelled box that stores a value:  name = "Alim"   age = 20
+• LOOP = repeat something without copy-pasting:
+    for i in range(3):
+        print("Hi")     # prints Hi three times
+• FUNCTION = a reusable block you can call by name:
+    def greet(person):
+        print("Hello " + person)
+    greet("Alim")
+
+💡 WHY IT MATTERS
+Variables remember data, loops handle repetition, and functions keep code short and reusable. Every real program is made of these.
+
+🪜 HOW THEY WORK TOGETHER
+1. Store data in variables.
+2. Use a loop to go through many items.
+3. Put repeated logic inside a function and call it whenever needed.
+
+✅ QUICK SUMMARY
+Variables store, loops repeat, functions reuse. Master these and you can build almost anything.
+
+✏️ TRY THIS
+Write a function add(a, b) that returns a+b, then use a loop to print add(i, 10) for i from 1 to 5.`,
+
+    "File Handling": `File handling lets your program read from and write to files — so data is saved even after the program closes.
+
+📌 THE BASICS
+• Write to a file:
+    f = open("notes.txt", "w")
+    f.write("Hello file")
+    f.close()
+• Read a file:
+    f = open("notes.txt", "r")
+    print(f.read())
+    f.close()
+• Modes: "w" = write (overwrites), "a" = add to end, "r" = read.
+
+💡 WHY IT MATTERS
+Without files, data disappears when the program ends. Files let you save reports, logs, and results — the basis of real apps.
+
+🪜 SAFE WAY (recommended)
+    with open("notes.txt", "w") as f:
+        f.write("Saved safely")
+The "with" block closes the file automatically.
+
+✅ QUICK SUMMARY
+open() a file in mode w/a/r, then write() or read(), then close — or use "with" to auto-close.
+
+✏️ TRY THIS
+Write a program that saves 3 of your favourite movies into movies.txt, then reads and prints them.`,
+
+    "Error Handling": `Errors happen — wrong input, missing files, dividing by zero. Error handling stops your program from crashing and shows a friendly message instead.
+
+📌 THE TRY/EXCEPT TOOL
+    try:
+        number = int(input("Enter a number: "))
+        print(10 / number)
+    except ValueError:
+        print("That was not a number!")
+    except ZeroDivisionError:
+        print("Cannot divide by zero!")
+
+💡 WHY IT MATTERS
+Real users type wrong things. Good programs expect mistakes and handle them calmly instead of crashing.
+
+🪜 HOW IT WORKS
+1. Put risky code inside try:
+2. Put the "what to do if it fails" inside except:
+3. You can catch specific errors (ValueError, ZeroDivisionError) or a general one.
+4. Optional: finally: runs no matter what (good for cleanup).
+
+✅ QUICK SUMMARY
+Wrap risky code in try, catch problems in except, keep the program alive with a clear message.
+
+✏️ TRY THIS
+Write a mini calculator that divides two numbers and uses try/except to handle dividing by zero.`,
+
+    "Working with APIs & JSON": `An API is a way for your program to get data from the internet (weather, prices, etc.). That data usually comes back as JSON — a simple text format of key:value pairs.
+
+📌 THE TOOLS
+• import requests → lets Python call the internet.
+• response = requests.get("https://api...") → fetches data.
+• data = response.json() → turns JSON into a Python dictionary.
+• Read it like: data["temperature"]
+
+💡 WHY IT MATTERS
+APIs let your small program use the power of huge services. Almost every modern app talks to APIs.
+
+🪜 STEPS
+1. pip install requests (one-time install).
+2. import requests
+3. r = requests.get("the API link")
+4. info = r.json()
+5. print the part you need, e.g. info["name"]
+
+✅ QUICK SUMMARY
+API = data source online. Use requests.get(), call .json(), then read values by their keys like a dictionary.
+
+✏️ TRY THIS
+Use a free public API (like a joke or quote API), fetch it with requests, and print one field from the JSON.`,
+
+    "Basic Automation Projects": `Automation projects use Python to do real chores for you — renaming files, sending reports, filling data.
+
+📌 BEGINNER PROJECT IDEAS
+• Rename 100 photos in a folder in one run.
+• Read a CSV and create a summary text file.
+• Auto-fill a form or message template with names from a list.
+• Combine many text files into one.
+
+💡 WHY IT MATTERS
+This is where learning becomes useful. A 20-line script can replace an hour of manual clicking — exactly what freelance clients pay for.
+
+🪜 PROJECT RECIPE
+1. Pick one boring task you do by hand.
+2. Break it into clear steps.
+3. Use loops + file handling (and maybe the os module for folders).
+4. Test on a few sample files first.
+5. Run on the real files.
+
+✅ QUICK SUMMARY
+Find a repetitive task, break it into steps, use loops and files to automate it. Start tiny, then grow.
+
+✏️ TRY THIS
+Write a script that loops through a list of names and creates a personalised "Dear NAME" greeting for each.`,
+  },
+
+  powerbi: {
+    "Data Import & Transformation": `Power BI is a free Microsoft tool that turns raw data into interactive dashboards. The first step is importing data and cleaning it in "Power Query".
+
+📌 WHAT HAPPENS HERE
+• Get Data → connect to Excel, CSV, a database, or the web.
+• Power Query Editor opens — this is where you clean before loading.
+• Common steps: remove columns, change data types, filter rows, replace values, split columns.
+
+💡 WHY IT MATTERS
+Clean, well-shaped data is the foundation. Power Query records every step, so when new data arrives you just click Refresh and it cleans itself.
+
+🪜 STEPS
+1. Home → Get Data → Excel/CSV.
+2. Select your table → Transform Data.
+3. Fix types (text/number/date), remove junk columns, filter bad rows.
+4. Click Close & Apply to load it in.
+
+✅ QUICK SUMMARY
+Get Data → Transform in Power Query → clean and shape → Close & Apply. Steps auto-repeat on refresh.
+
+✏️ TRY THIS
+Import a sales Excel file and, in Power Query, remove one unwanted column and set the date column to a Date type.`,
+
+    "Data Modeling": `A data model connects multiple tables so they work together — like linking a Sales table to a Products table using a common column.
+
+📌 KEY IDEAS
+• Tables are linked by a shared key column (e.g. ProductID).
+• "One-to-many": one product has many sales rows.
+• The Model view shows tables as boxes with lines (relationships) between them.
+
+💡 WHY IT MATTERS
+Real data lives in several tables. Modeling lets one chart pull from all of them — e.g. show sales (Sales table) by category (Products table) together.
+
+🪜 STEPS
+1. Go to the Model view (left side icons).
+2. Drag the key column from one table onto the matching column in another.
+3. A line appears = a relationship.
+4. Check the direction (usually one-to-many).
+
+✅ QUICK SUMMARY
+Modeling = linking tables by a shared key so charts can combine data from all of them. Build relationships in Model view.
+
+✏️ TRY THIS
+Link a Sales table and a Products table using ProductID, then confirm the relationship line appears.`,
+
+    "DAX Basics": `DAX (Data Analysis Expressions) is Power BI's formula language — similar feel to Excel formulas, used to create new calculations.
+
+📌 TWO MAIN TYPES
+• MEASURE = a calculation that reacts to filters, e.g.
+    Total Sales = SUM(Sales[Amount])
+• CALCULATED COLUMN = a new column in a table, e.g.
+    Profit = Sales[Price] - Sales[Cost]
+Other handy ones: COUNT, AVERAGE, CALCULATE (for filtered totals).
+
+💡 WHY IT MATTERS
+Charts can only show what exists. DAX creates the business numbers you actually need — totals, profit, growth %, running totals.
+
+🪜 MAKE A MEASURE
+1. Right-click your table → New Measure.
+2. Type:  Total Sales = SUM(Sales[Amount])
+3. Press Enter, then drag the measure onto a chart.
+
+✅ QUICK SUMMARY
+DAX = formulas for Power BI. Measures react to filters; calculated columns add fixed values. Start with SUM, AVERAGE, COUNT.
+
+✏️ TRY THIS
+Create a measure Total Sales = SUM(Sales[Amount]) and show it as a card visual.`,
+
+    "Interactive Dashboards": `An interactive dashboard lets the viewer click and explore — click a city and every chart updates to show only that city.
+
+📌 BUILDING BLOCKS
+• Visuals: bar, line, pie, map, and "card" for a single big number.
+• Slicers: clickable filter buttons (e.g. Year, Region).
+• Cross-filtering: clicking one chart filters the others automatically.
+
+💡 WHY IT MATTERS
+Interactivity is Power BI's superpower over static Excel. One dashboard answers hundreds of questions because users filter it themselves.
+
+🪜 STEPS
+1. In Report view, pick a visual from the Visualizations panel.
+2. Drag fields into it (e.g. City + Sales for a bar chart).
+3. Add a Slicer visual and put Year in it.
+4. Arrange visuals neatly; click around to test the filtering.
+
+✅ QUICK SUMMARY
+Drag fields into visuals, add slicers, and let cross-filtering connect everything. Users explore by clicking.
+
+✏️ TRY THIS
+Build a bar chart of Sales by City plus a Year slicer, then click a year and watch the chart change.`,
+
+    "Business Reports": `A Power BI business report is the polished final product — a clean, branded page (or pages) that leaders use to track the business.
+
+📌 WHAT MAKES IT PROFESSIONAL
+• A title bar and company colours.
+• Top-row KPI cards: Total Sales, Orders, Growth %.
+• A few clear charts below, not a crowded mess.
+• Slicers placed neatly on one side.
+• Published online so others can view it.
+
+💡 WHY IT MATTERS
+This is the deliverable companies pay for. A clear report that updates with one Refresh saves managers hours every week.
+
+🪜 STEPS
+1. Lay out KPI cards along the top.
+2. Add 2–3 key charts below.
+3. Apply a consistent colour theme (View → Themes).
+4. Add a title and tidy spacing.
+5. Publish → share the link (File → Publish).
+
+✅ QUICK SUMMARY
+A business report = KPI cards + a few clean charts + slicers + branding, then publish to share. Keep it simple and readable.
+
+✏️ TRY THIS
+Design a one-page report with three KPI cards on top and two charts below using a single colour theme.`,
+  },
+
+  webdev: {
+    "HTML Basics": `HTML is the skeleton of every web page. It uses "tags" to label parts of the page like headings, paragraphs and images.
+
+📌 CORE TAGS
+• <h1>Big Heading</h1>
+• <p>A paragraph of text.</p>
+• <a href="https://...">a link</a>
+• <img src="photo.jpg"> for an image
+• <ul><li>list item</li></ul> for bullet lists
+Most tags come in pairs: an opening <tag> and a closing </tag>.
+
+💡 WHY IT MATTERS
+Every website on earth is built on HTML. It's the easiest first step into tech and freelancing.
+
+🪜 YOUR FIRST PAGE
+1. Create a file index.html.
+2. Add:
+    <h1>My First Website</h1>
+    <p>Hello, I am learning web development.</p>
+3. Double-click the file — it opens in your browser.
+
+✅ QUICK SUMMARY
+HTML = content with tags. Headings, paragraphs, links, images. Save as .html and open in a browser.
+
+✏️ TRY THIS
+Make an index.html with your name as an <h1>, a short <p> about you, and one <a> link to a site you like.`,
+
+    "CSS & Styling": `If HTML is the skeleton, CSS is the clothing and colour — it controls how the page looks (colours, fonts, spacing, layout).
+
+📌 HOW CSS WORKS
+You pick an element and give it style rules:
+    h1 {
+      color: green;
+      text-align: center;
+    }
+    p {
+      font-size: 18px;
+    }
+Add CSS inside a <style> tag in your HTML, or in a separate styles.css file.
+
+💡 WHY IT MATTERS
+Plain HTML looks boring. CSS makes sites attractive and professional — the difference between "school project" and "real website".
+
+🪜 STEPS
+1. In your HTML <head>, add: <style> ... </style>
+2. Inside it, write rules: selector { property: value; }
+3. Save and refresh the browser to see changes instantly.
+
+✅ QUICK SUMMARY
+CSS styles HTML. Use selector { property: value; } to set colours, fonts, spacing and layout.
+
+✏️ TRY THIS
+Style your page: make the <h1> blue and centered, and give the <p> a bigger font size.`,
+
+    "Basic JavaScript": `JavaScript makes pages interactive — buttons that do things, pop-ups, live updates. HTML = structure, CSS = looks, JavaScript = behaviour.
+
+📌 STARTER CONCEPTS
+• Show a message: alert("Hello!");
+• Store data: let name = "Alim";
+• React to a click:
+    <button onclick="alert('Clicked!')">Press me</button>
+• Change the page: document.getElementById("demo").innerText = "Changed!";
+
+💡 WHY IT MATTERS
+JavaScript brings a site to life. It's also one of the most in-demand skills for jobs and freelancing.
+
+🪜 STEPS
+1. Add a <script> tag in your HTML.
+2. Write JS inside it, e.g. alert("Welcome");
+3. Use onclick on a button to run code when clicked.
+4. Save and refresh to test.
+
+✅ QUICK SUMMARY
+JavaScript adds actions. Use variables, alerts, and onclick to make pages respond to the user.
+
+✏️ TRY THIS
+Add a button that, when clicked, shows an alert saying "Thanks for visiting!".`,
+
+    "Build Portfolio Website": `A portfolio website is your online resume — one page showing who you are, your skills, and your projects. It's the project that ties HTML, CSS and JS together.
+
+📌 SECTIONS TO INCLUDE
+• Header: your name + a one-line tagline.
+• About: 2–3 sentences about you.
+• Skills: a list of what you know.
+• Projects: titles + short descriptions (+ links if any).
+• Contact: email / phone / LinkedIn.
+
+💡 WHY IT MATTERS
+Clients and employers want to SEE your work. A portfolio proves your skills better than just saying them.
+
+🪜 STEPS
+1. Create index.html with the sections above.
+2. Style it with CSS (clean fonts, nice colours, spacing).
+3. Add a little JavaScript (e.g. a "scroll to top" button).
+4. Test it on your phone too (make it responsive).
+
+✅ QUICK SUMMARY
+Portfolio = one styled page with About, Skills, Projects, Contact. It showcases everything you've learned.
+
+✏️ TRY THIS
+Build a simple one-page portfolio with your name, an About section, and 3 listed skills.`,
+
+    "GitHub Hosting": `GitHub can host your website for FREE on the internet using "GitHub Pages" — so anyone can visit your portfolio with a link.
+
+📌 WHAT YOU GET
+• A free public web address like  yourname.github.io
+• Free storage for your code.
+• A place to show projects to employers.
+
+💡 WHY IT MATTERS
+A live link ("here's my site") is far more powerful than a file on your laptop. It's free, professional, and expected in tech jobs.
+
+🪜 STEPS
+1. Create a free account at github.com.
+2. Create a new repository (e.g. "portfolio").
+3. Upload your index.html (and CSS files) — Add file → Upload files.
+4. Go to Settings → Pages → set branch to "main" → Save.
+5. Wait 1–2 minutes; your live link appears there.
+
+✅ QUICK SUMMARY
+Upload your files to a GitHub repo, turn on GitHub Pages in Settings, and get a free live web link.
+
+✏️ TRY THIS
+Create a GitHub account and a repository named "portfolio" (you'll upload your site here next).`,
+  },
+
+  aitools: {
+    "ChatGPT for Productivity": `ChatGPT (and similar AI chat tools) can write, summarise, explain and brainstorm for you in seconds — like a tireless assistant.
+
+📌 GREAT EVERYDAY USES
+• Write emails, messages and applications.
+• Summarise long text or notes.
+• Explain hard topics simply.
+• Brainstorm ideas, captions, names.
+• Fix and improve your writing.
+
+💡 WHY IT MATTERS
+Used well, AI saves hours daily. The real skill is "prompting" — asking clearly to get great results.
+
+🪜 HOW TO PROMPT WELL
+1. Give a ROLE: "Act as a career counselor."
+2. Give the TASK: "Write a polite job application email."
+3. Give DETAILS: your name, job, experience.
+4. Give the FORMAT: "Keep it under 120 words, formal tone."
+5. Ask it to improve: "Make it warmer / shorter."
+
+✅ QUICK SUMMARY
+AI chat = instant assistant. Get better answers by giving a role, a clear task, details, and the format you want.
+
+✏️ TRY THIS
+Ask an AI: "Act as a teacher. Explain photosynthesis to a 10-year-old in 4 simple lines."`,
+
+    "AI Tools for Business": `Beyond chat, there are AI tools for almost every business task — images, writing, design, customer support and more.
+
+📌 CATEGORIES (with examples of the idea)
+• Writing/marketing: generate posts, ads, product descriptions.
+• Images/design: create logos, social posts, thumbnails.
+• Customer support: AI chatbots answer common questions 24/7.
+• Data/insight: summarise feedback, spot trends.
+
+💡 WHY IT MATTERS
+Small businesses can now do the work of a whole team. Knowing which tool to use for which job is a money-making skill.
+
+🪜 HOW TO ADOPT AI IN A BUSINESS
+1. List the repetitive tasks (writing posts, replying to FAQs).
+2. Match each to an AI tool category.
+3. Try one tool for one task for a week.
+4. Keep what saves time; drop what doesn't.
+
+✅ QUICK SUMMARY
+There's an AI tool for writing, design, support and analysis. Pick tasks to automate, test one tool at a time, keep what helps.
+
+✏️ TRY THIS
+List 3 tasks in a small shop (e.g. captions, replies, posters) and note which AI tool type fits each.`,
+
+    "Automation Basics": `Automation means setting up tasks to happen by themselves — "when X happens, do Y" — without you clicking each time.
+
+📌 THE CORE IDEA: TRIGGER → ACTION
+• Trigger = the event that starts it (a new email, a form submitted, a set time).
+• Action = what should happen (send a reply, save to a sheet, send a WhatsApp).
+Example: "When a new form response arrives (trigger) → add it to a Google Sheet and email me (actions)."
+
+💡 WHY IT MATTERS
+Automation removes daily manual work and mistakes. It's the foundation skill before using tools like n8n or Zapier.
+
+🪜 HOW TO THINK ABOUT IT
+1. Find a repeated task.
+2. Write it as "When ___ , then ___ ."
+3. Identify the trigger and the action(s).
+4. Pick a tool that connects the two apps.
+
+✅ QUICK SUMMARY
+Automation = Trigger → Action. Spot a repeated task, describe it as "when this, do that", then connect the apps.
+
+✏️ TRY THIS
+Write 3 "When ___ , then ___" sentences for tasks you'd love to automate in your day.`,
+
+    "Workflow Automation (n8n)": `n8n is a free, visual automation tool. You connect "nodes" (blocks) on a canvas to build a workflow without heavy coding.
+
+📌 HOW IT LOOKS
+• Each app/step is a NODE (a box).
+• You draw lines from one node to the next.
+• First node = the Trigger (e.g. a new email / a schedule).
+• Next nodes = Actions (save data, send message, call an API).
+
+💡 WHY IT MATTERS
+n8n links your apps (Gmail, Sheets, Telegram, APIs) so whole processes run on autopilot. Great for freelancing and business.
+
+🪜 BUILD A SIMPLE FLOW
+1. Open n8n (cloud or self-hosted).
+2. Add a Trigger node (e.g. Schedule: every morning).
+3. Add an Action node (e.g. send a message / fetch data).
+4. Connect them with a line.
+5. Click Execute to test, then turn it Active.
+
+✅ QUICK SUMMARY
+n8n = drag nodes, connect Trigger → Actions, test, activate. Visual automation that links your apps together.
+
+✏️ TRY THIS
+Sketch on paper a 3-node n8n flow: a daily trigger → fetch a quote → send it to yourself.`,
+  },
+
+  portfolio: {
+    "Build Personal Portfolio Website": `Your portfolio site is the centre of your job search — one link that shows employers who you are and what you can do.
+
+📌 MUST-HAVE SECTIONS
+• Hero: name + role you want (e.g. "Aspiring Data Analyst").
+• About: a short, honest paragraph.
+• Skills: tools you know (Excel, Python, etc.).
+• Projects: 2–4 with title, what you did, and the result.
+• Contact: email, phone, LinkedIn, GitHub.
+
+💡 WHY IT MATTERS
+A portfolio proves your skills with evidence. It makes you stand out from people who only have a plain resume.
+
+🪜 STEPS
+1. Use your HTML/CSS skills (or a free builder) to make one clean page.
+2. Fill the sections above with real content.
+3. Add even small/learning projects — show your journey.
+4. Keep it simple, fast and mobile-friendly.
+
+✅ QUICK SUMMARY
+Portfolio = one clean page: Hero, About, Skills, Projects, Contact. Show real projects, even small ones.
+
+✏️ TRY THIS
+Write the text for your Hero and About sections (just the words) — you'll put them on the page next.`,
+
+    "GitHub Setup": `GitHub is where developers store and show their code. A tidy GitHub profile is like a resume for technical jobs.
+
+📌 WHAT TO SET UP
+• A clear username (close to your real name).
+• A profile photo and short bio.
+• Repositories for your projects, each with a README explaining it.
+• Host your portfolio free with GitHub Pages.
+
+💡 WHY IT MATTERS
+Recruiters check GitHub. Active, well-described repos prove you actually build things, not just talk about them.
+
+🪜 STEPS
+1. Sign up at github.com and add a photo + bio.
+2. Create a repository for each project.
+3. Add a README.md to each: what it is, tools used, what you learned.
+4. Pin your best 3–4 repos on your profile.
+
+✅ QUICK SUMMARY
+Set up a clean GitHub profile, upload projects with clear READMEs, and pin your best work. It's your tech resume.
+
+✏️ TRY THIS
+Create your GitHub account and write a 2-line bio describing what you're learning and your goal.`,
+
+    "Resume Building": `A resume is a 1-page summary that gets you the interview. For freshers, clarity and relevance beat fancy design.
+
+📌 SECTIONS IN ORDER
+• Name + contact + LinkedIn/GitHub.
+• A 2-line objective ("Fresher seeking a data role; skilled in Excel & Python").
+• Skills (list your tools).
+• Projects (with results — "built a sales dashboard in Power BI").
+• Education.
+• Certifications/courses (like AllBee!).
+
+💡 WHY IT MATTERS
+Recruiters spend ~10 seconds per resume. A clean, relevant, error-free 1-pager gets you noticed.
+
+🪜 STEPS
+1. Use a simple clean template (one page).
+2. Lead with skills and projects for fresher roles.
+3. Use action words: built, created, automated, analysed.
+4. Add numbers where possible (saved 2 hours, 50 records).
+5. Proofread twice and save as PDF.
+
+✅ QUICK SUMMARY
+Resume = 1 clean page: contact, objective, skills, projects (with results), education. Action words, no errors, PDF.
+
+✏️ TRY THIS
+Write your 2-line objective and list 5 skills you can confidently put on a resume.`,
+
+    "Job Application Guidance": `Getting a job is its own skill — where to apply, how to apply, and how to follow up.
+
+📌 WHERE & HOW TO APPLY
+• Job sites: LinkedIn, Naukri, Indeed, company career pages.
+• Tailor your resume slightly to each job's keywords.
+• Write a short, polite cover message (3–4 lines).
+• Keep a simple tracker (company, role, date, status).
+
+💡 WHY IT MATTERS
+Applying smartly to the right jobs with a tailored message beats sending the same resume everywhere. Follow-ups show you're serious.
+
+🪜 A SIMPLE ROUTINE
+1. Set up a strong LinkedIn profile (photo, headline, skills).
+2. Apply to 3–5 relevant jobs daily, not 50 random ones.
+3. Add a 3-line note: who you are, why you fit, thanks.
+4. Follow up politely after 4–5 days if no reply.
+5. Practise common interview questions out loud.
+
+✅ QUICK SUMMARY
+Apply smart: strong LinkedIn, tailored resume, short cover note, a tracker, and polite follow-ups. Quality over quantity.
+
+✏️ TRY THIS
+Write a 3-line application message you could send with a resume for a job you want.`,
+  },
+};
+
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
 const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
   const [hist, setHist] = useState([]);
@@ -1202,28 +1985,12 @@ const HistoryScreen = ({ onBack }) => {
 // ─── COURSES SCREEN ───────────────────────────────────────────────────────────
 const CoursesScreen = ({ onBack, onAskAI }) => {
   const [selected, setSelected] = useState(null);
-  const [lesson, setLesson]           = useState(null);  // { topic, c } currently being read
-  const [lessonText, setLessonText]   = useState("");
-  const [lessonLoading, setLessonLoading] = useState(false);
-  const [lessonError, setLessonError] = useState("");
+  const [lesson, setLesson]     = useState(null);  // { topic, c } currently being read
 
-  // Fetch a topic lesson from the AI and show it for reading inside the app
-  const openLesson = async (course, topic, simpler = false) => {
+  // Open a pre-written lesson instantly (no AI, no waiting)
+  const openLesson = (course, topic) => {
     setLesson({ topic, c: course });
-    setLessonText("");
-    setLessonError("");
-    setLessonLoading(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
-    try {
-      const sys = `You are a warm, patient expert teacher at AllBee Solutions. Teach in simple, clear English for a complete beginner (many learners are students and freshers in Tamil Nadu). Use short paragraphs and headings, real-world examples, and step-by-step explanations. Avoid heavy jargon; when you must use a technical word, explain it simply. ${simpler ? "Keep it EXTRA simple and short, like explaining to a 12-year-old." : ""} End the lesson with a short "Quick Summary" (2-3 lines) and one small "Try This" practice task.`;
-      const msg = `Teach me the topic "${topic}" from the "${course.title}" course. Explain what it is, why it matters, and how to do/use it, step by step, as a full beginner-friendly lesson.`;
-      const text = await callAI(sys, msg);
-      setLessonText(text);
-    } catch (e) {
-      setLessonError(e.message || "Could not load this lesson. Please try again.");
-    } finally {
-      setLessonLoading(false);
-    }
   };
 
   // ── LESSON READING VIEW ───────────────────────────────────────────────────
@@ -1231,11 +1998,12 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
     const c = lesson.c;
     const idx = c.topics.indexOf(lesson.topic);
     const nextTopic = idx >= 0 && idx < c.topics.length - 1 ? c.topics[idx + 1] : null;
+    const lessonText = (LESSONS[c.id] && LESSONS[c.id][lesson.topic]) || "";
     return (
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 16px 100px" }}>
         {/* Header */}
         <div style={{ paddingTop: 20, paddingBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => { setLesson(null); setLessonText(""); setLessonError(""); }} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <button onClick={() => setLesson(null)} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
             <Icon name="back" size={18} color="var(--slate-600)" />
           </button>
           <div style={{ fontSize: 13, color: "var(--slate-500)", fontWeight: 500 }}>Courses / {c.title} / <span style={{ color: c.color, fontWeight: 700 }}>{lesson.topic}</span></div>
@@ -1248,49 +2016,32 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>{lesson.topic}</div>
         </div>
 
-        {/* Loading state */}
-        {lessonLoading && (
-          <div className="card" style={{ padding: "40px 24px", textAlign: "center" }}>
-            <span className="spinner spinner-blue" style={{ width: 28, height: 28, borderWidth: 3 }} />
-            <div style={{ marginTop: 14, fontSize: 14, color: "var(--slate-500)", fontWeight: 500 }}>Preparing your lesson on “{lesson.topic}”…</div>
+        {/* Lesson content (instant, pre-written) */}
+        {lessonText ? (
+          <div className="output-box fade-in" style={{ marginBottom: 18 }}>{lessonText}</div>
+        ) : (
+          <div className="card" style={{ padding: "20px 22px", marginBottom: 18 }}>
+            <div style={{ fontSize: 14, color: "var(--slate-600)", marginBottom: 12 }}>This lesson is being added soon. You can ask the AI to explain it in the meantime.</div>
+            <button className="btn-primary" onClick={() => onAskAI(`Teach me the topic "${lesson.topic}" from the "${c.title}" course step by step for a beginner.`)} style={{ background: c.gradient, border: "none" }}>🤖 Ask AI to Teach This</button>
           </div>
         )}
 
-        {/* Error state */}
-        {lessonError && !lessonLoading && (
-          <div className="card" style={{ padding: "20px 22px", marginBottom: 16, background: "var(--red-50)", border: "1px solid #fecaca" }}>
-            <div style={{ fontSize: 14, color: "var(--red-500)", fontWeight: 600, marginBottom: 12 }}>⚠️ {lessonError}</div>
-            <button className="btn-primary" onClick={() => openLesson(c, lesson.topic)} style={{ background: c.gradient, border: "none" }}>🔄 Try Again</button>
+        {/* Lesson actions */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+          <button className="btn-secondary" onClick={() => onAskAI(`I just read the lesson on "${lesson.topic}" from the "${c.title}" course. I have a doubt about it: `)} style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}>
+            ❓ Ask a Doubt
+          </button>
+        </div>
+
+        {/* Next topic */}
+        {nextTopic ? (
+          <button className="btn-primary" onClick={() => openLesson(c, nextTopic)} style={{ width: "100%", justifyContent: "center", background: c.gradient, border: "none" }}>
+            Next Topic: {nextTopic} →
+          </button>
+        ) : (
+          <div style={{ textAlign: "center", padding: "16px", background: c.bg, borderRadius: "var(--radius-lg)", border: `1px solid ${c.color}25`, color: c.color, fontWeight: 600, fontSize: 14 }}>
+            🎉 You've completed all topics of {c.title}!
           </div>
-        )}
-
-        {/* Lesson content */}
-        {lessonText && !lessonLoading && (
-          <>
-            <div className="output-box fade-in" style={{ marginBottom: 18 }}>{lessonText}</div>
-
-            {/* Lesson actions */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-              <button className="btn-secondary" onClick={() => openLesson(c, lesson.topic, true)} style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}>
-                🧒 Explain Simpler
-              </button>
-              <button className="btn-secondary" onClick={() => onAskAI(`I just read a lesson on "${lesson.topic}" from the "${c.title}" course. I have a doubt about it: `)} style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}>
-                ❓ Ask a Doubt
-              </button>
-            </div>
-
-            {/* Next topic */}
-            {nextTopic && (
-              <button className="btn-primary" onClick={() => openLesson(c, nextTopic)} style={{ width: "100%", justifyContent: "center", background: c.gradient, border: "none" }}>
-                Next Topic: {nextTopic} →
-              </button>
-            )}
-            {!nextTopic && (
-              <div style={{ textAlign: "center", padding: "16px", background: c.bg, borderRadius: "var(--radius-lg)", border: `1px solid ${c.color}25`, color: c.color, fontWeight: 600, fontSize: 14 }}>
-                🎉 You've reached the last topic of {c.title}!
-              </div>
-            )}
-          </>
         )}
       </div>
     );
