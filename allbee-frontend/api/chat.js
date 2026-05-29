@@ -1,13 +1,13 @@
 // allbee-frontend/api/chat.js
 // ─────────────────────────────────────────────────────────────
-//  Supports TWO modes — set in Vercel Environment Variables:
+//  Works with NO API KEY by default (uses free Pollinations.ai).
 //
-//  MODE 1: Ollama (free, runs on your PC/server)
+//  Optional MODE 1: Ollama (free, runs on your own PC/server)
 //    OLLAMA_URL   = http://your-server-ip:11434
 //    OLLAMA_MODEL = llama3.2  (or mistral, gemma2, phi3, etc.)
 //
-//  MODE 2: Gemini fallback (if OLLAMA_URL not set)
-//    GEMINI_API_KEY = your key from aistudio.google.com
+//  Default MODE 2: Pollinations.ai — free, no key, no signup.
+//    POLLINATIONS_MODEL = openai  (optional; e.g. openai, gemini, mistral)
 // ─────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -25,11 +25,9 @@ export default async function handler(req, res) {
   const ollamaUrl   = process.env.OLLAMA_URL;
   const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2";
 
-  // ── MODE 1: Ollama ───────────────────────────────────────
+  // ── OPTIONAL MODE 1: Ollama (only if OLLAMA_URL is set) ───
   if (ollamaUrl) {
     try {
-      console.log("Using Ollama:", ollamaUrl, "model:", ollamaModel);
-
       const ollamaRes = await fetch(ollamaUrl + "/api/chat", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
@@ -45,7 +43,6 @@ export default async function handler(req, res) {
       });
 
       const data = await ollamaRes.json();
-
       if (!ollamaRes.ok) {
         const err = data?.error || "Ollama HTTP " + ollamaRes.status;
         return res.status(502).json({ error: "Ollama error: " + err });
@@ -63,50 +60,51 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── MODE 2: Gemini fallback ──────────────────────────────
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!geminiKey) {
-    return res.status(500).json({
-      error: "No AI configured. Set OLLAMA_URL or GEMINI_API_KEY in Vercel Environment Variables",
+  // ── DEFAULT MODE 2: Pollinations.ai (free, no key) ───────
+  const pModel = process.env.POLLINATIONS_MODEL || "openai";
+
+  try {
+    const pRes = await fetch("https://gen.pollinations.ai/v1/chat/completions", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: pModel,
+        messages: [
+          { role: "system", content: system || "You are a helpful assistant." },
+          { role: "user",   content: message.trim() },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
+      }),
     });
-  }
 
-  // Current, supported models on the free Gemini Developer API (v1beta).
-  // The old gemini-1.5-* and gemini-pro models have been retired by Google.
-  const MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
-  let lastError = "";
+    // Read as text first so we can show a useful error if it's not JSON.
+    const raw = await pRes.text();
 
-  for (const model of MODELS) {
-    try {
-      const url =
-        "https://generativelanguage.googleapis.com/v1beta/models/" +
-        model + ":generateContent?key=" + geminiKey;
-
-      const gRes  = await fetch(url, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: system || "You are a helpful assistant." }] },
-          contents: [{ role: "user", parts: [{ text: message.trim() }] }],
-          generationConfig: { maxOutputTokens: 2000, temperature: 0.7 },
-        }),
-      });
-
-      const data = await gRes.json();
-      if (!gRes.ok) {
-        lastError = "[" + model + "] " + (data?.error?.message || "HTTP " + gRes.status);
-        continue;
-      }
-
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      if (!text) { lastError = "[" + model + "] empty"; continue; }
-
-      return res.status(200).json({ text, source: "gemini:" + model });
-
-    } catch (e) {
-      lastError = "[" + model + "] " + e.message;
+    if (!pRes.ok) {
+      // Common case: anonymous tier was rate-limited or temporarily blocked.
+      if (pRes.status === 429)
+        return res.status(429).json({ error: "Free AI is busy right now (rate limit). Wait a few seconds and try again." });
+      let msg = "HTTP " + pRes.status;
+      try { msg = JSON.parse(raw)?.error?.message || msg; } catch {}
+      return res.status(502).json({ error: "Pollinations error: " + msg });
     }
-  }
 
-  return res.status(502).json({ error: "All models failed. Last error: " + lastError });
+    let text = "";
+    try {
+      const data = JSON.parse(raw);
+      text = data?.choices?.[0]?.message?.content || "";
+    } catch {
+      // Some endpoints return plain text instead of JSON.
+      text = raw;
+    }
+
+    if (!text.trim())
+      return res.status(502).json({ error: "Free AI returned an empty response. Try again." });
+
+    return res.status(200).json({ text: text.trim(), source: "pollinations:" + pModel });
+
+  } catch (err) {
+    return res.status(500).json({ error: "Cannot reach free AI service — " + err.message });
+  }
 }
