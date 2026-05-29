@@ -71,7 +71,9 @@ export default async function handler(req, res) {
     });
   }
 
-  const MODELS = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-pro"];
+  // Current, supported models on the free Gemini Developer API (v1beta).
+  // The old gemini-1.5-* and gemini-pro models have been retired by Google.
+  const MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
   let lastError = "";
 
   for (const model of MODELS) {
