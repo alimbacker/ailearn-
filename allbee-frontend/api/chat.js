@@ -3,7 +3,7 @@
 //  Works with NO API KEY by default (uses free Pollinations.ai).
 //
 //  Optional MODE 1: Ollama (free, runs on your own PC/server)
-//    OLLAMA_URL   = http://your-server-ip:11434
+//    OLLAMA_URL   = http://your-server-ip:11434   <-- MUST start with http:// or https://
 //    OLLAMA_MODEL = llama3.2  (or mistral, gemma2, phi3, etc.)
 //
 //  Default MODE 2: Pollinations.ai — free, no key, no signup.
@@ -22,10 +22,13 @@ export default async function handler(req, res) {
   if (!message?.trim())
     return res.status(400).json({ error: "No message provided" });
 
-  const ollamaUrl   = process.env.OLLAMA_URL;
+  // Only treat OLLAMA_URL as valid if it's a real http(s) URL.
+  // This ignores leftover/garbage values so the free fallback still works.
+  const rawOllama = (process.env.OLLAMA_URL || "").trim();
+  const ollamaUrl = /^https?:\/\/.+/i.test(rawOllama) ? rawOllama : null;
   const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2";
 
-  // ── OPTIONAL MODE 1: Ollama (only if OLLAMA_URL is set) ───
+  // ── OPTIONAL MODE 1: Ollama (only if a valid OLLAMA_URL is set) ──
   if (ollamaUrl) {
     try {
       const ollamaRes = await fetch(ollamaUrl + "/api/chat", {
@@ -78,11 +81,9 @@ export default async function handler(req, res) {
       }),
     });
 
-    // Read as text first so we can show a useful error if it's not JSON.
     const raw = await pRes.text();
 
     if (!pRes.ok) {
-      // Common case: anonymous tier was rate-limited or temporarily blocked.
       if (pRes.status === 429)
         return res.status(429).json({ error: "Free AI is busy right now (rate limit). Wait a few seconds and try again." });
       let msg = "HTTP " + pRes.status;
@@ -95,7 +96,6 @@ export default async function handler(req, res) {
       const data = JSON.parse(raw);
       text = data?.choices?.[0]?.message?.content || "";
     } catch {
-      // Some endpoints return plain text instead of JSON.
       text = raw;
     }
 
