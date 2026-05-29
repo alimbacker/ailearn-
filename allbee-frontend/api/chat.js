@@ -1,13 +1,13 @@
 // allbee-frontend/api/chat.js
 // ─────────────────────────────────────────────────────────────
-//  Works with NO API KEY by default (uses free Pollinations.ai).
+//  Works with NO API KEY by default (free, anonymous Pollinations).
 //
 //  Optional MODE 1: Ollama (free, runs on your own PC/server)
 //    OLLAMA_URL   = http://your-server-ip:11434   <-- MUST start with http:// or https://
 //    OLLAMA_MODEL = llama3.2  (or mistral, gemma2, phi3, etc.)
 //
-//  Default MODE 2: Pollinations.ai — free, no key, no signup.
-//    POLLINATIONS_MODEL = openai  (optional; e.g. openai, gemini, mistral)
+//  Default MODE 2: Pollinations.ai (legacy host) — free, no key.
+//    POLLINATIONS_MODEL = openai  (optional; e.g. openai, mistral)
 // ─────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
@@ -23,7 +23,6 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "No message provided" });
 
   // Only treat OLLAMA_URL as valid if it's a real http(s) URL.
-  // This ignores leftover/garbage values so the free fallback still works.
   const rawOllama = (process.env.OLLAMA_URL || "").trim();
   const ollamaUrl = /^https?:\/\/.+/i.test(rawOllama) ? rawOllama : null;
   const ollamaModel = process.env.OLLAMA_MODEL || "llama3.2";
@@ -44,66 +43,64 @@ export default async function handler(req, res) {
           options: { num_predict: 2000, temperature: 0.7 },
         }),
       });
-
       const data = await ollamaRes.json();
       if (!ollamaRes.ok) {
         const err = data?.error || "Ollama HTTP " + ollamaRes.status;
         return res.status(502).json({ error: "Ollama error: " + err });
       }
-
       const text = data?.message?.content || "";
       if (!text) return res.status(502).json({ error: "Ollama returned empty response" });
-
       return res.status(200).json({ text, source: "ollama:" + ollamaModel });
-
     } catch (err) {
-      return res.status(500).json({
-        error: "Cannot reach Ollama at " + ollamaUrl + " — " + err.message,
-      });
+      return res.status(500).json({ error: "Cannot reach Ollama at " + ollamaUrl + " — " + err.message });
     }
   }
 
-  // ── DEFAULT MODE 2: Pollinations.ai (free, no key) ───────
-  const pModel = process.env.POLLINATIONS_MODEL || "openai";
+  // ── DEFAULT MODE 2: Pollinations legacy host (free, no key) ──
+  const pModel  = process.env.POLLINATIONS_MODEL || "openai";
+  const sysText = system || "You are a helpful assistant.";
 
+  // Attempt A: OpenAI-compatible POST (no Authorization header — anonymous).
   try {
-    const pRes = await fetch("https://gen.pollinations.ai/v1/chat/completions", {
+    const r = await fetch("https://text.pollinations.ai/openai", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: pModel,
         messages: [
-          { role: "system", content: system || "You are a helpful assistant." },
+          { role: "system", content: sysText },
           { role: "user",   content: message.trim() },
         ],
         temperature: 0.7,
-        max_tokens: 2000,
+        referrer: "allbee",
       }),
     });
-
-    const raw = await pRes.text();
-
-    if (!pRes.ok) {
-      if (pRes.status === 429)
-        return res.status(429).json({ error: "Free AI is busy right now (rate limit). Wait a few seconds and try again." });
-      let msg = "HTTP " + pRes.status;
-      try { msg = JSON.parse(raw)?.error?.message || msg; } catch {}
-      return res.status(502).json({ error: "Pollinations error: " + msg });
+    const raw = await r.text();
+    if (r.ok) {
+      let text = "";
+      try { text = JSON.parse(raw)?.choices?.[0]?.message?.content || ""; }
+      catch { text = raw; }
+      if (text.trim())
+        return res.status(200).json({ text: text.trim(), source: "pollinations:" + pModel });
     }
+  } catch (_) { /* fall through to Attempt B */ }
 
-    let text = "";
-    try {
-      const data = JSON.parse(raw);
-      text = data?.choices?.[0]?.message?.content || "";
-    } catch {
-      text = raw;
-    }
+  // Attempt B: simple GET text endpoint (also anonymous).
+  try {
+    const prompt = encodeURIComponent(sysText + "\n\n" + message.trim());
+    const r = await fetch(
+      "https://text.pollinations.ai/" + prompt + "?model=" + encodeURIComponent(pModel) + "&referrer=allbee"
+    );
+    const text = await r.text();
+    if (r.ok && text.trim())
+      return res.status(200).json({ text: text.trim(), source: "pollinations-get:" + pModel });
 
-    if (!text.trim())
-      return res.status(502).json({ error: "Free AI returned an empty response. Try again." });
+    if (r.status === 429)
+      return res.status(429).json({ error: "Free AI is busy right now. Wait a few seconds and try again." });
 
-    return res.status(200).json({ text: text.trim(), source: "pollinations:" + pModel });
-
+    return res.status(502).json({
+      error: "Free AI unavailable (HTTP " + r.status + "). The free service may be rate-limited — try again shortly.",
+    });
   } catch (err) {
     return res.status(500).json({ error: "Cannot reach free AI service — " + err.message });
   }
