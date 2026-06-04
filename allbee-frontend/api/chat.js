@@ -30,6 +30,15 @@
 //  location and handler signature differ. Ask and it can be adapted.
 // ───────────────────────────────────────────────────────────────────────────
 
+// ── EASY MODE (optional) ───────────────────────────────────────────────────
+// If you can't use Vercel Environment Variables, paste your NEW Groq key
+// between the quotes below (it starts with gsk_). This file runs ONLY on the
+// server, so the key is NOT visible to website visitors. BUT it will be in your
+// code/Git — so keep your GitHub repository PRIVATE if you do this.
+// The Environment Variable method (GROQ_API_KEY in Vercel) is still the safest.
+const GROQ_API_KEY_HARDCODED = ""; // e.g. "gsk_your_new_key_here"
+// ────────────────────────────────────────────────────────────────────────────
+
 export default async function handler(req, res) {
   // Allow the browser to call this route.
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -47,7 +56,7 @@ export default async function handler(req, res) {
   const message = (body.message || "").toString();
   if (!message.trim()) { res.status(400).json({ error: "No question was provided." }); return; }
 
-  const groqKey = process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY || GROQ_API_KEY_HARDCODED;
   const oaiKey  = process.env.OPENAI_API_KEY;
   const orKey   = process.env.OPENROUTER_API_KEY;
 
