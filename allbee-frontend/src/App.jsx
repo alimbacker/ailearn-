@@ -106,6 +106,11 @@ const globalStyles = `
 const STORAGE_KEY = "allbee_history";
 const USER_KEY    = "allbee_user";
 
+// ─── REGISTRATION ────────────────────────────────────────────────────────────
+// New students register here. Used by the Login screen, Dashboard & Courses page.
+const REGISTER_URL = "https://forms.gle/7pHCfY43VSd7m7oc8";
+const openRegister = () => window.open(REGISTER_URL, "_blank", "noopener,noreferrer");
+
 const saveHistory = (entry) => {
   try {
     const hist = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
@@ -407,7 +412,7 @@ const LoginScreen = ({ onLogin }) => {
         return sp === cleaned.slice(-10);
       });
       if (!match) {
-        setError("📋 Phone number not registered. Please contact Allbee Solutions to register.");
+        setError("📋 Phone number not registered yet. Tap \"Register Now\" below to join Allbee — then log in once added.");
         setLoading(false); return;
       }
       setStudent(match);
@@ -564,8 +569,19 @@ const LoginScreen = ({ onLogin }) => {
           </div>
         )}
 
-        <p style={{ fontSize: 12, color: "var(--slate-400)", marginTop: 24 }}>
-          Not registered? Contact <strong style={{ color: "var(--blue-600)" }}>Allbee Solutions</strong> to enroll 🎓
+        {/* New student registration */}
+        <div style={{ height: 1, background: "var(--slate-100)", margin: "22px 0 16px" }} />
+        <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 10 }}>
+          New to Allbee? Enroll for a course first 👇
+        </div>
+        <button
+          onClick={openRegister}
+          style={{ width: "100%", justifyContent: "center", display: "flex", alignItems: "center", gap: 8, background: "white", color: "var(--blue-700)", border: "1.5px solid var(--blue-200)", borderRadius: "var(--radius)", padding: "12px 20px", fontSize: 15, fontWeight: 700 }}
+        >
+          📝 Register Now — It's Free
+        </button>
+        <p style={{ fontSize: 11.5, color: "var(--slate-400)", marginTop: 12, lineHeight: 1.6 }}>
+          After you register, Allbee adds you to the student list — then log in with your phone number 🎓
         </p>
       </div>
     </div>
@@ -591,148 +607,211 @@ const officeApps = [
     subs: ["Add slide transitions","Apply animations","Insert images/videos","Use slide master","Create a good layout","Present / slideshow mode","Add speaker notes","Export as PDF"] },
 ];
 
-// ─── COURSES DATA ─────────────────────────────────────────────────────────────
-const COURSES = [
+// ─── COURSE CATEGORIES + COURSES DATA ────────────────────────────────────────
+// Each category groups many courses. Every course has learning topics
+// (tap to read a lesson) and full AI access (ask AI to teach / doubts / study plan).
+const CATEGORIES = [
   {
-    id: "excel",
-    num: "01",
-    title: "Advanced Microsoft Excel",
-    emoji: "📊",
-    color: "#1d6f42",
-    lightColor: "#34a853",
-    bg: "#e6f4ea",
-    gradient: "linear-gradient(135deg, #1d6f42 0%, #34a853 100%)",
-    tag: "Most Popular",
-    tagColor: "#1d6f42",
-    topics: [
-      "Excel Basics to Advanced",
-      "Formulas & Functions",
-      "Pivot Tables",
-      "Dashboards",
-      "Data Cleaning",
-      "Excel Automation Tips",
-      "Real-world Business Reports",
-    ],
-    bestFor: "Students, Office Staff, Accountants, Data Entry Jobs",
-    duration: "4–6 Weeks",
-    level: "Beginner → Advanced",
-    outcome: "Job-ready Excel skills for data & office work",
-  },
-  {
-    id: "python",
-    num: "02",
-    title: "Python Programming",
-    emoji: "🐍",
-    color: "#00acc1",
-    lightColor: "#00bcd4",
-    bg: "#eff6ff",
-    gradient: "linear-gradient(135deg, #00838f 0%, #00acc1 100%)",
-    tag: "Beginner Friendly",
-    tagColor: "#00acc1",
-    topics: [
-      "Python Basics",
-      "Variables, Loops, Functions",
-      "File Handling",
-      "Error Handling",
-      "Working with APIs & JSON",
-      "Basic Automation Projects",
-    ],
-    bestFor: "Beginners who want to enter programming or automation",
-    duration: "6–8 Weeks",
-    level: "Complete Beginner",
-    outcome: "Build real automation scripts & small projects",
-  },
-  {
-    id: "powerbi",
-    num: "03",
-    title: "Power BI",
-    emoji: "📈",
-    color: "#c43e1c",
-    lightColor: "#ea4c1d",
-    bg: "#fef3ee",
-    gradient: "linear-gradient(135deg, #92400e 0%, #c43e1c 100%)",
-    tag: "High Demand",
-    tagColor: "#c43e1c",
-    topics: [
-      "Data Import & Transformation",
-      "Data Modeling",
-      "DAX Basics",
-      "Interactive Dashboards",
-      "Business Reports",
-    ],
-    bestFor: "Data Analysts & Business Reporting",
-    duration: "4–5 Weeks",
-    level: "Intermediate",
-    outcome: "Create stunning business dashboards",
-  },
-  {
-    id: "webdev",
-    num: "04",
-    title: "Web Development",
-    emoji: "🌐",
-    color: "#7c3aed",
-    lightColor: "#8b5cf6",
-    bg: "#f5f3ff",
-    gradient: "linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%)",
-    tag: "Freelance Ready",
-    tagColor: "#7c3aed",
-    topics: [
-      "HTML Basics",
-      "CSS & Styling",
-      "Basic JavaScript",
-      "Build Portfolio Website",
-      "GitHub Hosting",
-    ],
-    bestFor: "Students who want to start in tech or freelance",
-    duration: "6–8 Weeks",
-    level: "Beginner",
-    outcome: "Launch your own website & start freelancing",
-  },
-  {
-    id: "aitools",
-    num: "05",
-    title: "AI Tools & Automation",
-    emoji: "🤖",
-    color: "#0891b2",
-    lightColor: "#06b6d4",
-    bg: "#ecfeff",
+    id: "ai", name: "AI & Automation", emoji: "🤖",
+    color: "#0891b2", lightColor: "#06b6d4", bg: "#ecfeff",
     gradient: "linear-gradient(135deg, #155e75 0%, #0891b2 100%)",
-    tag: "Future Skills",
-    tagColor: "#0891b2",
-    topics: [
-      "ChatGPT for Productivity",
-      "AI Tools for Business",
-      "Automation Basics",
-      "Workflow Automation (n8n)",
+    tag: "Future Skill", level: "No coding needed", duration: "2–4 Weeks",
+    bestFor: "Students, Professionals & Business Owners", outcome: "Use AI to save time & boost your work",
+    courses: [
+      { id: "ai-for-beginners", title: "AI for Beginners", emoji: "🤖", topics: ["What is AI & How It Works", "Everyday AI Tools You Can Use", "Writing Good AI Prompts", "AI for Studies & Work", "AI Safety & Smart Use"] },
+      { id: "chatgpt-mastery", title: "ChatGPT Mastery", emoji: "💬", topics: ["ChatGPT Basics & Setup", "Prompting Like a Pro", "ChatGPT for Writing & Email", "ChatGPT for Study & Coding", "Custom GPTs & Advanced Tricks"] },
+      { id: "prompt-engineering", title: "Prompt Engineering", emoji: "✍️", topics: ["What is a Prompt", "Prompt Structure & Roles", "Few-shot & Examples", "Step-by-Step Reasoning Prompts", "Prompts for Images & Code"] },
+      { id: "ai-tools-for-students", title: "AI Tools for Students", emoji: "🎓", topics: ["AI Note-taking & Summaries", "AI for Assignments (the right way)", "AI Research Helpers", "AI for Exam Prep", "Best Free AI Tools"] },
+      { id: "ai-tools-for-business-owners", title: "AI Tools for Business Owners", emoji: "💼", topics: ["AI for Customer Replies", "AI for Social Media Posts", "AI for Sales & Leads", "AI Data & Reports", "Saving Time with AI"] },
+      { id: "ai-content-creation", title: "AI Content Creation", emoji: "📝", topics: ["AI Blog & Article Writing", "AI Captions & Hashtags", "AI Scripts for Videos", "Repurposing Content with AI", "Editing AI Content Well"] },
+      { id: "ai-image-generation", title: "AI Image Generation", emoji: "🎨", topics: ["Intro to AI Image Tools", "Writing Image Prompts", "Midjourney Basics", "Leonardo AI Basics", "Editing & Upscaling Images"] },
+      { id: "ai-video-creation", title: "AI Video Creation", emoji: "🎬", topics: ["AI Video Tools Overview", "Text-to-Video Basics", "AI Avatars & Talking Heads", "AI Voiceovers for Video", "Editing AI Videos"] },
+      { id: "ai-voice-generation", title: "AI Voice Generation", emoji: "🎙️", topics: ["What is AI Voice", "Text-to-Speech Tools", "Cloning & Custom Voices", "Voiceovers for Reels/YouTube", "Voice in Tamil & English"] },
+      { id: "aitools", title: "AI Automation (No Code)", emoji: "⚙️", tag: "Future Skills", level: "No coding needed", duration: "3–4 Weeks", bestFor: "Entrepreneurs & Professionals", outcome: "Automate tasks & 10x your productivity", topics: ["ChatGPT for Productivity", "AI Tools for Business", "Automation Basics", "Workflow Automation (n8n)"] },
+      { id: "ai-for-digital-marketing", title: "AI for Digital Marketing", emoji: "📣", topics: ["AI for Ad Copy", "AI for SEO Content", "AI Social Media Planning", "AI Image & Creative Ads", "AI Analytics Insights"] },
+      { id: "ai-for-teachers", title: "AI for Teachers", emoji: "👩‍🏫", topics: ["AI Lesson Planning", "AI Question Paper Maker", "AI for Grading Help", "AI Teaching Materials", "Explaining Topics with AI"] },
+      { id: "ai-for-accountants", title: "AI for Accountants", emoji: "🧮", topics: ["AI for Data Entry", "AI Excel Formula Helper", "AI for GST/Tax Queries", "AI Report Writing", "AI Bookkeeping Tools"] },
+      { id: "ai-for-freelancers", title: "AI for Freelancers", emoji: "💻", topics: ["AI for Proposals & Pitches", "AI Client Communication", "AI to Deliver Work Faster", "AI Portfolio & Branding", "Pricing Your AI Skills"] },
     ],
-    bestFor: "Entrepreneurs & Professionals",
-    duration: "3–4 Weeks",
-    level: "No coding needed",
-    outcome: "Automate tasks & 10x your productivity",
   },
   {
-    id: "portfolio",
-    num: "06",
-    title: "Portfolio & Career Setup",
-    emoji: "🚀",
-    color: "#d97706",
-    lightColor: "#f59e0b",
-    bg: "#fffbeb",
-    gradient: "linear-gradient(135deg, #92400e 0%, #d97706 100%)",
-    tag: "Job Focused",
-    tagColor: "#d97706",
-    topics: [
-      "Build Personal Portfolio Website",
-      "GitHub Setup",
-      "Resume Building",
-      "Job Application Guidance",
+    id: "computer", name: "Computer Skills", emoji: "💻",
+    color: "#185abd", lightColor: "#2b7de9", bg: "#e8f0fe",
+    gradient: "linear-gradient(135deg, #0f3c7a 0%, #185abd 100%)",
+    tag: "Essential", level: "Beginner Friendly", duration: "3–5 Weeks",
+    bestFor: "Students & Office Staff", outcome: "Confident computer & office skills",
+    courses: [
+      { id: "computer-basics", title: "Computer Basics", emoji: "🖥️", topics: ["Parts of a Computer", "Using Windows & Files", "Keyboard & Mouse Skills", "Internet & Browsers", "Staying Safe Online"] },
+      { id: "ms-office-complete", title: "MS Office Complete", emoji: "📑", topics: ["MS Word Essentials", "MS Excel Essentials", "MS PowerPoint Essentials", "Working Between Office Apps", "Printing & Saving as PDF"] },
+      { id: "excel", title: "Advanced Excel", emoji: "📊", tag: "Most Popular", level: "Beginner → Advanced", duration: "4–6 Weeks", bestFor: "Students, Office Staff, Accountants, Data Entry Jobs", outcome: "Job-ready Excel skills for data & office work", topics: ["Excel Basics to Advanced", "Formulas & Functions", "Pivot Tables", "Dashboards", "Data Cleaning", "Excel Automation Tips", "Real-world Business Reports"] },
+      { id: "powerpoint-mastery", title: "PowerPoint Mastery", emoji: "📽️", topics: ["Slide Design Basics", "Themes & Layouts", "Animations & Transitions", "Charts & SmartArt", "Presenting with Confidence"] },
+      { id: "internet-email-skills", title: "Internet & Email Skills", emoji: "🌐", topics: ["Browsing & Searching Well", "Creating & Using Email", "Attachments & Drive", "Online Safety & Passwords", "Video Calls & Meetings"] },
+      { id: "typing-tamil-english", title: "Typing (Tamil & English)", emoji: "⌨️", topics: ["Home Row & Posture", "English Touch Typing", "Tamil Typing Basics", "Speed Building Drills", "Accuracy & Shortcuts"] },
+      { id: "powerbi", title: "Power BI", emoji: "📈", tag: "High Demand", level: "Intermediate", duration: "4–5 Weeks", bestFor: "Data Analysts & Business Reporting", outcome: "Create stunning business dashboards", topics: ["Data Import & Transformation", "Data Modeling", "DAX Basics", "Interactive Dashboards", "Business Reports"] },
     ],
-    bestFor: "Students looking for IT jobs / Remote jobs",
-    duration: "2–3 Weeks",
-    level: "All Levels",
-    outcome: "Land your first IT job or remote opportunity",
+  },
+  {
+    id: "accounting", name: "Accounting & Finance", emoji: "📊",
+    color: "#1d6f42", lightColor: "#34a853", bg: "#e6f4ea",
+    gradient: "linear-gradient(135deg, #114a2c 0%, #1d6f42 100%)",
+    tag: "Job Oriented", level: "Beginner → Job Ready", duration: "4–6 Weeks",
+    bestFor: "Commerce Students & Accountants", outcome: "Job-ready accounting skills",
+    courses: [
+      { id: "tally-prime", title: "Tally Prime", emoji: "📒", topics: ["Tally Setup & Company Creation", "Ledgers & Groups", "Voucher Entry", "GST in Tally", "Reports & Balance Sheet"] },
+      { id: "gst-filing", title: "GST Filing", emoji: "🧾", topics: ["GST Basics & Types", "GST Registration", "Invoices & Returns", "GSTR-1 & GSTR-3B Filing", "Input Tax Credit"] },
+      { id: "income-tax-basics", title: "Income Tax Basics", emoji: "💸", topics: ["Income Tax Overview", "Tax Slabs & Heads of Income", "Deductions (80C etc.)", "Filing ITR Online", "Form 16 & TDS"] },
+      { id: "payroll-management", title: "Payroll Management", emoji: "👥", topics: ["Salary Components", "PF, ESI & Deductions", "Payslip Preparation", "Payroll in Excel/Tally", "Compliance Basics"] },
+      { id: "accounting-fundamentals", title: "Accounting Fundamentals", emoji: "📘", topics: ["What is Accounting", "Debit & Credit Rules", "Journal & Ledger", "Trial Balance", "Final Accounts"] },
+      { id: "business-accounting", title: "Business Accounting", emoji: "🏦", topics: ["Recording Business Transactions", "Cash vs Bank Book", "Profit & Loss Account", "Balance Sheet Basics", "Day-to-day Bookkeeping"] },
+    ],
+  },
+  {
+    id: "programming", name: "Programming", emoji: "👨‍💻",
+    color: "#4f46e5", lightColor: "#6366f1", bg: "#eef2ff",
+    gradient: "linear-gradient(135deg, #312e81 0%, #4f46e5 100%)",
+    tag: "In Demand", level: "Beginner Friendly", duration: "6–8 Weeks",
+    bestFor: "Aspiring Developers & Students", outcome: "Build real projects from scratch",
+    courses: [
+      { id: "python", title: "Python", emoji: "🐍", tag: "Beginner Friendly", level: "Complete Beginner", duration: "6–8 Weeks", bestFor: "Beginners who want to enter programming or automation", outcome: "Build real automation scripts & small projects", topics: ["Python Basics", "Variables, Loops, Functions", "File Handling", "Error Handling", "Working with APIs & JSON", "Basic Automation Projects"] },
+      { id: "java", title: "Java", emoji: "☕", topics: ["Java Setup & First Program", "Variables & Data Types", "Loops & Conditions", "Methods & OOP Basics", "Classes & Objects"] },
+      { id: "javascript", title: "JavaScript", emoji: "🟨", topics: ["JS Basics & Syntax", "Variables & Functions", "DOM & Events", "Arrays & Objects", "Async & Fetch"] },
+      { id: "c-programming", title: "C Programming", emoji: "🔵", topics: ["C Setup & First Program", "Variables & Operators", "Loops & Conditions", "Functions & Arrays", "Pointers Basics"] },
+      { id: "c", title: "C++", emoji: "➕", topics: ["C++ Basics", "Loops & Functions", "OOP: Classes & Objects", "Inheritance & Polymorphism", "STL Basics"] },
+      { id: "webdev", title: "Web Development", emoji: "🌐", tag: "Freelance Ready", level: "Beginner", duration: "6–8 Weeks", bestFor: "Students who want to start in tech or freelance", outcome: "Launch your own website & start freelancing", topics: ["HTML Basics", "CSS & Styling", "Basic JavaScript", "Build Portfolio Website", "GitHub Hosting"] },
+      { id: "full-stack-development", title: "Full Stack Development", emoji: "🧱", topics: ["Frontend vs Backend", "HTML, CSS, JS Refresher", "Node.js & Express Basics", "Databases Basics", "Connecting Front & Back"] },
+      { id: "react-js", title: "React JS", emoji: "⚛️", topics: ["React Setup & JSX", "Components & Props", "State & Hooks", "Handling Events & Forms", "Fetching Data & Routing"] },
+      { id: "firebase-development", title: "Firebase Development", emoji: "🔥", topics: ["What is Firebase", "Authentication", "Firestore Database", "Hosting Your App", "Realtime Data & Rules"] },
+    ],
+  },
+  {
+    id: "webapp", name: "Web & App Development", emoji: "🌐",
+    color: "#7c3aed", lightColor: "#8b5cf6", bg: "#f5f3ff",
+    gradient: "linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%)",
+    tag: "Freelance Ready", level: "Beginner → Intermediate", duration: "5–8 Weeks",
+    bestFor: "Future Web/App Developers", outcome: "Build & launch real websites/apps",
+    courses: [
+      { id: "website-design", title: "Website Design", emoji: "🎨", topics: ["Design Principles", "Layout & Spacing", "Colors & Typography", "Responsive Design", "Design Tools (Figma)"] },
+      { id: "wordpress-development", title: "WordPress Development", emoji: "🪧", topics: ["WordPress Setup", "Themes & Customizing", "Pages, Posts & Menus", "Plugins You Need", "Going Live"] },
+      { id: "e-commerce-website", title: "E-Commerce Website", emoji: "🛒", topics: ["Plan Your Online Store", "Products & Categories", "Cart & Checkout", "Payment Gateways", "Launch & Promote"] },
+      { id: "progressive-web-apps", title: "Progressive Web Apps", emoji: "📲", topics: ["What is a PWA", "Manifest & Icons", "Service Workers", "Offline Support", "Installable Apps"] },
+      { id: "mobile-app-development", title: "Mobile App Development", emoji: "📱", topics: ["App Basics & Tools", "UI Screens & Navigation", "Buttons, Inputs & Lists", "Storing Data", "Publishing Your App"] },
+      { id: "saas-development", title: "SaaS Development", emoji: "☁️", topics: ["What is SaaS", "Planning Your SaaS", "User Accounts & Plans", "Subscriptions & Payments", "Launching to Users"] },
+    ],
+  },
+  {
+    id: "design", name: "Design & Creativity", emoji: "🎨",
+    color: "#db2777", lightColor: "#ec4899", bg: "#fdf2f8",
+    gradient: "linear-gradient(135deg, #9d174d 0%, #db2777 100%)",
+    tag: "Creative", level: "Beginner Friendly", duration: "3–5 Weeks",
+    bestFor: "Creative Students & Freelancers", outcome: "Create stunning designs that sell",
+    courses: [
+      { id: "canva-design-mastery", title: "Canva Design Mastery", emoji: "🖌️", topics: ["Canva Basics", "Posters & Social Posts", "Templates & Brand Kit", "Logos & Thumbnails", "Presentations & Videos"] },
+      { id: "graphic-design", title: "Graphic Design", emoji: "🎨", topics: ["Design Principles", "Color Theory", "Typography Basics", "Composition & Layout", "Building a Portfolio"] },
+      { id: "photoshop", title: "Photoshop", emoji: "🖼️", topics: ["Photoshop Interface", "Layers & Selections", "Photo Editing & Retouch", "Text & Effects", "Exporting for Web/Print"] },
+      { id: "illustrator", title: "Illustrator", emoji: "✒️", topics: ["Illustrator Basics", "Shapes & Pen Tool", "Working with Color", "Logos & Icons", "Vector Illustrations"] },
+      { id: "ui-ux-design", title: "UI/UX Design", emoji: "📐", topics: ["UX vs UI", "User Research Basics", "Wireframing", "UI Design in Figma", "Prototyping & Testing"] },
+      { id: "logo-design", title: "Logo Design", emoji: "🔷", topics: ["Logo Types & Ideas", "Sketching Concepts", "Color & Font Choices", "Designing in Canva/Illustrator", "Delivering to Clients"] },
+    ],
+  },
+  {
+    id: "marketing", name: "Digital Marketing", emoji: "📈",
+    color: "#ea580c", lightColor: "#f97316", bg: "#fff7ed",
+    gradient: "linear-gradient(135deg, #9a3412 0%, #ea580c 100%)",
+    tag: "High Demand", level: "Beginner → Pro", duration: "3–5 Weeks",
+    bestFor: "Marketers & Business Owners", outcome: "Run campaigns that get results",
+    courses: [
+      { id: "seo", title: "SEO", emoji: "🔍", topics: ["What is SEO", "Keyword Research", "On-Page SEO", "Backlinks & Off-Page", "Tracking with Analytics"] },
+      { id: "social-media-marketing", title: "Social Media Marketing", emoji: "📱", topics: ["Choosing the Right Platforms", "Content Planning", "Growing Followers", "Engagement Strategy", "Measuring Results"] },
+      { id: "facebook-ads", title: "Facebook Ads", emoji: "📘", topics: ["Ads Manager Basics", "Audience Targeting", "Creating an Ad", "Budget & Bidding", "Reading Ad Results"] },
+      { id: "google-ads", title: "Google Ads", emoji: "🔎", topics: ["Google Ads Overview", "Keywords & Match Types", "Writing Search Ads", "Budget & Bidding", "Conversion Tracking"] },
+      { id: "content-marketing", title: "Content Marketing", emoji: "📝", topics: ["Content Strategy", "Blogging & SEO", "Email Marketing", "Lead Magnets", "Measuring Content ROI"] },
+      { id: "affiliate-marketing", title: "Affiliate Marketing", emoji: "🔗", topics: ["What is Affiliate Marketing", "Choosing Products & Niches", "Building a Platform", "Driving Traffic", "Tracking Commissions"] },
+    ],
+  },
+  {
+    id: "content", name: "Content Creation", emoji: "🎥",
+    color: "#dc2626", lightColor: "#ef4444", bg: "#fef2f2",
+    gradient: "linear-gradient(135deg, #991b1b 0%, #dc2626 100%)",
+    tag: "Trending", level: "Beginner Friendly", duration: "3–5 Weeks",
+    bestFor: "Creators & Influencers", outcome: "Grow your audience & brand",
+    courses: [
+      { id: "youtube-growth", title: "YouTube Growth", emoji: "▶️", topics: ["Starting a Channel", "Finding Your Niche", "Video Ideas & Scripts", "Thumbnails & Titles", "Growing & Monetizing"] },
+      { id: "video-editing", title: "Video Editing", emoji: "🎞️", topics: ["Editing Basics", "Cuts & Transitions", "Adding Text & Music", "Color & Audio Fixes", "Exporting for Platforms"] },
+      { id: "thumbnail-design", title: "Thumbnail Design", emoji: "🖼️", topics: ["Why Thumbnails Matter", "Design in Canva", "Text & Contrast", "Faces & Emotions", "A/B Testing Ideas"] },
+      { id: "podcast-creation", title: "Podcast Creation", emoji: "🎧", topics: ["Planning Your Podcast", "Recording Gear & Apps", "Recording & Editing", "Publishing to Platforms", "Growing Your Audience"] },
+      { id: "personal-branding", title: "Personal Branding", emoji: "⭐", topics: ["What is a Personal Brand", "Finding Your Niche", "Profile & Bio Setup", "Content That Builds Trust", "Growing Your Audience"] },
+    ],
+  },
+  {
+    id: "career", name: "Career Development", emoji: "💼",
+    color: "#0d9488", lightColor: "#14b8a6", bg: "#f0fdfa",
+    gradient: "linear-gradient(135deg, #115e59 0%, #0d9488 100%)",
+    tag: "Job Focused", level: "All Levels", duration: "2–3 Weeks",
+    bestFor: "Students & Job Seekers", outcome: "Get hired faster",
+    courses: [
+      { id: "resume-building", title: "Resume Building", emoji: "📄", topics: ["Resume Structure", "Writing a Strong Objective", "Skills & Projects Section", "Formatting & ATS Tips", "Common Mistakes"] },
+      { id: "interview-preparation", title: "Interview Preparation", emoji: "🎤", topics: ["Before the Interview", "Common HR Questions", "Technical Round Tips", "Body Language & Confidence", "Follow-up & Thank You"] },
+      { id: "linkedin-optimization", title: "LinkedIn Optimization", emoji: "🔗", topics: ["Profile Photo & Headline", "About & Experience", "Skills & Endorsements", "Networking & Posts", "Finding Jobs on LinkedIn"] },
+      { id: "freelancing-mastery", title: "Freelancing Mastery", emoji: "💻", topics: ["Choosing Your Skill", "Profiles on Upwork/Fiverr", "Winning Proposals", "Pricing & Payments", "Getting 5-Star Reviews"] },
+      { id: "remote-job-skills", title: "Remote Job Skills", emoji: "🏠", topics: ["Finding Remote Jobs", "Tools for Remote Work", "Communication & Time Zones", "Productivity at Home", "Standing Out Remotely"] },
+      { id: "business-communication", title: "Business Communication", emoji: "✉️", topics: ["Professional Emails", "Meeting Etiquette", "Clear Speaking & Listening", "Reports & Presentations", "Workplace Confidence"] },
+      { id: "portfolio", title: "Portfolio & Career Setup", emoji: "🚀", tag: "Job Focused", level: "All Levels", duration: "2–3 Weeks", bestFor: "Students looking for IT jobs / Remote jobs", outcome: "Land your first IT job or remote opportunity", topics: ["Build Personal Portfolio Website", "GitHub Setup", "Resume Building", "Job Application Guidance"] },
+    ],
+  },
+  {
+    id: "business", name: "Business & Entrepreneurship", emoji: "🏢",
+    color: "#d97706", lightColor: "#f59e0b", bg: "#fffbeb",
+    gradient: "linear-gradient(135deg, #92400e 0%, #d97706 100%)",
+    tag: "Growth", level: "Beginner → Pro", duration: "3–5 Weeks",
+    bestFor: "Entrepreneurs & Owners", outcome: "Start & grow your business",
+    courses: [
+      { id: "entrepreneurship", title: "Entrepreneurship", emoji: "🚀", topics: ["Idea to Business", "Validating Your Idea", "Business Model Basics", "Funding & Costs", "Launching Your Startup"] },
+      { id: "small-business-management", title: "Small Business Management", emoji: "🏪", topics: ["Setting Up a Business", "Managing Money", "Hiring & Team", "Operations & Systems", "Growth Planning"] },
+      { id: "sales-marketing", title: "Sales & Marketing", emoji: "📈", topics: ["Understanding Customers", "Sales Funnel Basics", "Pitching & Closing", "Marketing Channels", "Retaining Customers"] },
+      { id: "customer-service", title: "Customer Service", emoji: "🤝", topics: ["Customer Service Basics", "Handling Complaints", "Communication Skills", "Building Loyalty", "Service via Phone/Chat"] },
+      { id: "crm-management", title: "CRM Management", emoji: "🗂️", topics: ["What is a CRM", "Managing Contacts & Leads", "Sales Pipeline", "Follow-ups & Automation", "Reports & Insights"] },
+    ],
+  },
+  {
+    id: "special", name: "Special AllBee Programs", emoji: "🎓",
+    color: "#0097a7", lightColor: "#00bcd4", bg: "#ecfeff",
+    gradient: "linear-gradient(135deg, #0f172a 0%, #0097a7 100%)",
+    tag: "AllBee Special", level: "Beginner → Job Ready", duration: "6–8 Weeks",
+    bestFor: "Ambitious Students & Pros", outcome: "Master a skill + AI together — fully job-ready",
+    courses: [
+      { id: "ai-excel-expert", title: "AI + Excel Expert", emoji: "📊", topics: ["Excel Foundations", "AI Formula Assistant", "Automating Reports with AI", "AI Data Analysis", "Job-Ready Excel + AI"] },
+      { id: "ai-tally-professional", title: "AI + Tally Professional", emoji: "📒", topics: ["Tally Foundations", "AI for Accounting Queries", "GST & Tax with AI Help", "AI Report Insights", "Accountant + AI Workflow"] },
+      { id: "ai-digital-marketing", title: "AI + Digital Marketing", emoji: "📣", topics: ["Marketing Foundations", "AI Content & Ads", "AI SEO Strategy", "AI Social Media Planning", "Full AI Marketing Workflow"] },
+      { id: "ai-web-development", title: "AI + Web Development", emoji: "🌐", topics: ["Web Dev Foundations", "AI Coding Assistants", "Building Sites Faster with AI", "AI for Design & Content", "Deploy & Launch"] },
+      { id: "ai-business-automation", title: "AI + Business Automation", emoji: "⚙️", topics: ["Business Process Basics", "No-Code Automation", "AI Chatbots & Replies", "Connecting Your Tools", "Scaling with Automation"] },
+      { id: "ai-entrepreneur-program", title: "AI Entrepreneur Program", emoji: "🚀", topics: ["AI Business Ideas", "Building an AI Product/Service", "AI Tools to Run a Business", "Marketing with AI", "Launch & Grow"] },
+    ],
   },
 ];
+
+// Flatten categories into a single COURSES list (used by the course detail &
+// lesson views). Styling + sensible defaults are inherited from the category.
+const COURSES = CATEGORIES.flatMap((cat) =>
+  cat.courses.map((co, i) => ({
+    ...co,
+    num: String(i + 1).padStart(2, "0"),
+    category: cat.name,
+    categoryId: cat.id,
+    categoryEmoji: cat.emoji,
+    color: cat.color,
+    lightColor: cat.lightColor,
+    bg: cat.bg,
+    gradient: cat.gradient,
+    tagColor: cat.color,
+    tag: co.tag || cat.tag,
+    level: co.level || cat.level,
+    duration: co.duration || cat.duration,
+    bestFor: co.bestFor || cat.bestFor,
+    outcome: co.outcome || cat.outcome,
+  }))
+);
+const COURSE_COUNT = COURSES.length;
+const CATEGORY_COUNT = CATEGORIES.length;
 
 // ─── PRE-WRITTEN LESSONS (load instantly, no AI needed) ───────────────────────
 // Keyed by course id -> topic title -> lesson text.
@@ -1553,26 +1632,36 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
 
       {/* Courses promo banner */}
       <div className="section-label" style={{ marginBottom: 12 }}>🎓 AllBee Solutions — Courses</div>
-      <div onClick={onCourses} style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 60%, #0097a7 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 32, cursor: "pointer", position: "relative", overflow: "hidden", border: "1px solid #00838f" }}>
+      <div onClick={onCourses} style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 60%, #0097a7 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 16, cursor: "pointer", position: "relative", overflow: "hidden", border: "1px solid #00838f" }}>
         <div style={{ position: "absolute", right: -30, bottom: -30, fontSize: 120, opacity: 0.07, pointerEvents: "none" }}>🎓</div>
-        <div style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)", borderRadius: 99, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: "white", border: "1px solid rgba(255,255,255,0.2)" }}>6 Courses Available</div>
+        <div style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)", borderRadius: 99, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: "white", border: "1px solid rgba(255,255,255,0.2)" }}>{COURSE_COUNT}+ Courses</div>
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
           <div style={{ width: 52, height: 52, background: "rgba(255,255,255,0.15)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", padding: 6 }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(10)" }} /></div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "white", marginBottom: 5 }}>Explore Our Courses</div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", marginBottom: 14, lineHeight: 1.55 }}>Industry-ready skills for students & job seekers. Learn from basics to advanced.</div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "white", marginBottom: 5 }}>Explore {COURSE_COUNT}+ Courses</div>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", marginBottom: 14, lineHeight: 1.55 }}>{CATEGORY_COUNT} categories — AI, Coding, Accounting, Design, Marketing & more. Every course includes lessons + AI support.</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {COURSES.map(c => (
-                <span key={c.id} style={{ background: "rgba(255,255,255,0.11)", border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.88)", fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99 }}>
-                  {c.emoji} {c.title.split(" ")[0]} {c.title.split(" ")[1] || ""}
+              {CATEGORIES.map(cat => (
+                <span key={cat.id} style={{ background: "rgba(255,255,255,0.11)", border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.88)", fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99 }}>
+                  {cat.emoji} {cat.name}
                 </span>
               ))}
             </div>
           </div>
         </div>
         <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#26c6da" }}>
-          View All 6 Courses <span style={{ fontSize: 16 }}>→</span>
+          Browse All {COURSE_COUNT} Courses <span style={{ fontSize: 16 }}>→</span>
         </div>
+      </div>
+
+      {/* Register CTA */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, background: "white", border: "1.5px solid var(--blue-200)", borderRadius: "var(--radius-lg)", padding: "16px 18px", marginBottom: 32, flexWrap: "wrap" }}>
+        <div style={{ width: 44, height: 44, background: "var(--blue-50)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>📝</div>
+        <div style={{ flex: 1, minWidth: 180 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14.5, fontWeight: 700, color: "var(--slate-900)" }}>Want to enroll in a new course?</div>
+          <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>Register with Allbee Solutions to join any course above.</div>
+        </div>
+        <button className="btn-primary" onClick={openRegister} style={{ flexShrink: 0 }}>Register Now →</button>
       </div>
 
       {/* Recent history preview */}
@@ -1986,6 +2075,8 @@ const HistoryScreen = ({ onBack }) => {
 const CoursesScreen = ({ onBack, onAskAI }) => {
   const [selected, setSelected] = useState(null);
   const [lesson, setLesson]     = useState(null);  // { topic, c } currently being read
+  const [query, setQuery]       = useState("");
+  const [catFilter, setCatFilter] = useState("all");
 
   // Open a pre-written lesson instantly (no AI, no waiting)
   const openLesson = (course, topic) => {
@@ -2126,12 +2217,39 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
             📅 Get Study Plan
           </button>
         </div>
+
+        {/* Enroll CTA */}
+        <button
+          onClick={openRegister}
+          className="btn-primary"
+          style={{ width: "100%", justifyContent: "center", marginTop: 14, background: c.gradient, border: "none" }}
+        >
+          📝 Enroll in {c.title} →
+        </button>
+        <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--slate-400)", marginTop: 8 }}>
+          Free lessons & AI help above · Register to join the full course with Allbee
+        </div>
       </div>
     );
   }
 
+  // ── COURSE LIST VIEW (grouped by category, searchable) ────────────────────
+  const q = query.trim().toLowerCase();
+  const matches = (c) =>
+    !q ||
+    c.title.toLowerCase().includes(q) ||
+    c.topics.some((t) => t.toLowerCase().includes(q));
+
+  // Build the visible category list, applying the search + category filter.
+  const visibleCats = CATEGORIES
+    .filter((cat) => catFilter === "all" || cat.id === catFilter)
+    .map((cat) => ({ cat, items: cat.courses.filter(matches) }))
+    .filter(({ items }) => items.length > 0);
+
+  const courseById = (id) => COURSES.find((x) => x.id === id);
+
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 16px 100px" }}>
+    <div style={{ maxWidth: 980, margin: "0 auto", padding: "0 16px 100px" }}>
       {/* Header */}
       <div style={{ paddingTop: 20, paddingBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
         <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
@@ -2139,21 +2257,45 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
         </button>
         <div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "var(--slate-900)" }}>🎓 AllBee Solutions — Courses</div>
-          <div style={{ fontSize: 12, color: "var(--slate-400)" }}>6 industry-ready courses · Free AI support included</div>
+          <div style={{ fontSize: 12, color: "var(--slate-400)" }}>{COURSE_COUNT} courses · {CATEGORY_COUNT} categories · Free AI support</div>
         </div>
       </div>
 
       {/* Hero strip */}
-      <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 28, color: "white" }}>
+      <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 18, color: "white" }}>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}><img src={LOGO_SRC} alt="Allbee" style={{ width: 28, height: 28, objectFit: "contain", filter: "brightness(10)" }} /> Learn. Build. Get Hired.</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>
-          AllBee Solutions offers practical, job-focused courses designed for Tamil Nadu students & freshers. Tap any course, then tap a topic to read a full AI lesson!
+          {COURSE_COUNT}+ practical, job-focused courses for Tamil Nadu students &amp; freshers. Tap any course → read lessons or ask the AI to teach you, anytime!
         </div>
       </div>
 
+      {/* Register CTA */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, background: "white", border: "1.5px solid var(--blue-200)", borderRadius: "var(--radius-lg)", padding: "14px 16px", marginBottom: 20, flexWrap: "wrap" }}>
+        <div style={{ width: 42, height: 42, background: "var(--blue-50)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}>📝</div>
+        <div style={{ flex: 1, minWidth: 170 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14, fontWeight: 700, color: "var(--slate-900)" }}>Ready to enroll?</div>
+          <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>Register with Allbee Solutions to join any course.</div>
+        </div>
+        <button className="btn-primary" onClick={openRegister} style={{ flexShrink: 0, fontSize: 14 }}>Register Now →</button>
+      </div>
+
+      {/* Search */}
+      <div style={{ position: "relative", marginBottom: 16 }}>
+        <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16, pointerEvents: "none" }}>🔍</span>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search courses... (e.g. Python, GST, Canva, Excel)"
+          style={{ paddingLeft: 40, fontSize: 14.5 }}
+        />
+        {query && (
+          <button onClick={() => setQuery("")} style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "var(--slate-100)", border: "none", borderRadius: 99, width: 22, height: 22, cursor: "pointer", color: "var(--slate-500)", fontSize: 13, lineHeight: 1 }}>✕</button>
+        )}
+      </div>
+
       {/* Stats row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 28 }}>
-        {[["6", "Courses"], ["100%", "Practical"], ["Free AI", "Support"]].map(([v, l]) => (
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 22 }}>
+        {[[String(COURSE_COUNT), "Courses"], [String(CATEGORY_COUNT), "Categories"], ["Free AI", "Support"]].map(([v, l]) => (
           <div key={l} className="card" style={{ padding: "14px 10px", textAlign: "center" }}>
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 20, fontWeight: 800, color: "var(--blue-600)", marginBottom: 2 }}>{v}</div>
             <div style={{ fontSize: 11, color: "var(--slate-400)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{l}</div>
@@ -2161,52 +2303,97 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
         ))}
       </div>
 
-      {/* Course cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 16 }}>
-        {COURSES.map((c, i) => (
-          <button
-            key={c.id}
-            onClick={() => setSelected(c.id)}
-            className="card card-hover"
-            style={{ padding: 0, textAlign: "left", border: "1px solid var(--slate-200)", animation: `fadeIn 0.4s ease ${i * 0.07}s both`, cursor: "pointer", overflow: "hidden", background: "white" }}
-          >
-            {/* Card top gradient */}
-            <div style={{ background: c.gradient, padding: "20px 20px 16px", position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", right: -10, top: -10, fontSize: 60, opacity: 0.15, pointerEvents: "none" }}>{c.emoji}</div>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 10 }}>
-                <div style={{ background: "rgba(255,255,255,0.2)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 800, color: "white", letterSpacing: "0.04em" }}>{c.num}</div>
-                <div style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 99, padding: "2px 10px", fontSize: 10, fontWeight: 700, color: "white" }}>{c.tag}</div>
-              </div>
-              <div style={{ fontSize: 28, marginBottom: 6 }}>{c.emoji}</div>
-              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "white", lineHeight: 1.3 }}>{c.title}</div>
-            </div>
-
-            {/* Card body */}
-            <div style={{ padding: "14px 18px 16px" }}>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                <span style={{ background: c.bg, color: c.color, fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>⏱️ {c.duration}</span>
-                <span style={{ background: c.bg, color: c.color, fontSize: 11, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>📊 {c.level}</span>
-              </div>
-              <div style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 12, lineHeight: 1.5 }}>
-                <strong style={{ color: "var(--slate-700)" }}>Topics:</strong> {c.topics.slice(0, 3).join(" · ")}{c.topics.length > 3 ? ` +${c.topics.length - 3} more` : ""}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--slate-400)", display: "flex", alignItems: "center", gap: 5, marginBottom: 14 }}>
-                💡 {c.bestFor.length > 45 ? c.bestFor.slice(0, 45) + "..." : c.bestFor}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: c.color }}>View Details →</span>
-                <span style={{ fontSize: 11, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>🤖 AI Support</span>
-              </div>
-            </div>
-          </button>
-        ))}
+      {/* Category filter pills */}
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 22, WebkitOverflowScrolling: "touch" }}>
+        {[{ id: "all", name: "All", emoji: "✨" }, ...CATEGORIES].map((cat) => {
+          const active = catFilter === cat.id;
+          return (
+            <button
+              key={cat.id}
+              onClick={() => setCatFilter(cat.id)}
+              style={{
+                flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 99, fontSize: 13, fontWeight: 600,
+                border: active ? "1.5px solid var(--blue-600)" : "1.5px solid var(--slate-200)",
+                background: active ? "var(--blue-600)" : "white",
+                color: active ? "white" : "var(--slate-600)", cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              <span>{cat.emoji}</span> {cat.name}
+            </button>
+          );
+        })}
       </div>
 
+      {/* Category sections */}
+      {visibleCats.length === 0 ? (
+        <div className="card" style={{ padding: "32px 20px", textAlign: "center", color: "var(--slate-500)" }}>
+          <div style={{ fontSize: 30, marginBottom: 8 }}>🔍</div>
+          <div style={{ fontWeight: 600, color: "var(--slate-700)", marginBottom: 4 }}>No courses found for “{query}”</div>
+          <div style={{ fontSize: 13 }}>Try another keyword, or tap <strong>All</strong> above.</div>
+        </div>
+      ) : (
+        visibleCats.map(({ cat, items }) => (
+          <div key={cat.id} style={{ marginBottom: 32 }}>
+            {/* Category header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: cat.gradient, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>{cat.emoji}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: "var(--slate-900)" }}>{cat.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>{cat.courses.length} courses · {cat.outcome}</div>
+              </div>
+              <span style={{ background: cat.bg, color: cat.color, fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{items.length}{q ? " found" : ""}</span>
+            </div>
+
+            {/* Course cards for this category */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 14 }}>
+              {items.map((co, i) => {
+                const c = courseById(co.id);
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => { setSelected(c.id); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                    className="card card-hover"
+                    style={{ padding: 0, textAlign: "left", border: "1px solid var(--slate-200)", animation: `fadeIn 0.35s ease ${Math.min(i * 0.05, 0.4)}s both`, cursor: "pointer", overflow: "hidden", background: "white" }}
+                  >
+                    {/* Card top gradient */}
+                    <div style={{ background: c.gradient, padding: "16px 18px 14px", position: "relative", overflow: "hidden" }}>
+                      <div style={{ position: "absolute", right: -10, top: -10, fontSize: 56, opacity: 0.15, pointerEvents: "none" }}>{c.emoji}</div>
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ fontSize: 26 }}>{c.emoji}</div>
+                        <div style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 700, color: "white" }}>{c.tag}</div>
+                      </div>
+                      <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "white", lineHeight: 1.3 }}>{c.title}</div>
+                    </div>
+
+                    {/* Card body */}
+                    <div style={{ padding: "12px 16px 14px" }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                        <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>⏱️ {c.duration}</span>
+                        <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>📘 {c.topics.length} lessons</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 12, lineHeight: 1.5 }}>
+                        <strong style={{ color: "var(--slate-700)" }}>Topics:</strong> {c.topics.slice(0, 3).join(" · ")}{c.topics.length > 3 ? ` +${c.topics.length - 3} more` : ""}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: c.color }}>View Details →</span>
+                        <span style={{ fontSize: 10.5, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>🤖 AI</span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))
+      )}
+
       {/* Footer note */}
-      <div style={{ marginTop: 28, textAlign: "center", padding: "20px", background: "var(--blue-50)", borderRadius: "var(--radius-lg)", border: "1px solid var(--blue-100)" }}>
+      <div style={{ marginTop: 12, textAlign: "center", padding: "20px", background: "var(--blue-50)", borderRadius: "var(--radius-lg)", border: "1px solid var(--blue-100)" }}>
         <div style={{ width: 40, height: 40, margin: "0 auto 8px" }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--blue-800)", marginBottom: 4 }}>AI-Powered Learning Support</div>
-        <div style={{ fontSize: 13, color: "var(--blue-600)" }}>Every course comes with free AI lessons, doubt solving, study plans & viva prep through Allbee Learn AI!</div>
+        <div style={{ fontSize: 13, color: "var(--blue-600)", marginBottom: 14 }}>Every course includes free AI lessons, doubt solving, study plans &amp; viva prep through Allbee Learn AI!</div>
+        <button className="btn-primary" onClick={openRegister} style={{ justifyContent: "center" }}>📝 Register for a Course</button>
       </div>
     </div>
   );
