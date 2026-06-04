@@ -175,7 +175,7 @@ const callPollinationsModel = async (model, systemPrompt, userMessage) => {
   const r = await fetchWithTimeout(
     "https://text.pollinations.ai/openai?" + qs.toString(),
     { method: "POST", headers, body: JSON.stringify(body) },
-    35000
+    22000
   );
   const raw = await r.text();
   if (!r.ok) throw new Error("Free AI HTTP " + r.status);
@@ -186,44 +186,45 @@ const callPollinationsModel = async (model, systemPrompt, userMessage) => {
   return text.trim();
 };
 
-// Attempt 1: free keyless AI straight from the browser, with retries across
-// several free models. Up to 2 rounds × 3 models = 6 tries before giving up,
-// which turns the ~50% single-shot failure rate into a near-certain success.
-const callPollinationsDirect = async (systemPrompt, userMessage) => {
-  let lastErr;
-  for (let round = 0; round < 2; round++) {
-    for (const model of POLLINATIONS_MODELS) {
-      try { return await callPollinationsModel(model, systemPrompt, userMessage); }
-      catch (e) { lastErr = e; }
-    }
-    await sleep(900 * (round + 1)); // short backoff, then try the models again
-  }
-  throw lastErr || new Error("Free AI failed after retries");
-};
-
-// Attempt 2: the serverless route (Ollama / key-based, if configured).
+// ── PRIMARY: your own reliable backend (RECOMMENDED) ─────────────────
+// Calls the /api/chat serverless function, which uses a real API key kept
+// SECRET on the server (a FREE Groq key works great). This is what makes the
+// assistant answer reliably every time. See api/chat.js + the setup steps.
 const callViaServer = async (systemPrompt, userMessage) => {
-  const res = await fetch("/api/chat", {
+  const res = await fetchWithTimeout("/api/chat", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
     body:    JSON.stringify({ system: systemPrompt, message: userMessage }),
-  });
+  }, 45000);
   let data;
   try { data = await res.json(); }
-  catch { throw new Error(`Server returned non-JSON (status ${res.status}).`); }
-  if (!res.ok || data.error) throw new Error(data?.error || `Server error (HTTP ${res.status})`);
-  if (!data.text) throw new Error("Server returned empty response.");
-  return data.text;
+  catch { throw new Error("Server returned non-JSON (status " + res.status + ")."); }
+  if (!res.ok || data.error) throw new Error(data && data.error ? data.error : "Server error (HTTP " + res.status + ")");
+  if (!data.text || !data.text.trim()) throw new Error("Server returned empty response.");
+  return data.text.trim();
+};
+
+// ── FALLBACK: free keyless service (no setup, but rate-limited) ───────
+// Tries a few free Pollinations models. Used only when the backend route
+// above isn't set up yet, or is momentarily failing.
+const callPollinationsDirect = async (systemPrompt, userMessage) => {
+  let lastErr;
+  for (const model of POLLINATIONS_MODELS) {
+    try { return await callPollinationsModel(model, systemPrompt, userMessage); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("Free AI failed");
 };
 
 const callAI = async (systemPrompt, userMessage) => {
+  // 1) Reliable backend first — answers every time once an API key is set up.
   try {
-    return await callPollinationsDirect(systemPrompt, userMessage);
-  } catch (directErr) {
-    // Direct free call failed — try the server route as a backup.
+    return await callViaServer(systemPrompt, userMessage);
+  } catch (serverErr) {
+    // 2) Backend not configured / failed — fall back to the free service.
     try {
-      return await callViaServer(systemPrompt, userMessage);
-    } catch (serverErr) {
+      return await callPollinationsDirect(systemPrompt, userMessage);
+    } catch (freeErr) {
       throw new Error("The AI is very busy right now. Please tap “Try again” in a few seconds — it usually works on the next try.");
     }
   }
