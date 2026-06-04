@@ -218,15 +218,22 @@ const callPollinationsDirect = async (systemPrompt, userMessage) => {
 
 const callAI = async (systemPrompt, userMessage) => {
   // 1) Reliable backend first — answers every time once an API key is set up.
+  let serverMsg = "";
   try {
     return await callViaServer(systemPrompt, userMessage);
   } catch (serverErr) {
-    // 2) Backend not configured / failed — fall back to the free service.
-    try {
-      return await callPollinationsDirect(systemPrompt, userMessage);
-    } catch (freeErr) {
-      throw new Error("The AI is very busy right now. Please tap “Try again” in a few seconds — it usually works on the next try.");
-    }
+    serverMsg = (serverErr && serverErr.message) || "unknown";
+  }
+  // 2) Backend not configured / failed — fall back to the free service.
+  try {
+    return await callPollinationsDirect(systemPrompt, userMessage);
+  } catch (freeErr) {
+    const freeMsg = (freeErr && freeErr.message) || "unknown";
+    // Show the REAL reason so the problem can be pinpointed and fixed.
+    throw new Error(
+      "Couldn't get an answer. Please tap “Try again”. " +
+      "[backend: " + serverMsg + "] [free: " + freeMsg + "]"
+    );
   }
 };
 const callClaude = callAI; // alias — all existing calls work unchanged
