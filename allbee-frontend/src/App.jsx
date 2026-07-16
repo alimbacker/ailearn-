@@ -10,15 +10,15 @@ const globalStyles = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --blue-50: #e0f7fa;
-    --blue-100: #b2ebf2;
-    --blue-200: #80deea;
-    --blue-400: #26c6da;
-    --blue-500: #00bcd4;
-    --blue-600: #00acc1;
-    --blue-700: #0097a7;
-    --blue-800: #00838f;
-    --blue-900: #006064;
+    --blue-50: #f0fdfa;
+    --blue-100: #ccfbf1;
+    --blue-200: #99f6e4;
+    --blue-400: #2dd4bf;
+    --blue-500: #14b8a6;
+    --blue-600: #0d9488;
+    --blue-700: #0f766e;
+    --blue-800: #115e59;
+    --blue-900: #134e4a;
     --slate-50: #f8fafc;
     --slate-100: #f1f5f9;
     --slate-200: #e2e8f0;
@@ -69,13 +69,13 @@ const globalStyles = `
   .slide-in { animation: slideIn 0.3s ease forwards; }
 
   textarea, input { font-family: 'DM Sans', sans-serif; outline: none; border: 1.5px solid var(--slate-200); border-radius: var(--radius); padding: 12px 16px; width: 100%; font-size: 15px; color: var(--slate-800); background: white; transition: border-color 0.2s, box-shadow 0.2s; resize: vertical; }
-  textarea:focus, input:focus { border-color: var(--blue-500); box-shadow: 0 0 0 3px rgba(0,188,212,0.12); }
+  textarea:focus, input:focus { border-color: var(--blue-500); box-shadow: 0 0 0 3px rgba(20,184,166,0.12); }
 
   button { cursor: pointer; font-family: 'DM Sans', sans-serif; border: none; transition: all 0.2s; }
   button:active { transform: scale(0.97); }
 
-  .btn-primary { background: var(--blue-600); color: white; padding: 12px 24px; border-radius: var(--radius); font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,172,193,0.3); }
-  .btn-primary:hover { background: var(--blue-700); box-shadow: 0 4px 12px rgba(0,172,193,0.35); transform: translateY(-1px); }
+  .btn-primary { background: var(--blue-600); color: white; padding: 12px 24px; border-radius: var(--radius); font-size: 15px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(13,148,136,0.3); }
+  .btn-primary:hover { background: var(--blue-700); box-shadow: 0 4px 12px rgba(13,148,136,0.35); transform: translateY(-1px); }
   .btn-secondary { background: var(--blue-50); color: var(--blue-700); padding: 10px 20px; border-radius: var(--radius); font-size: 14px; font-weight: 500; border: 1.5px solid var(--blue-200); }
   .btn-secondary:hover { background: var(--blue-100); }
   .btn-ghost { background: transparent; color: var(--slate-600); padding: 8px 14px; border-radius: var(--radius-sm); font-size: 14px; font-weight: 500; }
@@ -238,6 +238,102 @@ const callAI = async (systemPrompt, userMessage) => {
 };
 const callClaude = callAI; // alias — all existing calls work unchanged
 
+
+// ─── GAMIFICATION · PROGRESS · STREAK (Bee levels & points) ──────────────────
+const PROGRESS_KEY     = "allbee_progress";
+const STREAK_KEY       = "allbee_streak";
+const RESUME_KEY       = "allbee_resume";
+const INTERVIEW_KEY    = "allbee_interview_scores";
+const JOBS_SAVED_KEY   = "allbee_saved_jobs";
+const JOBS_APPLIED_KEY = "allbee_applications";
+const JOBS_POSTED_KEY  = "allbee_posted_jobs";
+
+const DEFAULT_PROGRESS = { lessonsRead: 0, interviews: 0, labsDone: 0, resumes: 0, jobsApplied: 0, certificates: 0 };
+
+const getProgress = () => {
+  try { return { ...DEFAULT_PROGRESS, ...(JSON.parse(localStorage.getItem(PROGRESS_KEY)) || {}) }; }
+  catch { return { ...DEFAULT_PROGRESS }; }
+};
+const bumpProgress = (key, by = 1) => {
+  const p = getProgress();
+  p[key] = (p[key] || 0) + by;
+  try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch { /* silent */ }
+  return p;
+};
+
+const todayStr = () => new Date().toISOString().slice(0, 10);
+const getStreak = () => {
+  try { return JSON.parse(localStorage.getItem(STREAK_KEY)) || { count: 0, last: null }; }
+  catch { return { count: 0, last: null }; }
+};
+// Call once per app load — grows on consecutive days, resets after a gap.
+const updateStreak = () => {
+  const s = getStreak();
+  const today = todayStr();
+  if (s.last === today) return s;
+  const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const next = { count: s.last === yesterday ? (s.count || 0) + 1 : 1, last: today };
+  try { localStorage.setItem(STREAK_KEY, JSON.stringify(next)); } catch { /* silent */ }
+  return next;
+};
+
+const getInterviewScores = () => {
+  try { return JSON.parse(localStorage.getItem(INTERVIEW_KEY)) || {}; }
+  catch { return {}; }
+};
+const saveInterviewScore = (role, score) => {
+  const all = getInterviewScores();
+  all[role] = Math.max(all[role] || 0, score);
+  try { localStorage.setItem(INTERVIEW_KEY, JSON.stringify(all)); } catch { /* silent */ }
+  return all;
+};
+const bestInterviewScore = () => {
+  const vals = Object.values(getInterviewScores());
+  return vals.length ? Math.max(...vals) : 0;
+};
+
+// Points are derived from real activity so they can never be faked out of sync.
+const getPoints = () => {
+  const h = getHistory().length;
+  const p = getProgress();
+  return h * 10 + p.lessonsRead * 15 + p.interviews * 30 + p.labsDone * 20 +
+         p.resumes * 25 + p.jobsApplied * 15 + p.certificates * 50;
+};
+
+const BEE_LEVELS = [
+  { name: "Bronze Bee",  min: 0,    emoji: "🥉", color: "#b45309" },
+  { name: "Silver Bee",  min: 250,  emoji: "🥈", color: "#64748b" },
+  { name: "Gold Bee",    min: 700,  emoji: "🥇", color: "#d97706" },
+  { name: "Diamond Bee", min: 1500, emoji: "💎", color: "#0891b2" },
+  { name: "Queen Bee",   min: 3000, emoji: "👑", color: "#a855f7" },
+];
+const getBeeLevel = (points) => {
+  let idx = 0;
+  for (let i = 0; i < BEE_LEVELS.length; i++) if (points >= BEE_LEVELS[i].min) idx = i;
+  const current = BEE_LEVELS[idx];
+  const next = BEE_LEVELS[idx + 1] || null;
+  const span = next ? next.min - current.min : 1;
+  const pct = next ? Math.min(100, Math.round(((points - current.min) / span) * 100)) : 100;
+  return { current, next, pct, idx };
+};
+
+// Light per-skill progress inferred from what the student has actually asked / practised.
+const SKILL_TRACK = [
+  { key: "python",  label: "Python",         emoji: "🐍",  match: ["python", "django", "flask"] },
+  { key: "excel",   label: "Advanced Excel", emoji: "📊",  match: ["excel", "vlookup", "pivot", "formula"] },
+  { key: "tally",   label: "Tally & GST",    emoji: "🧾",  match: ["tally", "gst", "journal", "ledger", "accounting"] },
+  { key: "powerbi", label: "Power BI",       emoji: "📈",  match: ["power bi", "powerbi", "dax", "dashboard"] },
+  { key: "english", label: "Spoken English", emoji: "🗣️", match: ["english", "grammar", "speaking", "conversation"] },
+  { key: "ai",      label: "AI Tools",       emoji: "🤖",  match: ["prompt", "chatgpt", "automation", "machine learning", "ai tool"] },
+];
+const getSkillProgress = () => {
+  const blob = getHistory().map(h => ((h.input || "") + " " + (h.feature || "")).toLowerCase());
+  return SKILL_TRACK.map(s => {
+    const hits = blob.filter(t => s.match.some(m => t.includes(m))).length;
+    return { ...s, pct: Math.min(100, hits * 18) };
+  });
+};
+
 // ─── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
 const PROMPTS = {
   code: `You are a friendly coding teacher at Allbee Learn AI. You explain code to Tamil Nadu school and college students. 
@@ -315,7 +411,102 @@ Rules:
 - Use 🖥️ for design tips, 📌 for steps, ✨ for animation/transition tips, 💡 for presentation tips, ⌨️ for shortcuts
 - Include "Best practices" for making good slides
 - Keep advice practical — students presenting in college/school context
-- Give content structure tips (how many slides, what to put on each)`
+- Give content structure tips (how many slides, what to put on each)`,
+
+  interviewQ: `You are an AI technical + HR interviewer at Allbee Learn AI for Tamil Nadu freshers.
+The user gives a JOB ROLE. Generate exactly 5 interview questions for that role, mixing basic technical and HR/behavioural questions, ordered easy to medium.
+Rules:
+- Return ONLY the 5 questions, each on its own line, numbered 1-5. No preamble, no answers, no extra text.
+- Keep each question short and clear (one sentence).
+- Suitable for a fresher / entry-level candidate.`,
+
+  interviewEval: `You are a supportive AI interviewer at Allbee Learn AI scoring a mock interview for a Tamil Nadu fresher.
+You receive the ROLE plus the QUESTIONS with the candidate's ANSWERS.
+Reply in EXACTLY this structure, using simple Tanglish (Tamil+English mix) where it helps:
+
+SCORE: <number 0-100>
+
+📝 Overall Feedback:
+<2-3 lines, encouraging but honest>
+
+Per-question notes:
+Q1 – <one line: what was good / what to improve>
+Q2 – ...
+(cover every question)
+
+💡 Top 3 things to improve:
+1. ...
+2. ...
+3. ...
+
+Rules:
+- The FIRST line MUST be exactly "SCORE: <n>" so it can be parsed.
+- Be fair: reward relevant, clear answers; note vague or empty ones.
+- Keep it motivating for a beginner.`,
+
+  resumeEnhance: `You are a resume-writing assistant at Allbee Learn AI for Tamil Nadu freshers.
+You get raw resume details. Rewrite them into strong, ATS-friendly content.
+Return ONLY these three sections, ready to paste:
+🎯 Professional Summary: (2-3 crisp lines)
+🛠️ Skills: (comma-separated, grouped sensibly)
+💼 Experience / Projects: (3-5 bullet points, each starting with a strong action verb + impact)
+Rules:
+- Stay truthful to the input — just sharper and professional.
+- Use plain professional English (this text goes straight into a resume). No Tamil in the resume text.
+- No headings other than the three above. No commentary before or after.`,
+
+  resumeReview: `You are an ATS (Applicant Tracking System) reviewer at Allbee Learn AI.
+You get a resume's content. Evaluate it like an ATS + recruiter would.
+Reply in this structure:
+ATS SCORE: <number 0-100>
+✅ Strengths:
+- (2-4 bullets)
+⚠️ Fix these:
+- (3-5 specific, actionable bullets — keywords, action verbs, formatting, missing sections)
+💡 Suggested keywords: <comma separated>
+Rules:
+- The FIRST line MUST be exactly "ATS SCORE: <n>".
+- Be specific to the content given. Simple Tanglish is fine in the tips.`,
+
+  coverLetter: `You are a career writer at Allbee Learn AI for Tamil Nadu freshers.
+Using the candidate details (and target role/company if given), write a short professional cover letter (150-200 words).
+Rules:
+- Professional English, warm but not over-formal.
+- 3 short paragraphs: intro + why a fit, key skills/projects, closing + thanks.
+- Ready to send. Avoid placeholders like [X]; if data is missing, keep that part generic.`,
+
+  lab: `You are an AI practice-lab evaluator and coach at Allbee Learn AI for Tamil Nadu students.
+You receive: the LAB type, the CHALLENGE, and the student's ATTEMPT.
+Evaluate the attempt and reply in EXACTLY this structure, using simple Tanglish (Tamil+English) where it helps:
+
+RESULT: <✅ Correct | ⚠️ Almost | ❌ Not yet>
+
+🔍 What happened:
+<short explanation of whether it solves the challenge; point out any error clearly>
+
+💡 Hint / Fix:
+<a concrete hint or the corrected version — for code, show the fixed code in a code block>
+
+🌟 Tip:
+<one short tip to remember>
+
+Rules:
+- The FIRST line MUST start with "RESULT:".
+- Coding labs: check logic + syntax, show corrected code if needed.
+- Excel: verify the formula syntax and give the correct formula.
+- Tally/GST: check debit/credit and GST treatment.
+- Spoken English: correct grammar gently, suggest a better version, note fluency.
+- Be encouraging and beginner-friendly. Keep it concise.`,
+
+  jobFit: `You are a career coach at Allbee Learn AI. Given a candidate's SKILLS and a JOB (title + required skills + description), estimate the fit.
+Reply in this structure:
+FIT: <0-100>%
+✅ You already match: <skills they have that fit>
+📚 To learn: <2-4 skills/topics to close the gap>
+💡 <one line of advice>
+Rules:
+- The FIRST line MUST start with "FIT:".
+- Keep it short. Tanglish is fine.`
 };
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
@@ -337,6 +528,20 @@ const Icon = ({ name, size = 20, color = "currentColor" }) => {
     star: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
     check: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
     google: <svg width={size} height={size} viewBox="0 0 48 48"><path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/><path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z"/><path fill="#EA4335" d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/></svg>,
+    briefcase: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>,
+    award: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>,
+    trophy: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
+    play: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+    refresh: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+    sparkles: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>,
+    download: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+    search: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+    bookmark: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>,
+    plus: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+    flame: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>,
+    target: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+    speaker: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>,
+    map: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>,
     bee: null,
   };
   return icons[name] || null;
@@ -499,9 +704,9 @@ const LoginScreen = ({ onLogin }) => {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #e0f7fa 0%, #ffffff 50%, #b2ebf2 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", position: "relative", overflow: "hidden" }}>
-      <div style={{ position: "absolute", top: "-80px", right: "-80px", width: "300px", height: "300px", background: "radial-gradient(circle, rgba(0,188,212,0.15) 0%, transparent 70%)", borderRadius: "50%", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", bottom: "-60px", left: "-60px", width: "250px", height: "250px", background: "radial-gradient(circle, rgba(0,172,193,0.1) 0%, transparent 70%)", borderRadius: "50%", pointerEvents: "none" }} />
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #f0fdfa 0%, #ffffff 50%, #ccfbf1 100%)", display: "flex", alignItems: "center", justifyContent: "center", padding: "20px", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: "-80px", right: "-80px", width: "300px", height: "300px", background: "radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 70%)", borderRadius: "50%", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", bottom: "-60px", left: "-60px", width: "250px", height: "250px", background: "radial-gradient(circle, rgba(13,148,136,0.1) 0%, transparent 70%)", borderRadius: "50%", pointerEvents: "none" }} />
 
       <div className="card fade-in" style={{ maxWidth: 420, width: "100%", padding: "40px 36px", textAlign: "center", zIndex: 1 }}>
 
@@ -636,7 +841,7 @@ const LoginScreen = ({ onLogin }) => {
 
 // ─── FEATURE CARD ─────────────────────────────────────────────────────────────
 const features = [
-  { id: "code", label: "Code Explainer", desc: "Paste code → Get simple explanation", icon: "code", color: "#00acc1", bg: "#eff6ff", emoji: "💻" },
+  { id: "code", label: "Code Explainer", desc: "Paste code → Get simple explanation", icon: "code", color: "#0d9488", bg: "#eff6ff", emoji: "💻" },
   { id: "viva", label: "Viva & Exam Prep", desc: "Topic → Important Q&A + revision notes", icon: "book", color: "#7c3aed", bg: "#f5f3ff", emoji: "📚" },
   { id: "resume", label: "Resume & Projects", desc: "Course → Resume content + project ideas", icon: "file", color: "#059669", bg: "#ecfdf5", emoji: "📄" },
   { id: "doubt", label: "Doubt Solver", desc: "Ask anything → Clear, simple answer", icon: "help", color: "#d97706", bg: "#fffbeb", emoji: "🤔" },
@@ -820,8 +1025,8 @@ const CATEGORIES = [
   },
   {
     id: "special", name: "Special AllBee Programs", emoji: "🎓",
-    color: "#0097a7", lightColor: "#00bcd4", bg: "#ecfeff",
-    gradient: "linear-gradient(135deg, #0f172a 0%, #0097a7 100%)",
+    color: "#0f766e", lightColor: "#14b8a6", bg: "#ecfeff",
+    gradient: "linear-gradient(135deg, #0f172a 0%, #0f766e 100%)",
     tag: "AllBee Special", level: "Beginner → Job Ready", duration: "6–8 Weeks",
     bestFor: "Ambitious Students & Pros", outcome: "Master a skill + AI together — fully job-ready",
     courses: [
@@ -2538,7 +2743,7 @@ Write a 3-line application message you could send with a resume for a job you wa
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
+const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen }) => {
   const [hist, setHist] = useState([]);
   useEffect(() => { setHist(getHistory()); }, []);
   const greetHour = new Date().getHours();
@@ -2567,12 +2772,17 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
       </div>
 
       {/* Welcome banner */}
-      <div style={{ background: "linear-gradient(135deg, #00acc1 0%, #00bcd4 100%)", borderRadius: "var(--radius-xl)", padding: "24px 28px", marginBottom: 28, color: "white", position: "relative", overflow: "hidden" }}>
+      <div style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)", borderRadius: "var(--radius-xl)", padding: "24px 28px", marginBottom: 28, color: "white", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", right: -10, top: -10, width: 90, height: 90, opacity: 0.18, transform: "rotate(10deg)" }}><img src={LOGO_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(10)" }} /></div>
         <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 500, marginBottom: 4 }}>{greet}! 👋</div>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 6 }}>{user.name}</div>
         <div style={{ fontSize: 13, opacity: 0.8 }}>என்ன கத்துக்கணும்? Choose a tool below 👇</div>
       </div>
+
+      {/* NEW: gamification + stats + skill progress */}
+      <DashboardBee onOpen={onOpen} />
+      <DashboardStats />
+      <SkillProgress />
 
       {/* Feature grid */}
       <div className="section-label" style={{ marginBottom: 12 }}>🛠️ AI Learning Tools</div>
@@ -2596,9 +2806,12 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
         ))}
       </div>
 
+      {/* NEW: career & practice modules */}
+      <CareerGrid onOpen={onOpen} />
+
       {/* Courses promo banner */}
       <div className="section-label" style={{ marginBottom: 12 }}>🎓 AllBee Solutions — Courses</div>
-      <div onClick={onCourses} style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 60%, #0097a7 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 16, cursor: "pointer", position: "relative", overflow: "hidden", border: "1px solid #00838f" }}>
+      <div onClick={onCourses} style={{ background: "linear-gradient(135deg, #0f172a 0%, #134e4a 60%, #0f766e 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 16, cursor: "pointer", position: "relative", overflow: "hidden", border: "1px solid #115e59" }}>
         <div style={{ position: "absolute", right: -30, bottom: -30, fontSize: 120, opacity: 0.07, pointerEvents: "none" }}>🎓</div>
         <div style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)", borderRadius: 99, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: "white", border: "1px solid rgba(255,255,255,0.2)" }}>{COURSE_COUNT}+ Courses</div>
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
@@ -2615,7 +2828,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout }) => {
             </div>
           </div>
         </div>
-        <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#26c6da" }}>
+        <div style={{ marginTop: 18, display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "#2dd4bf" }}>
           Browse All {COURSE_COUNT} Courses <span style={{ fontSize: 16 }}>→</span>
         </div>
       </div>
@@ -3301,7 +3514,7 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
       </div>
 
       {/* Hero strip */}
-      <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #006064 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 18, color: "white" }}>
+      <div style={{ background: "linear-gradient(135deg, #0f172a 0%, #134e4a 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 18, color: "white" }}>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, marginBottom: 6, display: "flex", alignItems: "center", gap: 10 }}><img src={LOGO_SRC} alt="Allbee" style={{ width: 28, height: 28, objectFit: "contain", filter: "brightness(10)" }} /> Learn. Build. Get Hired.</div>
         <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>
           {COURSE_COUNT}+ practical, job-focused courses for Tamil Nadu students &amp; freshers. Tap any course → read lessons or ask the AI to teach you, anytime!
@@ -3443,14 +3656,16 @@ const BottomNav = ({ view, onNav }) => {
   const navItems = [
     { id: "dashboard", label: "Home",    icon: "home"    },
     { id: "courses",   label: "Courses", emoji: "🎓"     },
-    { id: "history",   label: "History", icon: "history" },
+    { id: "labs",      label: "Practice", emoji: "🧪" },
+    { id: "jobs",      label: "Jobs",     icon: "briefcase" },
+    { id: "rewards",   label: "Rewards",  emoji: "🏆" },
   ];
   return (
     <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "white", borderTop: "1px solid var(--slate-200)", padding: "10px 0 6px", display: "flex", justifyContent: "space-around", zIndex: 100, backdropFilter: "blur(10px)", boxShadow: "0 -4px 12px rgba(0,0,0,0.06)" }}>
       {navItems.map(item => {
         const active = view === item.id;
         return (
-          <button key={item.id} onClick={() => onNav(item.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "4px 20px", color: active ? "var(--blue-600)" : "var(--slate-400)", transition: "color 0.2s", minWidth: 60 }}>
+          <button key={item.id} onClick={() => onNav(item.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "4px 8px", color: active ? "var(--blue-600)" : "var(--slate-400)", transition: "color 0.2s", minWidth: 46 }}>
             {item.emoji
               ? <span style={{ fontSize: 22, lineHeight: 1, filter: active ? "none" : "grayscale(0.5) opacity(0.6)" }}>{item.emoji}</span>
               : <Icon name={item.icon} size={22} color={active ? "var(--blue-600)" : "var(--slate-400)"} />}
@@ -3463,6 +3678,1171 @@ const BottomNav = ({ view, onNav }) => {
   );
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  NEW MODULES · Resume Builder · AI Mock Interview · Practice Labs · Jobs ·
+//  Gamification (Bee levels / points / streak / leaderboard / certificates)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PAGE = { maxWidth: 820, margin: "0 auto", padding: "0 16px 110px" };
+
+// Render AI text with inline `code` spans (matches the rest of the app).
+function AiText({ text }) {
+  if (!text) return null;
+  return text.split("\n").map((line, i) => {
+    const parts = line.split(/(`[^`]+`)/g);
+    return (
+      <div key={i} style={{ marginBottom: line === "" ? 8 : 2, lineHeight: 1.7 }}>
+        {parts.map((p, j) =>
+          p.startsWith("`") && p.endsWith("`")
+            ? <code key={j}>{p.slice(1, -1)}</code>
+            : <span key={j}>{p}</span>
+        )}
+      </div>
+    );
+  });
+}
+
+function ScreenHeader({ emoji, title, subtitle, onBack, tint = "var(--blue-50)" }) {
+  return (
+    <div style={{ paddingTop: 20, paddingBottom: 16, display: "flex", alignItems: "center", gap: 14 }}>
+      <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--slate-600)", flexShrink: 0 }}>
+        <Icon name="back" size={18} />
+      </button>
+      <div style={{ width: 40, height: 40, background: tint, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>{emoji}</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "var(--slate-900)" }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 12, color: "var(--slate-400)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
+
+function Bar({ pct, color = "var(--blue-600)", height = 8, track = "var(--slate-100)" }) {
+  return (
+    <div style={{ background: track, borderRadius: 99, height, overflow: "hidden", width: "100%" }}>
+      <div style={{ width: Math.max(0, Math.min(100, pct)) + "%", height: "100%", background: color, borderRadius: 99, transition: "width 0.7s ease" }} />
+    </div>
+  );
+}
+
+function ScoreRing({ value, size = 104, color = "var(--blue-600)" }) {
+  const r = (size - 14) / 2, c = 2 * Math.PI * r, off = c - (Math.max(0, Math.min(100, value)) / 100) * c;
+  return (
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--slate-200)" strokeWidth="9" />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={off} transform={`rotate(-90 ${size / 2} ${size / 2})`} style={{ transition: "stroke-dashoffset 0.9s ease" }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: size * 0.3, fontWeight: 800, color: "var(--slate-900)", lineHeight: 1 }}>{value}</div>
+        <div style={{ fontSize: 10, color: "var(--slate-400)", fontWeight: 700 }}>/ 100</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Voice (progressive enhancement — silently absent if unsupported) ─────────
+const speak = (text) => {
+  try {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.96;
+    window.speechSynthesis.speak(u);
+  } catch { /* silent */ }
+};
+const SPEECH_OK = typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
+function MicButton({ onResult, lang = "en-IN", label = "Speak" }) {
+  const [listening, setListening] = useState(false);
+  const recRef = useRef(null);
+  if (!SPEECH_OK) return null;
+  const start = () => {
+    try {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const rec = new SR();
+      rec.lang = lang; rec.interimResults = false; rec.maxAlternatives = 1;
+      rec.onresult = (e) => { onResult(e.results[0][0].transcript); };
+      rec.onend = () => setListening(false);
+      rec.onerror = () => setListening(false);
+      recRef.current = rec; setListening(true); rec.start();
+    } catch { setListening(false); }
+  };
+  const stop = () => { try { recRef.current && recRef.current.stop(); } catch { /* */ } setListening(false); };
+  return (
+    <button type="button" onClick={listening ? stop : start}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, background: listening ? "var(--red-50)" : "var(--blue-50)", color: listening ? "var(--red-500)" : "var(--blue-700)", border: "1.5px solid " + (listening ? "var(--red-500)" : "var(--blue-200)"), padding: "8px 12px", borderRadius: "var(--radius)", fontSize: 13, fontWeight: 600 }}>
+      <Icon name="mic" size={14} color={listening ? "var(--red-500)" : "var(--blue-700)"} />
+      {listening ? "Listening…" : label}
+    </button>
+  );
+}
+
+// ── Export helpers ───────────────────────────────────────────────────────────
+const printHTML = (html) => {
+  const w = window.open("", "_blank");
+  if (!w) { alert("Please allow pop-ups so the PDF window can open."); return; }
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(() => { try { w.print(); } catch { /* */ } }, 400);
+};
+const downloadDoc = (html, filename) => {
+  const blob = new Blob(["\ufeff", html], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+};
+const parseLeadingScore = (text, kw) => {
+  const m = (text || "").match(new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s*:?\\s*(\\d{1,3})", "i"));
+  return m ? Math.min(100, parseInt(m[1], 10)) : null;
+};
+const esc = (s) => (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Deterministic QR-like block (no external calls — always renders offline).
+function PseudoQR({ text, size = 116 }) {
+  const grid = 21;
+  let h = 2166136261;
+  for (let i = 0; i < (text || "x").length; i++) { h ^= (text || "x").charCodeAt(i); h = (h * 16777619) >>> 0; }
+  const cells = []; let s = h || 1;
+  for (let i = 0; i < grid * grid; i++) { s = (s * 1103515245 + 12345) & 0x7fffffff; cells.push((s >> 9) & 1); }
+  // force the three finder squares so it reads as a QR
+  const finder = (r, c) => { const inRing = (r === 0 || r === 6 || c === 0 || c === 6); const inCore = (r >= 2 && r <= 4 && c >= 2 && c <= 4); return inRing || inCore; };
+  const at = (r, c) => {
+    if (r < 7 && c < 7) return finder(r, c) ? 1 : 0;
+    if (r < 7 && c >= grid - 7) return finder(r, c - (grid - 7)) ? 1 : 0;
+    if (r >= grid - 7 && c < 7) return finder(r - (grid - 7), c) ? 1 : 0;
+    return cells[r * grid + c];
+  };
+  const rows = [];
+  for (let r = 0; r < grid; r++) for (let c = 0; c < grid; c++) rows.push(at(r, c));
+  return (
+    <div style={{ width: size, height: size, background: "white", padding: 6, borderRadius: 8, border: "1px solid var(--slate-200)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${grid}, 1fr)`, width: "100%", height: "100%" }}>
+        {rows.map((c, i) => <div key={i} style={{ background: c ? "#0f172a" : "transparent" }} />)}
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard: Bee-level banner ──────────────────────────────────────────────
+function DashboardBee({ onOpen }) {
+  const points = getPoints();
+  const lvl = getBeeLevel(points);
+  const streak = getStreak();
+  return (
+    <div onClick={() => onOpen && onOpen("rewards")} className="card-hover" style={{ cursor: "pointer", background: "linear-gradient(135deg, #115e59 0%, #0d9488 55%, #14b8a6 100%)", borderRadius: "var(--radius-xl)", padding: "18px 20px", marginBottom: 16, color: "white", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", right: -14, top: -14, fontSize: 96, opacity: 0.16 }}>{lvl.current.emoji}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12, position: "relative" }}>
+        <div style={{ width: 48, height: 48, background: "rgba(255,255,255,0.16)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{lvl.current.emoji}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>{lvl.current.name}</div>
+          <div style={{ fontSize: 12.5, opacity: 0.85 }}>{points} points{streak.count > 0 ? "  ·  🔥 " + streak.count + "-day streak" : ""}</div>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.9, whiteSpace: "nowrap" }}>Rewards →</div>
+      </div>
+      <div style={{ position: "relative" }}>
+        <Bar pct={lvl.pct} color="rgba(255,255,255,0.95)" track="rgba(255,255,255,0.22)" height={7} />
+        <div style={{ fontSize: 11, opacity: 0.85, marginTop: 6 }}>
+          {lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached 👑 — you're a legend!"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard: stat cards ────────────────────────────────────────────────────
+function DashboardStats() {
+  const p = getProgress();
+  const cards = [
+    { emoji: "💬", label: "AI Questions", value: getHistory().length, color: "var(--blue-600)" },
+    { emoji: "🔥", label: "Day Streak", value: getStreak().count, color: "#d97706" },
+    { emoji: "🎤", label: "Best Interview", value: bestInterviewScore() + "%", color: "#7c3aed" },
+    { emoji: "🧪", label: "Labs Solved", value: p.labsDone, color: "#0891b2" },
+    { emoji: "💼", label: "Jobs Applied", value: p.jobsApplied, color: "#059669" },
+    { emoji: "🎓", label: "Certificates", value: p.certificates, color: "#a855f7" },
+  ];
+  return (
+    <>
+      <div className="section-label" style={{ marginBottom: 12 }}>📊 Your Progress</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
+        {cards.map((c, i) => (
+          <div key={c.label} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
+            <div style={{ fontSize: 22 }}>{c.emoji}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 20, fontWeight: 800, color: c.color, lineHeight: 1.1 }}>{c.value}</div>
+              <div style={{ fontSize: 11.5, color: "var(--slate-500)", fontWeight: 600 }}>{c.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ── Dashboard: learning progress bars ────────────────────────────────────────
+function SkillProgress() {
+  const skills = getSkillProgress();
+  const any = skills.some(s => s.pct > 0);
+  return (
+    <div className="card" style={{ padding: "18px 20px", marginBottom: 28 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div className="section-label" style={{ marginBottom: 0 }}>📈 Learning Progress</div>
+        {!any && <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>Ask the AI tutor to grow these</div>}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
+        {skills.map(s => (
+          <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 17, width: 24, textAlign: "center", flexShrink: 0 }}>{s.emoji}</div>
+            <div style={{ width: 110, flexShrink: 0, fontSize: 13, fontWeight: 600, color: "var(--slate-700)" }}>{s.label}</div>
+            <div style={{ flex: 1 }}><Bar pct={s.pct} color="var(--blue-500)" /></div>
+            <div style={{ width: 38, textAlign: "right", fontSize: 12, fontWeight: 700, color: s.pct > 0 ? "var(--blue-700)" : "var(--slate-300)", flexShrink: 0 }}>{s.pct}%</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard: career & practice module grid ─────────────────────────────────
+const CAREER_MODULES = [
+  { id: "resume_builder", emoji: "📄", label: "Resume Builder",       desc: "Templates, ATS review, cover letter & export", color: "#0d9488", bg: "#f0fdfa" },
+  { id: "interview",      emoji: "🎤", label: "AI Mock Interview",    desc: "Role questions, voice, scoring & report",      color: "#7c3aed", bg: "#f5f3ff" },
+  { id: "labs",           emoji: "🧪", label: "AI Practice Labs",     desc: "Python, Excel, Tally & Spoken English drills", color: "#0891b2", bg: "#ecfeff" },
+  { id: "jobs",           emoji: "💼", label: "Job Portal",           desc: "Search, apply, save & track jobs",             color: "#d97706", bg: "#fffbeb" },
+  { id: "rewards",        emoji: "🏆", label: "Rewards & Bee Levels", desc: "Points, streak, leaderboard & certificates",   color: "#a855f7", bg: "#faf5ff" },
+];
+function CareerGrid({ onOpen }) {
+  return (
+    <>
+      <div className="section-label" style={{ marginBottom: 12 }}>🚀 Career & Practice</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 16, marginBottom: 32 }}>
+        {CAREER_MODULES.map((m, i) => (
+          <button key={m.id} onClick={() => onOpen(m.id)} className="card card-hover" style={{ padding: "22px 20px", textAlign: "left", cursor: "pointer", background: "white", animation: `fadeIn 0.4s ease ${i * 0.06}s both` }}>
+            <div style={{ width: 44, height: 44, background: m.bg, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginBottom: 14 }}>{m.emoji}</div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--slate-900)", marginBottom: 6 }}>{m.label}</div>
+            <div style={{ fontSize: 13, color: "var(--slate-500)", lineHeight: 1.5 }}>{m.desc}</div>
+            <div style={{ marginTop: 14, fontSize: 12, fontWeight: 600, color: m.color, display: "flex", alignItems: "center", gap: 4 }}>Open <span style={{ fontSize: 14 }}>→</span></div>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  REWARDS · Bee levels, points, leaderboard, badges, certificates
+// ═══════════════════════════════════════════════════════════════════════════
+const POINT_RULES = [
+  { emoji: "💬", label: "Ask the AI tutor a question", pts: "+10" },
+  { emoji: "📖", label: "Read a course lesson",        pts: "+15" },
+  { emoji: "🧪", label: "Solve a practice challenge",  pts: "+20" },
+  { emoji: "📄", label: "Build / export a resume",     pts: "+25" },
+  { emoji: "🎤", label: "Finish a mock interview",     pts: "+30" },
+  { emoji: "💼", label: "Apply to a job",              pts: "+15" },
+  { emoji: "🎓", label: "Earn a certificate",          pts: "+50" },
+];
+
+function CertificateBlock({ user }) {
+  const [name, setName] = useState(user?.name || "");
+  const [course, setCourse] = useState("");
+  const [cert, setCert] = useState(null);
+  const genCode = () => "ALB-" + Math.random().toString(36).slice(2, 8).toUpperCase() + "-" + new Date().getFullYear();
+  const generate = () => {
+    if (!name.trim() || !course.trim()) return;
+    const c = { name: name.trim(), course: course.trim(), date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), code: genCode() };
+    setCert(c);
+    bumpProgress("certificates");
+  };
+  const certHTML = (c) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.course)} Certificate</title>
+  <style>body{margin:0;font-family:Georgia,serif;background:#f8fafc}
+  .cert{width:900px;max-width:96%;margin:24px auto;background:#fff;border:10px solid #0d9488;border-radius:14px;padding:48px 56px;text-align:center;position:relative}
+  .bar{height:6px;background:linear-gradient(90deg,#115e59,#14b8a6);border-radius:99px;width:120px;margin:14px auto}
+  h1{font-size:34px;color:#115e59;margin:6px 0;letter-spacing:1px}
+  .sub{color:#64748b;font-size:14px;text-transform:uppercase;letter-spacing:3px}
+  .name{font-size:40px;color:#0f172a;margin:22px 0 6px;font-weight:bold}
+  .course{font-size:20px;color:#0d9488;margin:8px 0 4px}
+  .meta{color:#475569;font-size:14px;margin-top:20px}
+  .foot{display:flex;justify-content:space-between;align-items:flex-end;margin-top:40px}
+  .sig{border-top:2px solid #94a3b8;padding-top:6px;font-size:13px;color:#475569;width:200px}
+  @media print{body{background:#fff}.cert{border-radius:0}}</style></head>
+  <body><div class="cert">
+  <div class="sub">Allbee Solutions · Learn. Grow. Succeed.</div>
+  <div class="bar"></div>
+  <h1>Certificate of Completion</h1>
+  <div class="sub">This is proudly presented to</div>
+  <div class="name">${esc(c.name)}</div>
+  <div class="sub">for successfully completing</div>
+  <div class="course">${esc(c.course)}</div>
+  <div class="meta">Issued on ${esc(c.date)} &nbsp;·&nbsp; Verification ID: ${esc(c.code)}</div>
+  <div class="foot"><div class="sig">Allbee Solutions</div><div style="font-size:12px;color:#94a3b8">Verify at allbee · ID ${esc(c.code)}</div><div class="sig">Course Director</div></div>
+  </div><script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+  return (
+    <div className="card" style={{ padding: "18px 20px", marginBottom: 20 }}>
+      <div className="section-label" style={{ marginBottom: 12 }}>🎓 Generate a Certificate</div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+        <input value={name} onChange={e => setName(e.target.value)} placeholder="Student name" style={{ fontSize: 14 }} />
+        <input value={course} onChange={e => setCourse(e.target.value)} placeholder="Course name (e.g., Python Basics)" style={{ fontSize: 14 }} />
+      </div>
+      <button className="btn-primary" onClick={generate}><Icon name="award" size={16} color="white" /> Generate Certificate</button>
+
+      {cert && (
+        <div className="fade-in" style={{ marginTop: 18 }}>
+          <div style={{ border: "6px solid var(--blue-600)", borderRadius: 14, padding: "26px 22px", textAlign: "center", background: "linear-gradient(180deg,#ffffff,#f0fdfa)" }}>
+            <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--slate-400)", fontWeight: 700 }}>Allbee Solutions · Learn. Grow. Succeed.</div>
+            <div style={{ width: 90, height: 5, background: "linear-gradient(90deg,#115e59,#14b8a6)", borderRadius: 99, margin: "10px auto" }} />
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, color: "var(--blue-800)" }}>Certificate of Completion</div>
+            <div style={{ fontSize: 12, color: "var(--slate-400)", marginTop: 8 }}>proudly presented to</div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 26, fontWeight: 800, color: "var(--slate-900)", margin: "6px 0" }}>{cert.name}</div>
+            <div style={{ fontSize: 12, color: "var(--slate-400)" }}>for successfully completing</div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: "var(--blue-700)", margin: "4px 0 14px" }}>{cert.course}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, flexWrap: "wrap" }}>
+              <PseudoQR text={cert.code} size={92} />
+              <div style={{ textAlign: "left", fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.7 }}>
+                <div>Issued: <b style={{ color: "var(--slate-700)" }}>{cert.date}</b></div>
+                <div>Verify ID: <b style={{ color: "var(--slate-700)" }}>{cert.code}</b></div>
+                <div style={{ color: "var(--slate-400)" }}>Scan the code to verify</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            <button className="btn-primary" onClick={() => printHTML(certHTML(cert))}><Icon name="download" size={15} color="white" /> Download PDF</button>
+            <button className="btn-secondary" onClick={() => downloadDoc(certHTML(cert), `${cert.course}-Certificate.doc`)}>Download Word</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RewardsScreen({ user, onBack }) {
+  const points = getPoints();
+  const lvl = getBeeLevel(points);
+  const streak = getStreak();
+  const p = getProgress();
+  const best = bestInterviewScore();
+
+  // Leaderboard: sample peers + the real signed-in student (clearly labelled).
+  const peers = [
+    { n: "Karthik R", p: 2840 }, { n: "Priya S", p: 2110 }, { n: "Arun Kumar", p: 1760 },
+    { n: "Divya M", p: 1320 }, { n: "Sanjay V", p: 980 }, { n: "Meena L", p: 760 },
+    { n: "Rahul P", p: 540 }, { n: "Nithya K", p: 410 }, { n: "Vignesh B", p: 260 },
+  ];
+  const board = [...peers, { n: user?.name || "You", p: points, me: true }]
+    .sort((a, b) => b.p - a.p)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+  const myRank = board.find(r => r.me)?.rank;
+  const top = board.slice(0, 8);
+  const showMeExtra = myRank > 8 ? board.find(r => r.me) : null;
+
+  const badges = [
+    { got: getHistory().length >= 1, emoji: "🎯", label: "First Step", desc: "Asked your first question" },
+    { got: streak.count >= 3, emoji: "🔥", label: "On Fire", desc: "3-day streak" },
+    { got: streak.count >= 7, emoji: "⚡", label: "Unstoppable", desc: "7-day streak" },
+    { got: p.interviews >= 1, emoji: "🎤", label: "Interviewed", desc: "Completed a mock interview" },
+    { got: best >= 80, emoji: "🏅", label: "Interview Ace", desc: "Scored 80+ in an interview" },
+    { got: p.labsDone >= 3, emoji: "🧪", label: "Lab Rat", desc: "Solved 3 practice challenges" },
+    { got: p.resumes >= 1, emoji: "📄", label: "Job Ready", desc: "Built a resume" },
+    { got: p.jobsApplied >= 1, emoji: "💼", label: "Applicant", desc: "Applied to a job" },
+  ];
+  const earned = badges.filter(b => b.got).length;
+
+  return (
+    <div style={PAGE}>
+      <ScreenHeader emoji="🏆" title="Rewards & Bee Levels" subtitle="Points · streak · leaderboard" onBack={onBack} tint="#faf5ff" />
+
+      {/* Level hero */}
+      <div style={{ background: "linear-gradient(135deg, #115e59 0%, #0d9488 55%, #14b8a6 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", color: "white", marginBottom: 18, position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", right: -18, top: -18, fontSize: 130, opacity: 0.15 }}>{lvl.current.emoji}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14, position: "relative" }}>
+          <div style={{ width: 60, height: 60, background: "rgba(255,255,255,0.16)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>{lvl.current.emoji}</div>
+          <div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800 }}>{lvl.current.name}</div>
+            <div style={{ fontSize: 13.5, opacity: 0.9 }}>{points} points · Rank #{myRank} · 🔥 {streak.count}-day streak</div>
+          </div>
+        </div>
+        <Bar pct={lvl.pct} color="rgba(255,255,255,0.95)" track="rgba(255,255,255,0.22)" height={8} />
+        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 8 }}>{lvl.next ? `${lvl.next.min - points} points to ${lvl.next.name} ${lvl.next.emoji}` : "👑 Max level — Queen Bee!"}</div>
+        <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
+          {BEE_LEVELS.map((b, i) => (
+            <div key={b.name} style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99, background: i <= lvl.idx ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)", opacity: i <= lvl.idx ? 1 : 0.65 }}>{b.emoji} {b.name.split(" ")[0]}</div>
+          ))}
+        </div>
+      </div>
+
+      {/* Badges */}
+      <div className="section-label" style={{ marginBottom: 12 }}>🏅 Badges · {earned}/{badges.length}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 26 }}>
+        {badges.map(b => (
+          <div key={b.label} className="card" style={{ padding: "14px 14px", textAlign: "center", opacity: b.got ? 1 : 0.5, filter: b.got ? "none" : "grayscale(0.7)", border: b.got ? "1.5px solid var(--blue-200)" : "1px solid var(--slate-200)" }}>
+            <div style={{ fontSize: 30, marginBottom: 6 }}>{b.emoji}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-800)" }}>{b.label}</div>
+            <div style={{ fontSize: 11, color: "var(--slate-500)", marginTop: 3, lineHeight: 1.4 }}>{b.desc}</div>
+            {!b.got && <div style={{ fontSize: 10, color: "var(--slate-400)", marginTop: 5, fontWeight: 600 }}>🔒 Locked</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Leaderboard */}
+      <div className="section-label" style={{ marginBottom: 12 }}>👑 Leaderboard <span style={{ textTransform: "none", fontWeight: 500, color: "var(--slate-400)" }}>(sample class)</span></div>
+      <div className="card" style={{ padding: "8px 8px", marginBottom: 26 }}>
+        {top.map(r => (
+          <div key={r.rank} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: "var(--radius)", background: r.me ? "var(--blue-50)" : "transparent", border: r.me ? "1.5px solid var(--blue-200)" : "1.5px solid transparent", marginBottom: 2 }}>
+            <div style={{ width: 26, textAlign: "center", fontWeight: 800, fontSize: 14, color: r.rank <= 3 ? "#d97706" : "var(--slate-400)" }}>{r.rank <= 3 ? ["🥇", "🥈", "🥉"][r.rank - 1] : r.rank}</div>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: r.me ? "var(--blue-600)" : "var(--slate-200)", color: r.me ? "white" : "var(--slate-600)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{(r.n[0] || "?").toUpperCase()}</div>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: r.me ? 800 : 600, color: "var(--slate-800)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.n}{r.me ? "  (You)" : ""}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--blue-700)" }}>{r.p} pts</div>
+          </div>
+        ))}
+        {showMeExtra && (
+          <>
+            <div style={{ textAlign: "center", color: "var(--slate-300)", fontSize: 12, padding: "2px 0" }}>···</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: "var(--radius)", background: "var(--blue-50)", border: "1.5px solid var(--blue-200)" }}>
+              <div style={{ width: 26, textAlign: "center", fontWeight: 800, fontSize: 14, color: "var(--slate-500)" }}>{showMeExtra.rank}</div>
+              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--blue-600)", color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13 }}>{(showMeExtra.n[0] || "?").toUpperCase()}</div>
+              <div style={{ flex: 1, fontSize: 14, fontWeight: 800, color: "var(--slate-800)" }}>{showMeExtra.n} (You)</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--blue-700)" }}>{showMeExtra.p} pts</div>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Certificate */}
+      <CertificateBlock user={user} />
+
+      {/* How to earn */}
+      <div className="section-label" style={{ marginBottom: 12 }}>💡 How to earn points</div>
+      <div className="card" style={{ padding: "8px 6px", marginBottom: 10 }}>
+        {POINT_RULES.map(r => (
+          <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px" }}>
+            <div style={{ fontSize: 19 }}>{r.emoji}</div>
+            <div style={{ flex: 1, fontSize: 13.5, color: "var(--slate-700)", fontWeight: 500 }}>{r.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: "var(--green-500)" }}>{r.pts}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  RESUME BUILDER · templates · AI enhance · ATS review · cover letter · export
+// ═══════════════════════════════════════════════════════════════════════════
+const RESUME_TEMPLATES = [
+  { id: "classic", label: "Classic ATS" },
+  { id: "modern",  label: "Modern" },
+  { id: "compact", label: "Compact" },
+];
+const BLANK_RESUME = { name: "", role: "", phone: "", email: "", location: "", summary: "", skills: "", education: "", experience: "", template: "classic" };
+
+const resumeHTML = (d) => {
+  const accent = "#0d9488";
+  const bullets = (t) => (t || "").split("\n").map(l => l.trim()).filter(Boolean).map(l => `<li>${esc(l.replace(/^[-•]\s*/, ""))}</li>`).join("");
+  const skills = (d.skills || "").split(/[,\n]/).map(s => s.trim()).filter(Boolean).map(s => `<span class="chip">${esc(s)}</span>`).join("");
+  const modern = d.template === "modern";
+  const pad = d.template === "compact" ? "10px" : "16px";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(d.name || "Resume")}</title>
+  <style>
+  *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#1e293b;background:#f1f5f9}
+  .page{width:800px;max-width:96%;margin:20px auto;background:#fff;padding:40px 46px;line-height:1.5}
+  .head{text-align:${modern ? "left" : "center"};border-bottom:3px solid ${accent};padding-bottom:14px;margin-bottom:6px;${modern ? "border-left:6px solid " + accent + ";padding-left:16px;border-bottom:none;" : ""}}
+  h1{margin:0;font-size:28px;color:#0f172a;letter-spacing:.5px}
+  .role{color:${accent};font-weight:bold;font-size:15px;margin-top:2px}
+  .contact{color:#475569;font-size:12.5px;margin-top:6px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:${accent};border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin:${pad} 0 8px}
+  ul{margin:6px 0;padding-left:20px} li{margin:3px 0;font-size:13.5px}
+  p{font-size:13.5px;margin:6px 0}
+  .chip{display:inline-block;background:#f0fdfa;color:#115e59;border:1px solid #99f6e4;border-radius:99px;padding:3px 10px;font-size:12px;margin:3px 4px 3px 0}
+  @media print{body{background:#fff}.page{margin:0;max-width:100%;box-shadow:none}}
+  </style></head><body><div class="page">
+  <div class="head"><h1>${esc(d.name || "Your Name")}</h1>
+  ${d.role ? `<div class="role">${esc(d.role)}</div>` : ""}
+  <div class="contact">${[d.phone, d.email, d.location].filter(Boolean).map(esc).join(" &nbsp;·&nbsp; ")}</div></div>
+  ${d.summary ? `<h2>Professional Summary</h2><p>${esc(d.summary)}</p>` : ""}
+  ${skills ? `<h2>Skills</h2><div>${skills}</div>` : ""}
+  ${d.experience ? `<h2>Experience &amp; Projects</h2><ul>${bullets(d.experience)}</ul>` : ""}
+  ${d.education ? `<h2>Education</h2><ul>${bullets(d.education)}</ul>` : ""}
+  </div></body></html>`;
+};
+
+function ResumeBuilderScreen({ user, onBack }) {
+  const [d, setD] = useState(() => {
+    try { return { ...BLANK_RESUME, ...(JSON.parse(localStorage.getItem(RESUME_KEY)) || {}) }; }
+    catch { return { ...BLANK_RESUME }; }
+  });
+  useEffect(() => { if (!d.name && user?.name) setD(p => ({ ...p, name: user.name })); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { try { localStorage.setItem(RESUME_KEY, JSON.stringify(d)); } catch { /* */ } }, [d]);
+  const set = (k, v) => setD(p => ({ ...p, [k]: v }));
+
+  const [busy, setBusy] = useState("");        // "enhance" | "ats" | "cover"
+  const [ats, setAts] = useState(null);        // { score, text }
+  const [cover, setCover] = useState("");
+  const [target, setTarget] = useState("");
+  const [note, setNote] = useState("");
+  const bumped = useRef(false);
+  const bumpOnce = () => { if (!bumped.current) { bumpProgress("resumes"); bumped.current = true; } };
+
+  const resumeText = () =>
+    `Name: ${d.name}\nRole: ${d.role}\nSummary: ${d.summary}\nSkills: ${d.skills}\nExperience/Projects:\n${d.experience}\nEducation:\n${d.education}`;
+
+  const runEnhance = async () => {
+    setBusy("enhance"); setNote("");
+    try {
+      const out = await callAI(PROMPTS.resumeEnhance, resumeText());
+      // parse sections by their emoji headers
+      const grab = (label, next) => {
+        const re = new RegExp(label + "[:：]?\\s*([\\s\\S]*?)(?=" + (next || "$") + ")", "i");
+        const m = out.match(re); return m ? m[1].trim() : "";
+      };
+      const summary = grab("🎯[^:]*", "🛠️|Skills");
+      const sk = grab("🛠️[^:]*", "💼|Experience");
+      const exp = grab("💼[^:]*", "$");
+      setD(p => ({ ...p, summary: summary || p.summary, skills: (sk || p.skills).replace(/\n/g, ", "), experience: exp || p.experience }));
+      bumpOnce();
+      setNote("✨ Applied AI-enhanced summary, skills & experience.");
+    } catch (e) { setNote("⚠️ " + (e.message || "Couldn't enhance right now.")); }
+    setBusy("");
+  };
+  const runAts = async () => {
+    setBusy("ats"); setAts(null);
+    try {
+      const out = await callAI(PROMPTS.resumeReview, resumeText());
+      setAts({ score: parseLeadingScore(out, "ATS SCORE") ?? 60, text: out.replace(/^ATS SCORE:.*\n?/i, "") });
+    } catch (e) { setAts({ score: 0, text: "⚠️ " + (e.message || "Review failed.") }); }
+    setBusy("");
+  };
+  const runCover = async () => {
+    setBusy("cover"); setCover("");
+    try {
+      const out = await callAI(PROMPTS.coverLetter, resumeText() + "\nTarget role/company: " + (target || "a suitable entry-level role"));
+      setCover(out); bumpOnce();
+    } catch (e) { setCover("⚠️ " + (e.message || "Couldn't generate.")); }
+    setBusy("");
+  };
+  const exportPDF = () => { printHTML(resumeHTML(d)); bumpOnce(); };
+  const exportDoc = () => { downloadDoc(resumeHTML(d), (d.name || "resume").replace(/\s+/g, "_") + "_Resume.doc"); bumpOnce(); };
+
+  const F = ({ label, k, area, rows = 2, ph }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "var(--slate-600)", marginBottom: 5 }}>{label}</div>
+      {area
+        ? <textarea value={d[k]} onChange={e => set(k, e.target.value)} rows={rows} placeholder={ph} style={{ fontSize: 14 }} />
+        : <input value={d[k]} onChange={e => set(k, e.target.value)} placeholder={ph} style={{ fontSize: 14 }} />}
+    </div>
+  );
+
+  return (
+    <div style={PAGE}>
+      <ScreenHeader emoji="📄" title="Resume Builder" subtitle="ATS-friendly · AI-reviewed · export PDF/Word" onBack={onBack} tint="#f0fdfa" />
+
+      {/* Template picker */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {RESUME_TEMPLATES.map(t => (
+          <button key={t.id} onClick={() => set("template", t.id)} style={{ padding: "8px 16px", borderRadius: 99, fontSize: 13, fontWeight: 600, cursor: "pointer", border: "1.5px solid " + (d.template === t.id ? "var(--blue-600)" : "var(--slate-200)"), background: d.template === t.id ? "var(--blue-600)" : "white", color: d.template === t.id ? "white" : "var(--slate-600)" }}>{t.label}</button>
+        ))}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+        {/* Left: form */}
+        <div className="card" style={{ padding: "18px 18px" }}>
+          <div className="section-label" style={{ marginBottom: 12 }}>Your Details</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <F label="Full Name" k="name" ph="Ramesh Kumar" />
+            <F label="Target Role" k="role" ph="Python Developer" />
+            <F label="Phone" k="phone" ph="+91 98xxxxxx" />
+            <F label="Email" k="email" ph="you@email.com" />
+          </div>
+          <F label="Location" k="location" ph="Trichy, Tamil Nadu" />
+          <F label="Professional Summary" k="summary" area rows={3} ph="2-3 lines about you… or tap ✨ AI Enhance" />
+          <F label="Skills (comma separated)" k="skills" area rows={2} ph="Python, SQL, MS Excel, Communication" />
+          <F label="Experience / Projects (one per line)" k="experience" area rows={4} ph={"Built a billing app in Python\nInternship at ABC — data entry & reports"} />
+          <F label="Education (one per line)" k="education" area rows={3} ph={"B.Com, Bharathidasan University — 2024\nHSC — 78%"} />
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+            <button className="btn-primary" onClick={runEnhance} disabled={!!busy}>{busy === "enhance" ? <><span className="spinner" /> Enhancing…</> : <><Icon name="sparkles" size={15} color="white" /> AI Enhance</>}</button>
+            <button className="btn-secondary" onClick={runAts} disabled={!!busy}>{busy === "ats" ? "Reviewing…" : "🎯 ATS Review"}</button>
+          </div>
+          {note && <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--slate-600)", background: "var(--slate-50)", padding: "8px 12px", borderRadius: "var(--radius-sm)" }}>{note}</div>}
+        </div>
+
+        {/* Right: live preview */}
+        <div>
+          <div className="section-label" style={{ marginBottom: 12 }}>Live Preview</div>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            <div style={{ padding: "22px 22px", borderTop: d.template === "modern" ? "none" : "4px solid var(--blue-600)", borderLeft: d.template === "modern" ? "6px solid var(--blue-600)" : "none" }}>
+              <div style={{ textAlign: d.template === "modern" ? "left" : "center", borderBottom: "2px solid var(--blue-200)", paddingBottom: 10, marginBottom: 12 }}>
+                <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, color: "var(--slate-900)" }}>{d.name || "Your Name"}</div>
+                {d.role && <div style={{ color: "var(--blue-700)", fontWeight: 700, fontSize: 13.5 }}>{d.role}</div>}
+                <div style={{ fontSize: 12, color: "var(--slate-500)", marginTop: 4 }}>{[d.phone, d.email, d.location].filter(Boolean).join(" · ")}</div>
+              </div>
+              {d.summary && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 5 }}>Summary</div><div style={{ fontSize: 13, color: "var(--slate-700)", lineHeight: 1.6, marginBottom: 12 }}>{d.summary}</div></>}
+              {d.skills && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 6 }}>Skills</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>{d.skills.split(/[,\n]/).map(s => s.trim()).filter(Boolean).map((s, i) => <span key={i} style={{ background: "var(--blue-50)", color: "var(--blue-800)", border: "1px solid var(--blue-200)", borderRadius: 99, padding: "3px 10px", fontSize: 12 }}>{s}</span>)}</div></>}
+              {d.experience && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 5 }}>Experience & Projects</div><ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>{d.experience.split("\n").map(l => l.trim()).filter(Boolean).map((l, i) => <li key={i} style={{ fontSize: 13, color: "var(--slate-700)", marginBottom: 3 }}>{l.replace(/^[-•]\s*/, "")}</li>)}</ul></>}
+              {d.education && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 5 }}>Education</div><ul style={{ margin: 0, paddingLeft: 18 }}>{d.education.split("\n").map(l => l.trim()).filter(Boolean).map((l, i) => <li key={i} style={{ fontSize: 13, color: "var(--slate-700)", marginBottom: 3 }}>{l.replace(/^[-•]\s*/, "")}</li>)}</ul></>}
+              {!d.name && !d.summary && <div style={{ color: "var(--slate-400)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Fill the form to see your resume here ✨</div>}
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <button className="btn-primary" onClick={exportPDF}><Icon name="download" size={15} color="white" /> Download PDF</button>
+            <button className="btn-secondary" onClick={exportDoc}>Download Word</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ATS result */}
+      {ats && (
+        <div className="card fade-in" style={{ padding: "18px 20px", marginTop: 16 }}>
+          <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
+            <ScoreRing value={ats.score} size={96} color={ats.score >= 75 ? "var(--green-500)" : ats.score >= 50 ? "#d97706" : "var(--red-500)"} />
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div className="section-label" style={{ marginBottom: 8 }}>🎯 ATS Review</div>
+              <div className="output-box" style={{ minHeight: 0 }}><AiText text={ats.text} /></div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cover letter */}
+      <div className="card" style={{ padding: "18px 20px", marginTop: 16 }}>
+        <div className="section-label" style={{ marginBottom: 10 }}>✉️ Cover Letter Generator</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          <input value={target} onChange={e => setTarget(e.target.value)} placeholder="Target role / company (optional)" style={{ fontSize: 14, flex: 1, minWidth: 200 }} />
+          <button className="btn-primary" onClick={runCover} disabled={!!busy}>{busy === "cover" ? <><span className="spinner" /> Writing…</> : "Generate"}</button>
+        </div>
+        {cover && (
+          <div className="fade-in">
+            <div className="output-box"><AiText text={cover} /></div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button className="btn-secondary" onClick={() => navigator.clipboard.writeText(cover)}><Icon name="copy" size={14} /> Copy</button>
+              <button className="btn-secondary" onClick={() => downloadDoc(`<pre style="font-family:Arial;font-size:14px;white-space:pre-wrap">${esc(cover)}</pre>`, "Cover_Letter.doc")}>Download Word</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AI MOCK INTERVIEW · role-based questions · voice · scoring · report
+// ═══════════════════════════════════════════════════════════════════════════
+const INTERVIEW_ROLES = [
+  { id: "Python Developer",  emoji: "🐍", bg: "#f0fdfa" },
+  { id: "Data Analyst",      emoji: "📊", bg: "#eff6ff" },
+  { id: "Accountant",        emoji: "🧾", bg: "#f0fdf4" },
+  { id: "Office Executive",  emoji: "🗂️", bg: "#fff7ed" },
+  { id: "Digital Marketing", emoji: "📣", bg: "#faf5ff" },
+  { id: "Customer Support",  emoji: "🎧", bg: "#fef2f2" },
+];
+
+function InterviewScreen({ onBack }) {
+  const [stage, setStage] = useState("pick");  // pick | answer | result
+  const [role, setRole] = useState("");
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);  // { score, text }
+
+  const start = async (r) => {
+    setRole(r); setLoading(true); setStage("answer"); setResult(null);
+    try {
+      const out = await callAI(PROMPTS.interviewQ, "Role: " + r);
+      const qs = out.split("\n").map(l => l.trim()).filter(l => l && /[a-zA-Z]/.test(l))
+        .map(l => l.replace(/^\d+[\).\-:]?\s*/, "")).filter(Boolean).slice(0, 5);
+      const list = qs.length ? qs : [
+        "Tell me about yourself.",
+        "Why do you want this role?",
+        "What are your key strengths?",
+        "Describe a project or task you worked on.",
+        "Where do you see yourself in 2 years?",
+      ];
+      setQuestions(list); setAnswers(list.map(() => ""));
+    } catch (e) {
+      setQuestions(["Tell me about yourself.", "Why this role?", "Your strengths?", "A project you did?", "Your goals?"]);
+      setAnswers(["", "", "", "", ""]);
+    }
+    setLoading(false);
+  };
+
+  const submit = async () => {
+    setLoading(true);
+    try {
+      const payload = "Role: " + role + "\n\n" + questions.map((q, i) => `Q${i + 1}: ${q}\nAnswer: ${answers[i] || "(no answer)"}`).join("\n\n");
+      const out = await callAI(PROMPTS.interviewEval, payload);
+      const score = parseLeadingScore(out, "SCORE") ?? 55;
+      setResult({ score, text: out.replace(/^SCORE:.*\n?/i, "") });
+      saveInterviewScore(role, score);
+      bumpProgress("interviews");
+      setStage("result");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setResult({ score: 0, text: "⚠️ " + (e.message || "Scoring failed. Please try again.") });
+      setStage("result");
+    }
+    setLoading(false);
+  };
+
+  const reportHTML = () => `<!doctype html><html><head><meta charset="utf-8"><title>Interview Report</title>
+  <style>body{font-family:Arial;color:#1e293b;max-width:760px;margin:24px auto;padding:0 20px;line-height:1.6}
+  h1{color:#0d9488} .score{font-size:44px;font-weight:bold;color:#0d9488} .q{font-weight:bold;margin-top:16px}
+  .a{background:#f8fafc;border-left:3px solid #99f6e4;padding:8px 12px;margin:6px 0;white-space:pre-wrap}
+  hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}</style></head><body>
+  <h1>Allbee AI — Mock Interview Report</h1><div><b>Role:</b> ${esc(role)} &nbsp;·&nbsp; ${esc(new Date().toLocaleDateString("en-IN"))}</div>
+  <div class="score">${result ? result.score : 0}/100</div>
+  ${questions.map((q, i) => `<div class="q">Q${i + 1}. ${esc(q)}</div><div class="a">${esc(answers[i] || "(no answer)")}</div>`).join("")}
+  <hr><h3>Feedback</h3><div style="white-space:pre-wrap">${esc(result ? result.text : "")}</div>
+  <script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+
+  // ── PICK ROLE ──
+  if (stage === "pick") {
+    return (
+      <div style={PAGE}>
+        <ScreenHeader emoji="🎤" title="AI Mock Interview" subtitle="Pick a role — AI will interview & score you" onBack={onBack} tint="#f5f3ff" />
+        <div className="card" style={{ padding: "16px 18px", marginBottom: 18, display: "flex", gap: 12, alignItems: "center", background: "linear-gradient(135deg,#faf5ff,#ffffff)" }}>
+          <div style={{ fontSize: 26 }}>🧑‍💼</div>
+          <div style={{ fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>Choose a role. You'll get <b>5 questions</b>, answer by typing{SPEECH_OK ? " or voice" : ""}, then get a <b>score /100</b> with feedback and a downloadable report.</div>
+        </div>
+        <div className="section-label" style={{ marginBottom: 12 }}>Choose a role</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
+          {INTERVIEW_ROLES.map((r, i) => (
+            <button key={r.id} onClick={() => start(r.id)} className="card card-hover" style={{ padding: "20px 18px", textAlign: "left", cursor: "pointer", background: "white", animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
+              <div style={{ width: 44, height: 44, background: r.bg, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, marginBottom: 12 }}>{r.emoji}</div>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--slate-900)" }}>{r.id}</div>
+              <div style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: "#7c3aed", display: "flex", alignItems: "center", gap: 4 }}>Start interview <span style={{ fontSize: 14 }}>→</span></div>
+              {getInterviewScores()[r.id] != null && <div style={{ marginTop: 6, fontSize: 11.5, color: "var(--slate-400)" }}>Best: {getInterviewScores()[r.id]}%</div>}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── RESULT ──
+  if (stage === "result" && result) {
+    const good = result.score >= 75, ok = result.score >= 50;
+    return (
+      <div style={PAGE}>
+        <ScreenHeader emoji="🎤" title="Interview Result" subtitle={role} onBack={onBack} tint="#f5f3ff" />
+        <div className="card fade-in" style={{ padding: "22px 22px", marginBottom: 16, textAlign: "center" }}>
+          <ScoreRing value={result.score} size={128} color={good ? "var(--green-500)" : ok ? "#d97706" : "var(--red-500)"} />
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, marginTop: 12, color: "var(--slate-900)" }}>{good ? "Great job! 🎉" : ok ? "Good effort! 💪" : "Keep practising! 🌱"}</div>
+          <div style={{ fontSize: 13, color: "var(--slate-500)", marginTop: 2 }}>{role} · saved to your progress (+30 pts)</div>
+        </div>
+        <div className="card" style={{ padding: "18px 20px", marginBottom: 16 }}>
+          <div className="section-label" style={{ marginBottom: 10 }}>📝 Feedback</div>
+          <div className="output-box"><AiText text={result.text} /></div>
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn-primary" onClick={() => printHTML(reportHTML())}><Icon name="download" size={15} color="white" /> Download Report</button>
+          <button className="btn-secondary" onClick={() => start(role)}><Icon name="refresh" size={14} /> Retry {role}</button>
+          <button className="btn-secondary" onClick={() => { setStage("pick"); setResult(null); }}>Change Role</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ANSWER ──
+  return (
+    <div style={PAGE}>
+      <ScreenHeader emoji="🎤" title="Mock Interview" subtitle={role} onBack={() => setStage("pick")} tint="#f5f3ff" />
+      {loading && questions.length === 0 ? (
+        <div className="card" style={{ padding: 30, textAlign: "center" }}>
+          <div style={{ width: 46, height: 46, margin: "0 auto 12px", animation: "pulse 1.5s infinite" }}><img src={LOGO_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
+          <div style={{ fontWeight: 600, color: "var(--slate-700)" }}>Preparing your interview questions…</div>
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 13, color: "var(--slate-500)", marginBottom: 14 }}>Answer all {questions.length} questions, then submit for scoring.{SPEECH_OK ? " You can type or use 🎙️ voice." : ""}</div>
+          {questions.map((q, i) => (
+            <div key={i} className="card" style={{ padding: "16px 18px", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 26, height: 26, borderRadius: "50%", background: "#7c3aed", color: "white", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{i + 1}</div>
+                <div style={{ flex: 1, fontSize: 14.5, fontWeight: 600, color: "var(--slate-800)", lineHeight: 1.5 }}>{q}</div>
+                <button onClick={() => speak(q)} title="Read aloud" style={{ background: "var(--slate-100)", border: "none", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}><Icon name="speaker" size={15} color="var(--slate-500)" /></button>
+              </div>
+              <textarea value={answers[i]} onChange={e => setAnswers(a => a.map((x, j) => j === i ? e.target.value : x))} rows={3} placeholder="Type your answer…" style={{ fontSize: 14, marginBottom: 8 }} />
+              <MicButton lang="en-IN" label="Answer by voice" onResult={(t) => setAnswers(a => a.map((x, j) => j === i ? (x ? x + " " + t : t) : x))} />
+            </div>
+          ))}
+          <button className="btn-primary" onClick={submit} disabled={loading} style={{ width: "100%", justifyContent: "center", marginTop: 4 }}>
+            {loading ? <><span className="spinner" /> Scoring your answers…</> : <><Icon name="check" size={16} color="white" /> Submit for Scoring</>}
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AI PRACTICE LABS · Python · Excel · Tally · Spoken English
+// ═══════════════════════════════════════════════════════════════════════════
+const LABS = [
+  {
+    id: "python", label: "Python Lab", emoji: "🐍", color: "#0d9488", bg: "#f0fdfa", mono: true, voice: false,
+    intro: "Solve coding challenges. AI checks your logic, explains errors & gives hints.",
+    ph: "# write your Python here",
+    challenges: [
+      { title: "Print 1 to 5", prompt: "Print the numbers 1 to 5, each on its own line.", starter: "for i in range(1, 6):\n    print(i)" },
+      { title: "Sum of a list", prompt: "Given nums = [4, 8, 15, 16], print the total sum.", starter: "nums = [4, 8, 15, 16]\n# your code" },
+      { title: "Even or Odd", prompt: "Read a number n and print 'Even' or 'Odd'.", starter: "n = 7\n# your code" },
+      { title: "Reverse a string", prompt: "Reverse the string 'allbee' and print it.", starter: "s = 'allbee'\n# your code" },
+      { title: "Count vowels", prompt: "Count how many vowels are in 'education' and print the count.", starter: "word = 'education'\n# your code" },
+    ],
+  },
+  {
+    id: "excel", label: "Excel Lab", emoji: "📊", color: "#1d6f42", bg: "#e6f4ea", mono: true, voice: false,
+    intro: "Practice real formulas. AI verifies your formula and shows the correct one.",
+    ph: "=YOUR_FORMULA(...)",
+    challenges: [
+      { title: "SUM a range", prompt: "Write a formula to add all values from A1 to A10.", starter: "=" },
+      { title: "AVERAGE", prompt: "Write a formula for the average of B2:B20.", starter: "=" },
+      { title: "IF Pass/Fail", prompt: "In C2, show 'Pass' if A2 >= 35, else 'Fail'.", starter: "=" },
+      { title: "VLOOKUP", prompt: "Look up the name in F2 within table A2:C50 and return the 3rd column (exact match).", starter: "=" },
+      { title: "COUNTIF", prompt: "Count how many cells in D2:D100 are equal to 'Yes'.", starter: "=" },
+    ],
+  },
+  {
+    id: "tally", label: "Tally Lab", emoji: "🧾", color: "#b45309", bg: "#fff7ed", mono: false, voice: false,
+    intro: "Practice journal entries & GST. AI checks debit/credit and GST treatment.",
+    ph: "Dr … / Cr … (with amounts)",
+    challenges: [
+      { title: "Paid rent by cash", prompt: "Pass the journal entry: Paid office rent ₹5,000 by cash.", starter: "" },
+      { title: "Purchase with GST", prompt: "Purchased goods worth ₹10,000 + 18% GST from a supplier on credit. Pass the entry.", starter: "" },
+      { title: "Cash sales", prompt: "Made cash sales of ₹8,000. Pass the journal entry.", starter: "" },
+      { title: "Salary payable", prompt: "Salary of ₹20,000 is due but not yet paid. Pass the entry.", starter: "" },
+    ],
+  },
+  {
+    id: "english", label: "Spoken English Lab", emoji: "🗣️", color: "#dc2626", bg: "#fef2f2", mono: false, voice: true,
+    intro: "Your AI speaking partner. Speak or type — get grammar fixes & a confidence score.",
+    ph: "Speak or type your answer in English…",
+    challenges: [
+      { title: "Introduce yourself", prompt: "Introduce yourself in 4-5 sentences as if in a job interview." },
+      { title: "Your daily routine", prompt: "Describe your daily routine using present-tense sentences." },
+      { title: "Favourite subject", prompt: "Talk about your favourite subject and why you like it." },
+      { title: "Handle a customer", prompt: "A customer is unhappy about a late delivery. Respond politely in English." },
+    ],
+  },
+];
+
+function LabRunner({ lab, ch, onBack }) {
+  const [code, setCode] = useState(ch.starter || "");
+  const [loading, setLoading] = useState(false);
+  const [fb, setFb] = useState("");
+  const bumped = useRef(false);
+
+  const check = async () => {
+    if (!code.trim()) { setFb("RESULT: ❌ Not yet\n\nPlease write your attempt first."); return; }
+    setLoading(true); setFb("");
+    try {
+      const msg = `LAB: ${lab.label}\nCHALLENGE: ${ch.prompt}\nSTUDENT'S ATTEMPT:\n${code}`;
+      const out = await callAI(PROMPTS.lab, msg);
+      setFb(out);
+      if (!bumped.current) { bumpProgress("labsDone"); bumped.current = true; }
+    } catch (e) { setFb("RESULT: ⚠️ Almost\n\n" + (e.message || "Couldn't check right now.")); }
+    setLoading(false);
+  };
+
+  const resultLine = (fb.split("\n")[0] || "");
+  const rColor = resultLine.includes("✅") ? "var(--green-500)" : resultLine.includes("❌") ? "var(--red-500)" : "#d97706";
+
+  return (
+    <div style={PAGE}>
+      <ScreenHeader emoji={lab.emoji} title={ch.title} subtitle={lab.label} onBack={onBack} tint={lab.bg} />
+      <div className="card" style={{ padding: "16px 18px", marginBottom: 14, borderLeft: "4px solid " + lab.color }}>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)", marginBottom: 6 }}>Challenge</div>
+        <div style={{ fontSize: 14.5, color: "var(--slate-800)", lineHeight: 1.6 }}>{ch.prompt}</div>
+      </div>
+
+      <div className="card" style={{ padding: "16px 18px", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <div className="section-label" style={{ marginBottom: 0 }}>{lab.mono ? "Your Code / Formula" : "Your Answer"}</div>
+          {lab.voice && <MicButton lang="en-IN" label="Speak answer" onResult={(t) => setCode(c => (c ? c + " " + t : t))} />}
+        </div>
+        <textarea value={code} onChange={e => setCode(e.target.value)} rows={lab.mono ? 8 : 5} placeholder={lab.ph}
+          style={{ fontFamily: lab.mono ? "'JetBrains Mono', monospace" : "'DM Sans', sans-serif", fontSize: lab.mono ? 13.5 : 14.5, marginBottom: 10 }} />
+        <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+          <button className="btn-secondary" onClick={() => { setCode(ch.starter || ""); setFb(""); }}>Reset</button>
+          <button className="btn-primary" onClick={check} disabled={loading}>{loading ? <><span className="spinner" /> Checking…</> : <><Icon name="play" size={15} color="white" /> Check with AI</>}</button>
+        </div>
+      </div>
+
+      {fb && (
+        <div className="card fade-in" style={{ padding: "16px 18px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <div style={{ width: 9, height: 9, borderRadius: "50%", background: rColor }} />
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "var(--slate-900)" }}>{resultLine.replace(/^RESULT:\s*/i, "") || "Result"}</div>
+          </div>
+          <div className="output-box"><AiText text={fb.replace(/^RESULT:.*\n?/i, "")} /></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LabsScreen({ onBack }) {
+  const [lab, setLab] = useState(null);
+  const [ch, setCh] = useState(null);
+
+  if (lab && ch) return <LabRunner lab={lab} ch={ch} onBack={() => setCh(null)} />;
+
+  if (lab) {
+    return (
+      <div style={PAGE}>
+        <ScreenHeader emoji={lab.emoji} title={lab.label} subtitle="Pick a challenge" onBack={() => setLab(null)} tint={lab.bg} />
+        <div className="card" style={{ padding: "14px 16px", marginBottom: 16, background: "linear-gradient(135deg," + lab.bg + ",#ffffff)" }}>
+          <div style={{ fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>{lab.intro}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+          {lab.challenges.map((c, i) => (
+            <button key={i} onClick={() => setCh(c)} className="card card-hover" style={{ padding: "18px 18px", textAlign: "left", cursor: "pointer", background: "white" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 8, background: lab.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: lab.color }}>{i + 1}</div>
+                <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14.5, fontWeight: 700, color: "var(--slate-900)" }}>{c.title}</div>
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>{c.prompt}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={PAGE}>
+      <ScreenHeader emoji="🧪" title="AI Practice Labs" subtitle="Hands-on practice with instant AI feedback" onBack={onBack} tint="#ecfeff" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
+        {LABS.map((l, i) => (
+          <button key={l.id} onClick={() => setLab(l)} className="card card-hover" style={{ padding: "22px 20px", textAlign: "left", cursor: "pointer", background: "white", animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
+            <div style={{ width: 46, height: 46, background: l.bg, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, marginBottom: 14 }}>{l.emoji}</div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15.5, fontWeight: 700, color: "var(--slate-900)", marginBottom: 6 }}>{l.label}</div>
+            <div style={{ fontSize: 13, color: "var(--slate-500)", lineHeight: 1.5 }}>{l.intro}</div>
+            <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: l.color, display: "flex", alignItems: "center", gap: 4 }}>{l.challenges.length} challenges <span style={{ fontSize: 14 }}>→</span></div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  JOB PORTAL · search · apply · save · track · AI fit · employer post
+// ═══════════════════════════════════════════════════════════════════════════
+const JOB_CATS = ["All", "Python", "Data", "Accounts", "Office", "Marketing", "Support", "Web"];
+const SEED_JOBS = [
+  { id: "j1", title: "Junior Python Developer", company: "Zephyr Tech", location: "Coimbatore", type: "Full-time", exp: "0-1 yr", salary: "₹2.5–3.5 LPA", cat: "Python", skills: ["Python", "SQL", "Git"], desc: "Write and debug Python scripts, work with REST APIs and databases. Freshers with a project portfolio are welcome." },
+  { id: "j2", title: "Data Analyst Trainee", company: "InsightWorks", location: "Chennai", type: "Full-time", exp: "0-2 yr", salary: "₹3–4 LPA", cat: "Data", skills: ["Excel", "SQL", "Power BI"], desc: "Clean data, build dashboards in Power BI and present insights. Strong Excel and basic SQL required." },
+  { id: "j3", title: "Accounts Executive (Tally)", company: "Sri Balaji Traders", location: "Trichy", type: "Full-time", exp: "0-1 yr", salary: "₹1.8–2.6 LPA", cat: "Accounts", skills: ["Tally Prime", "GST", "MS Excel"], desc: "Maintain day books, GST filing support and ledger reconciliation in Tally Prime." },
+  { id: "j4", title: "Back Office Executive", company: "NovaBPO", location: "Madurai", type: "Full-time", exp: "Fresher", salary: "₹1.6–2.2 LPA", cat: "Office", skills: ["MS Office", "Typing", "Data Entry"], desc: "Handle data entry, documentation and MS Office reports. Good typing speed preferred." },
+  { id: "j5", title: "Digital Marketing Intern", company: "Reach Media", location: "Remote", type: "Internship", exp: "Fresher", salary: "₹8–12k/mo", cat: "Marketing", skills: ["Social Media", "Canva", "SEO"], desc: "Create social posts, run basic SEO tasks and assist campaigns. Creativity + Canva skills valued." },
+  { id: "j6", title: "Customer Support Associate", company: "HelpHive", location: "Chennai", type: "Full-time", exp: "0-1 yr", salary: "₹2–2.8 LPA", cat: "Support", skills: ["Communication", "Spoken English", "CRM"], desc: "Resolve customer queries over chat/voice. Clear spoken English and patience required." },
+  { id: "j7", title: "Junior Web Developer", company: "Pixelo", location: "Coimbatore", type: "Full-time", exp: "0-2 yr", salary: "₹2.8–4 LPA", cat: "Web", skills: ["HTML", "CSS", "JavaScript"], desc: "Build responsive web pages with HTML, CSS and JavaScript. React knowledge is a plus." },
+  { id: "j8", title: "Power BI Analyst", company: "GridData", location: "Remote", type: "Full-time", exp: "1-2 yr", salary: "₹4–6 LPA", cat: "Data", skills: ["Power BI", "DAX", "Excel"], desc: "Design interactive Power BI reports and DAX measures for business teams." },
+  { id: "j9", title: "Python Automation Intern", company: "AutoNest", location: "Remote", type: "Internship", exp: "Fresher", salary: "₹10–15k/mo", cat: "Python", skills: ["Python", "Automation", "APIs"], desc: "Automate repetitive tasks with Python scripts and simple bots. Great for learners." },
+  { id: "j10", title: "Junior Accountant", company: "Kavery Foods", location: "Trichy", type: "Full-time", exp: "0-1 yr", salary: "₹1.9–2.7 LPA", cat: "Accounts", skills: ["Tally Prime", "GST", "Bookkeeping"], desc: "Record purchases/sales, assist monthly GST and support audits." },
+];
+
+const loadArr = (k) => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; } };
+const saveArr = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } };
+
+function JobDetail({ job, saved, applied, onToggleSave, onApply, onWithdraw, onClose }) {
+  const [fit, setFit] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const checkFit = async () => {
+    setLoading(true); setFit(null);
+    let skills = "";
+    try { skills = (JSON.parse(localStorage.getItem(RESUME_KEY)) || {}).skills || ""; } catch { /* */ }
+    try {
+      const msg = `SKILLS: ${skills || "(not provided — general fresher)"}\nJOB: ${job.title} at ${job.company}\nRequired skills: ${job.skills.join(", ")}\nDescription: ${job.desc}`;
+      const out = await callAI(PROMPTS.jobFit, msg);
+      setFit({ score: parseLeadingScore(out, "FIT") ?? 50, text: out.replace(/^FIT:.*\n?/i, "") });
+    } catch (e) { setFit({ score: 0, text: "⚠️ " + (e.message || "Couldn't check.") }); }
+    setLoading(false);
+  };
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 200, display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 0 }}>
+      <div onClick={e => e.stopPropagation()} className="slide-in" style={{ background: "white", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 620, maxHeight: "90vh", overflowY: "auto", padding: "20px 20px 28px" }}>
+        <div style={{ width: 40, height: 4, background: "var(--slate-200)", borderRadius: 99, margin: "0 auto 16px" }} />
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+          <div style={{ width: 46, height: 46, borderRadius: 12, background: "var(--blue-50)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>💼</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, color: "var(--slate-900)" }}>{job.title}</div>
+            <div style={{ fontSize: 13.5, color: "var(--slate-500)" }}>{job.company} · {job.location}</div>
+          </div>
+          <button onClick={onClose} className="btn-ghost" style={{ fontSize: 20, lineHeight: 1, padding: "2px 10px" }}>×</button>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 14 }}>
+          {[job.type, job.exp, job.salary].map((t, i) => <span key={i} className="badge" style={{ background: "var(--slate-100)", color: "var(--slate-600)" }}>{t}</span>)}
+        </div>
+        <div style={{ fontSize: 14, color: "var(--slate-700)", lineHeight: 1.6, marginBottom: 14 }}>{job.desc}</div>
+        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)", marginBottom: 6 }}>Skills</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+          {job.skills.map(s => <span key={s} style={{ background: "var(--blue-50)", color: "var(--blue-800)", border: "1px solid var(--blue-200)", borderRadius: 99, padding: "4px 12px", fontSize: 12.5 }}>{s}</span>)}
+        </div>
+
+        {fit && (
+          <div className="card fade-in" style={{ padding: "14px 16px", marginBottom: 14, background: "var(--slate-50)" }}>
+            <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+              <ScoreRing value={fit.score} size={78} color={fit.score >= 70 ? "var(--green-500)" : fit.score >= 45 ? "#d97706" : "var(--red-500)"} />
+              <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.5 }}><AiText text={fit.text} /></div></div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {applied
+            ? <button className="btn-secondary" onClick={() => onWithdraw(job.id)} style={{ borderColor: "var(--red-200, #fecaca)", color: "var(--red-500)" }}>✓ Applied — Withdraw</button>
+            : <button className="btn-primary" onClick={() => onApply(job.id)}><Icon name="check" size={15} color="white" /> Apply Now</button>}
+          <button className="btn-secondary" onClick={() => onToggleSave(job.id)}><Icon name="bookmark" size={14} /> {saved ? "Saved" : "Save"}</button>
+          <button className="btn-secondary" onClick={checkFit} disabled={loading}>{loading ? "Checking…" : "🎯 AI Fit Check"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JobCard({ job, saved, applied, onOpen, onToggleSave }) {
+  return (
+    <div className="card card-hover" style={{ padding: "16px 18px", cursor: "pointer" }} onClick={() => onOpen(job)}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ width: 42, height: 42, borderRadius: 10, background: "var(--blue-50)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, flexShrink: 0 }}>💼</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--slate-900)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.title}</div>
+          <div style={{ fontSize: 12.5, color: "var(--slate-500)" }}>{job.company} · {job.location}</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            <span className="badge" style={{ background: "var(--slate-100)", color: "var(--slate-600)" }}>{job.type}</span>
+            <span className="badge" style={{ background: "var(--blue-50)", color: "var(--blue-700)" }}>{job.salary}</span>
+            {applied && <span className="badge" style={{ background: "var(--green-50)", color: "var(--green-500)" }}>✓ Applied</span>}
+          </div>
+        </div>
+        <button onClick={(e) => { e.stopPropagation(); onToggleSave(job.id); }} title="Save" style={{ background: saved ? "var(--blue-50)" : "transparent", border: "none", borderRadius: 8, width: 34, height: 34, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+          <Icon name="bookmark" size={17} color={saved ? "var(--blue-600)" : "var(--slate-300)"} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const APP_STEPS = ["Applied", "Under Review", "Shortlisted"];
+
+function JobsScreen({ onBack, onOpen }) {
+  const [tab, setTab] = useState("browse");
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("All");
+  const [saved, setSaved] = useState(() => loadArr(JOBS_SAVED_KEY));
+  const [apps, setApps] = useState(() => loadArr(JOBS_APPLIED_KEY));
+  const [posted, setPosted] = useState(() => loadArr(JOBS_POSTED_KEY));
+  const [sel, setSel] = useState(null);
+  const [form, setForm] = useState({ title: "", company: "", location: "", salary: "", skills: "", desc: "" });
+
+  const allJobs = [...posted, ...SEED_JOBS];
+  const isSaved = (id) => saved.includes(id);
+  const isApplied = (id) => apps.some(a => a.jobId === id);
+
+  const toggleSave = (id) => { const n = isSaved(id) ? saved.filter(x => x !== id) : [...saved, id]; setSaved(n); saveArr(JOBS_SAVED_KEY, n); };
+  const apply = (id) => { if (isApplied(id)) return; const n = [{ jobId: id, date: new Date().toISOString(), status: "Applied" }, ...apps]; setApps(n); saveArr(JOBS_APPLIED_KEY, n); bumpProgress("jobsApplied"); setSel(null); setTab("applied"); };
+  const withdraw = (id) => { const n = apps.filter(a => a.jobId !== id); setApps(n); saveArr(JOBS_APPLIED_KEY, n); setSel(null); };
+
+  const filtered = allJobs.filter(j => {
+    const okCat = cat === "All" || j.cat === cat;
+    const okQ = !q.trim() || (j.title + " " + j.company + " " + j.skills.join(" ")).toLowerCase().includes(q.toLowerCase());
+    return okCat && okQ;
+  });
+  const savedJobs = allJobs.filter(j => isSaved(j.id));
+  const appliedJobs = apps.map(a => ({ ...a, job: allJobs.find(j => j.id === a.jobId) })).filter(a => a.job);
+
+  const postJob = () => {
+    if (!form.title.trim() || !form.company.trim()) return;
+    const job = { id: "posted-" + Date.now(), title: form.title.trim(), company: form.company.trim(), location: form.location.trim() || "Remote", type: "Full-time", exp: "Fresher", salary: form.salary.trim() || "Negotiable", cat: "All", skills: form.skills.split(",").map(s => s.trim()).filter(Boolean), desc: form.desc.trim() || "No description provided." };
+    const n = [job, ...posted]; setPosted(n); saveArr(JOBS_POSTED_KEY, n);
+    setForm({ title: "", company: "", location: "", salary: "", skills: "", desc: "" }); setTab("browse");
+  };
+
+  const TABS = [{ id: "browse", label: "Browse" }, { id: "saved", label: `Saved (${saved.length})` }, { id: "applied", label: `Applied (${apps.length})` }, { id: "post", label: "Post a Job" }];
+
+  return (
+    <div style={PAGE}>
+      <ScreenHeader emoji="💼" title="Job Portal" subtitle="Search · apply · save · track" onBack={onBack} tint="#fffbeb" />
+      <div style={{ fontSize: 11.5, color: "var(--slate-400)", marginBottom: 12 }}>Sample listings for practice. Apply, save and track just like a real portal.</div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: "8px 16px", borderRadius: 99, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "1.5px solid " + (tab === t.id ? "var(--blue-600)" : "var(--slate-200)"), background: tab === t.id ? "var(--blue-600)" : "white", color: tab === t.id ? "white" : "var(--slate-600)" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === "browse" && (
+        <>
+          <div style={{ position: "relative", marginBottom: 12 }}>
+            <div style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }}><Icon name="search" size={17} color="var(--slate-400)" /></div>
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search title, company or skill…" style={{ paddingLeft: 40, fontSize: 14 }} />
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
+            {JOB_CATS.map(c => (
+              <button key={c} onClick={() => setCat(c)} style={{ padding: "6px 14px", borderRadius: 99, fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: "1.5px solid " + (cat === c ? "var(--blue-300, #5eead4)" : "var(--slate-200)"), background: cat === c ? "var(--blue-50)" : "white", color: cat === c ? "var(--blue-700)" : "var(--slate-500)" }}>{c}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+            {filtered.length ? filtered.map(j => <JobCard key={j.id} job={j} saved={isSaved(j.id)} applied={isApplied(j.id)} onOpen={setSel} onToggleSave={toggleSave} />)
+              : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "30px 0" }}>No jobs match your search.</div>}
+          </div>
+        </>
+      )}
+
+      {tab === "saved" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+          {savedJobs.length ? savedJobs.map(j => <JobCard key={j.id} job={j} saved applied={isApplied(j.id)} onOpen={setSel} onToggleSave={toggleSave} />)
+            : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "36px 0" }}>🔖 No saved jobs yet. Tap the bookmark on any job.</div>}
+        </div>
+      )}
+
+      {tab === "applied" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {appliedJobs.length ? appliedJobs.map(a => (
+            <div key={a.jobId} className="card" style={{ padding: "16px 18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--slate-900)" }}>{a.job.title}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--slate-500)" }}>{a.job.company} · applied {new Date(a.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</div>
+                </div>
+                <button className="btn-ghost" onClick={() => withdraw(a.jobId)} style={{ fontSize: 12.5, color: "var(--red-500)" }}>Withdraw</button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                {APP_STEPS.map((s, i) => (
+                  <div key={s} style={{ display: "flex", alignItems: "center", flex: i < APP_STEPS.length - 1 ? 1 : "0 0 auto" }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: i === 0 ? "var(--blue-600)" : "var(--slate-200)", color: i === 0 ? "white" : "var(--slate-400)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700 }}>{i === 0 ? "✓" : i + 1}</div>
+                      <div style={{ fontSize: 10.5, color: i === 0 ? "var(--blue-700)" : "var(--slate-400)", fontWeight: 600, whiteSpace: "nowrap" }}>{s}</div>
+                    </div>
+                    {i < APP_STEPS.length - 1 && <div style={{ flex: 1, height: 2, background: "var(--slate-200)", margin: "0 6px", marginBottom: 16 }} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )) : <div style={{ textAlign: "center", color: "var(--slate-400)", padding: "36px 0" }}>📮 No applications yet. Apply to a job to track it here.</div>}
+        </div>
+      )}
+
+      {tab === "post" && (
+        <div className="card" style={{ padding: "18px 20px" }}>
+          <div className="section-label" style={{ marginBottom: 12 }}>🏢 Post a Job (Employer)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Job title *" style={{ fontSize: 14 }} />
+            <input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} placeholder="Company *" style={{ fontSize: 14 }} />
+            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Location" style={{ fontSize: 14 }} />
+            <input value={form.salary} onChange={e => setForm({ ...form, salary: e.target.value })} placeholder="Salary (e.g., ₹3 LPA)" style={{ fontSize: 14 }} />
+          </div>
+          <input value={form.skills} onChange={e => setForm({ ...form, skills: e.target.value })} placeholder="Skills (comma separated)" style={{ fontSize: 14, marginBottom: 10 }} />
+          <textarea value={form.desc} onChange={e => setForm({ ...form, desc: e.target.value })} rows={3} placeholder="Job description" style={{ fontSize: 14, marginBottom: 12 }} />
+          <button className="btn-primary" onClick={postJob}><Icon name="plus" size={15} color="white" /> Post Job</button>
+          {posted.length > 0 && <div style={{ marginTop: 12, fontSize: 12.5, color: "var(--slate-500)" }}>✓ {posted.length} job(s) posted — they now appear in Browse.</div>}
+        </div>
+      )}
+
+      {sel && <JobDetail job={sel} saved={isSaved(sel.id)} applied={isApplied(sel.id)} onToggleSave={toggleSave} onApply={apply} onWithdraw={withdraw} onClose={() => setSel(null)} />}
+    </div>
+  );
+}
+
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(() => {
@@ -3473,6 +4853,7 @@ export default function App() {
   const [courseQuestion, setCourseQuestion] = useState("");
 
   useEffect(() => {
+    try { updateStreak(); } catch (e) { /* */ }
     const style = document.createElement("style");
     style.textContent = globalStyles;
     document.head.appendChild(style);
@@ -3500,6 +4881,7 @@ export default function App() {
           onHistory={() => setView("history")}
           onCourses={() => setView("courses")}
           onLogout={logout}
+          onOpen={setView}
         />
       )}
       {view === "feature" && activeFeature && activeFeature !== "msoffice" && (
@@ -3520,6 +4902,11 @@ export default function App() {
       {view === "history" && (
         <HistoryScreen onBack={() => setView("dashboard")} />
       )}
+      {view === "resume_builder" && <ResumeBuilderScreen user={user} onBack={() => setView("dashboard")} />}
+      {view === "interview" && <InterviewScreen onBack={() => setView("dashboard")} />}
+      {view === "labs" && <LabsScreen onBack={() => setView("dashboard")} />}
+      {view === "jobs" && <JobsScreen onBack={() => setView("dashboard")} onOpen={setView} />}
+      {view === "rewards" && <RewardsScreen user={user} onBack={() => setView("dashboard")} onOpen={setView} />}
       <BottomNav view={view} onNav={handleNav} />
     </div>
   );
