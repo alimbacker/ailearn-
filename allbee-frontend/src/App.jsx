@@ -3018,24 +3018,17 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
         </div>
       </div>
 
-      {/* Welcome banner */}
-      <div style={{ background: "linear-gradient(135deg, #0d9488 0%, #14b8a6 100%)", borderRadius: "var(--radius-xl)", padding: "24px 28px", marginBottom: 28, color: "white", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", right: -10, top: -10, width: 90, height: 90, opacity: 0.18, transform: "rotate(10deg)" }}><img src={LOGO_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(10)" }} /></div>
-        <div style={{ fontSize: 13, opacity: 0.85, fontWeight: 500, marginBottom: 4 }}>{greet}! 👋</div>
-        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 6 }}>{user.name}</div>
-        <div style={{ fontSize: 13, opacity: 0.8 }}>என்ன கத்துக்கணும்? Choose a tool below 👇</div>
-      </div>
+      {/* Professional hero: greeting + level/points in one card */}
+      <DashboardHero user={user} onOpen={onOpen} />
 
       {/* LIVE class banner — shows when the teacher has started a class */}
       <LiveBanner onJoin={() => onOpen && onOpen("live")} />
 
-      {/* NEW: gamification + stats + skill progress */}
-      <DashboardBee onOpen={onOpen} />
       <DashboardStats />
       <CourseProgress onOpenCourse={onOpenCourse} onOpenCourses={onCourses} />
 
       {/* Feature grid */}
-      <div className="section-label" style={{ marginBottom: 12 }}>🛠️ AI Learning Tools</div>
+      <div className="section-label" style={{ marginBottom: 12 }}>AI Learning Tools</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 16, marginBottom: 32 }}>
         {features.map((f, i) => (
           <button
@@ -3060,7 +3053,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
       <CareerGrid onOpen={onOpen} />
 
       {/* Courses promo banner */}
-      <div className="section-label" style={{ marginBottom: 12 }}>🎓 AllBee Solutions — Courses</div>
+      <div className="section-label" style={{ marginBottom: 12 }}>Courses</div>
       <div onClick={onCourses} style={{ background: "linear-gradient(135deg, #0f172a 0%, #134e4a 60%, #0f766e 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 16, cursor: "pointer", position: "relative", overflow: "hidden", border: "1px solid #115e59" }}>
         <div style={{ position: "absolute", right: -30, bottom: -30, fontSize: 120, opacity: 0.07, pointerEvents: "none" }}>🎓</div>
         <div style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)", borderRadius: 99, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: "white", border: "1px solid rgba(255,255,255,0.2)" }}>{COURSE_COUNT}+ Courses</div>
@@ -3854,7 +3847,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
           <Icon name="back" size={18} color="var(--slate-600)" />
         </button>
         <div>
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "var(--slate-900)" }}>🎓 AllBee Solutions — Courses</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "var(--slate-900)" }}>Courses</div>
           <div style={{ fontSize: 12, color: "var(--slate-400)" }}>{COURSE_COUNT} courses · {CATEGORY_COUNT} categories · Free AI support</div>
         </div>
       </div>
@@ -4251,15 +4244,13 @@ function DashboardStats() {
   ];
   return (
     <>
-      <div className="section-label" style={{ marginBottom: 12 }}>📊 Your Progress</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
+      <div className="section-label" style={{ marginBottom: 12 }}>Your progress</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: 12, marginBottom: 24 }}>
         {cards.map((c, i) => (
-          <div key={c.label} className="card" style={{ padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
-            <div style={{ fontSize: 22 }}>{c.emoji}</div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 20, fontWeight: 800, color: c.color, lineHeight: 1.1 }}>{c.value}</div>
-              <div style={{ fontSize: 11.5, color: "var(--slate-500)", fontWeight: 600 }}>{c.label}</div>
-            </div>
+          <div key={c.label} className="card" style={{ padding: "16px 16px 15px", animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
+            <div style={{ width: 34, height: 34, borderRadius: 9, background: c.color + "14", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, marginBottom: 12 }}>{c.emoji}</div>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, color: "var(--slate-900)", lineHeight: 1 }}>{c.value}</div>
+            <div style={{ fontSize: 12, color: "var(--slate-500)", fontWeight: 600, marginTop: 4 }}>{c.label}</div>
           </div>
         ))}
       </div>
@@ -4296,14 +4287,14 @@ const CAREER_MODULES = [
   { id: "live",           emoji: "🔴", label: "Live Class",           desc: "Join your teacher's live online class + Q&A", color: "#dc2626", bg: "#fef2f2" },
   { id: "resume_builder", emoji: "📄", label: "Resume Builder",       desc: "Templates, ATS review, cover letter & export", color: "#0d9488", bg: "#f0fdfa" },
   { id: "interview",      emoji: "🎤", label: "AI Mock Interview",    desc: "Role questions, voice, scoring & report",      color: "#7c3aed", bg: "#f5f3ff" },
-  { id: "labs",           emoji: "🧪", label: "AI Practice Labs",     desc: "Python, Excel, Tally & Spoken English drills", color: "#0891b2", bg: "#ecfeff" },
+  { id: "labs",           emoji: "🧪", label: "AI Practice Labs",     desc: "9 topics · 100+ questions each with AI feedback", color: "#0891b2", bg: "#ecfeff" },
   { id: "jobs",           emoji: "💼", label: "Job Portal",           desc: "Search, apply, save & track jobs",             color: "#d97706", bg: "#fffbeb" },
   { id: "rewards",        emoji: "🏆", label: "Rewards & Bee Levels", desc: "Points, streak, leaderboard & certificates",   color: "#a855f7", bg: "#faf5ff" },
 ];
 function CareerGrid({ onOpen }) {
   return (
     <>
-      <div className="section-label" style={{ marginBottom: 12 }}>🚀 Career & Practice</div>
+      <div className="section-label" style={{ marginBottom: 12 }}>Career & Practice</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 16, marginBottom: 32 }}>
         {CAREER_MODULES.map((m, i) => (
           <button key={m.id} onClick={() => onOpen(m.id)} className="card card-hover" style={{ padding: "22px 20px", textAlign: "left", cursor: "pointer", background: "white", animation: `fadeIn 0.4s ease ${i * 0.06}s both` }}>
@@ -5072,21 +5063,22 @@ const LABS = [
 
 // ── One challenge at a time: shuffles the question bank + endless AI challenges
 function LabSession({ lab, onBack }) {
-  const [order, setOrder] = useState(() => shuffleArr(lab.challenges.map((_, i) => i)));
+  const bank = LAB_QUESTIONS[lab.id] || lab.challenges;
+  const [order, setOrder] = useState(() => shuffleArr(bank.map((_, i) => i)));
   const [pos, setPos] = useState(0);
   const [aiCh, setAiCh] = useState(null);       // an AI-generated challenge, or null
   const [generating, setGenerating] = useState(false);
   const [nonce, setNonce] = useState(0);        // bump → remount LabRunner with a fresh answer box
 
-  const bankCh = lab.challenges[order[pos]] || lab.challenges[0];
+  const bankCh = bank[order[pos]] || bank[0];
   const current = aiCh || bankCh;
-  const total = lab.challenges.length;
+  const total = bank.length;
 
   const next = () => {
     setAiCh(null);
     setPos((p) => {
       const np = p + 1;
-      if (np >= order.length) { setOrder(shuffleArr(lab.challenges.map((_, i) => i))); return 0; }
+      if (np >= order.length) { setOrder(shuffleArr(bank.map((_, i) => i))); return 0; }
       return np;
     });
     setNonce((n) => n + 1);
@@ -5200,7 +5192,7 @@ function LabsScreen({ onBack }) {
   const [lab, setLab] = useState(null);
   if (lab) return <LabSession lab={lab} onBack={() => setLab(null)} />;
 
-  const totalQ = LABS.reduce((a, l) => a + l.challenges.length, 0);
+  const totalQ = LABS.reduce((a, l) => a + (LAB_QUESTIONS[l.id] || l.challenges).length, 0);
   return (
     <div style={PAGE}>
       <ScreenHeader emoji="🧪" title="AI Practice Labs" subtitle="Hands-on practice with instant AI feedback" onBack={onBack} tint="#ecfeff" />
@@ -5213,7 +5205,7 @@ function LabsScreen({ onBack }) {
             <div style={{ width: 46, height: 46, background: l.bg, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, marginBottom: 14 }}>{l.emoji}</div>
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15.5, fontWeight: 700, color: "var(--slate-900)", marginBottom: 6 }}>{l.label}</div>
             <div style={{ fontSize: 13, color: "var(--slate-500)", lineHeight: 1.5 }}>{l.intro}</div>
-            <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: l.color, display: "flex", alignItems: "center", gap: 4 }}>{l.challenges.length}+ questions <span style={{ fontSize: 14 }}>→</span></div>
+            <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: l.color, display: "flex", alignItems: "center", gap: 4 }}>{(LAB_QUESTIONS[l.id] || l.challenges).length}+ questions <span style={{ fontSize: 14 }}>→</span></div>
           </button>
         ))}
       </div>
@@ -6353,6 +6345,197 @@ function AdminNotes() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LARGE PRACTICE-QUESTION BANKS — 100+ per lab, built from templates.
+//  (The "🎲 New AI question" button still adds unlimited fresh ones on top.)
+// ═══════════════════════════════════════════════════════════════════════════
+const _inr = (n) => { try { return n.toLocaleString("en-IN"); } catch { return String(n); } };
+const _WORDS = ["allbee","python","education","success","student","tamilnadu","computer","learning","developer","knowledge","program","future","excellent","opportunity","confidence","language","practice","function","internet","keyboard"];
+const _NUMS  = [5,7,8,10,12,15,20,25,3,6,9,11,14,18,21,30,4,13,16,50];
+const _LISTS = [[4,8,15,16],[3,9,1,7],[12,45,2,89,33],[10,20,30,40],[5,5,5,5],[2,4,6,8,10],[100,50,25,75],[7,3,9,1,6],[11,22,33,44],[1,2,3,4,5,6],[9,8,7,6],[15,3,27,6],[40,10,30,20],[6,66,666],[5,10,15,20,25]];
+
+function _genPython() {
+  const o = [];
+  _WORDS.forEach(w => o.push({ title: "Reverse a string", prompt: `Reverse the string '${w}' and print it.`, starter: `s = '${w}'\n# your code` }));
+  _WORDS.forEach(w => o.push({ title: "Count vowels", prompt: `Count how many vowels are in '${w}' and print the count.`, starter: `word = '${w}'\n# your code` }));
+  _WORDS.forEach(w => o.push({ title: "Palindrome check", prompt: `Check if '${w}' is a palindrome and print True or False.`, starter: `s = '${w}'\n# your code` }));
+  _NUMS.forEach(n => o.push({ title: "Print 1 to N", prompt: `Print the numbers 1 to ${n}, each on its own line.`, starter: `# your code` }));
+  _NUMS.forEach(n => o.push({ title: "Even or Odd", prompt: `Set n = ${n} and print 'Even' or 'Odd'.`, starter: `n = ${n}\n# your code` }));
+  _NUMS.forEach(n => o.push({ title: "Multiplication table", prompt: `Print the multiplication table of ${n} (1 to 10).`, starter: `n = ${n}\n# your code` }));
+  _NUMS.forEach(n => o.push({ title: "Sum 1 to N", prompt: `Print the sum of all numbers from 1 to ${n}.`, starter: `n = ${n}\n# your code` }));
+  _LISTS.forEach(l => o.push({ title: "Sum of a list", prompt: `Given nums = [${l.join(", ")}], print the total sum.`, starter: `nums = [${l.join(", ")}]\n# your code` }));
+  _LISTS.forEach(l => o.push({ title: "Largest in list", prompt: `Find the largest number in [${l.join(", ")}] without using max().`, starter: `nums = [${l.join(", ")}]\n# your code` }));
+  return o;
+}
+function _genWebJS() {
+  const o = [];
+  _WORDS.forEach(w => o.push({ title: "Log reversed", prompt: `Reverse the string '${w}' and log it to the console.`, starter: `let s = '${w}';\n// your code` }));
+  _WORDS.forEach(w => o.push({ title: "Uppercase", prompt: `Convert '${w}' to uppercase and log it.`, starter: `let s = '${w}';\n// your code` }));
+  _WORDS.forEach(w => o.push({ title: "String length", prompt: `Log how many characters are in '${w}'.`, starter: `let s = '${w}';\n// your code` }));
+  _NUMS.forEach(n => o.push({ title: "Loop 1 to N", prompt: `Use a for loop to log the numbers 1 to ${n}.`, starter: `// your code` }));
+  _NUMS.forEach(n => o.push({ title: "Even or Odd", prompt: `Given n = ${n}, log 'Even' or 'Odd'.`, starter: `let n = ${n};\n// your code` }));
+  _NUMS.forEach(n => o.push({ title: "Times table", prompt: `Log the multiplication table of ${n} (1 to 10).`, starter: `let n = ${n};\n// your code` }));
+  _LISTS.forEach(l => o.push({ title: "Array sum", prompt: `Sum the array [${l.join(", ")}] and log the total.`, starter: `let nums = [${l.join(", ")}];\n// your code` }));
+  _LISTS.forEach(l => o.push({ title: "Array max", prompt: `Log the largest number in [${l.join(", ")}].`, starter: `let nums = [${l.join(", ")}];\n// your code` }));
+  return o;
+}
+function _genJava() {
+  const o = [];
+  _NUMS.forEach(n => o.push({ title: "Print 1 to N", prompt: `Print the numbers 1 to ${n} using a for loop.`, starter: `// inside main()` }));
+  _NUMS.forEach(n => o.push({ title: "Even or Odd", prompt: `Given int n = ${n}, print 'Even' or 'Odd'.`, starter: `int n = ${n};\n// your code` }));
+  _NUMS.forEach(n => o.push({ title: "Times table", prompt: `Print the multiplication table of ${n} (1 to 10).`, starter: `int n = ${n};\n// your code` }));
+  _NUMS.forEach(n => o.push({ title: "Sum 1 to N", prompt: `Print the sum of 1 to ${n}.`, starter: `int n = ${n};\n// your code` }));
+  _WORDS.forEach(w => o.push({ title: "String length", prompt: `Print the length of the string "${w}".`, starter: `String s = "${w}";\n// your code` }));
+  _WORDS.forEach(w => o.push({ title: "Print in caps", prompt: `Print "${w}" in uppercase.`, starter: `String s = "${w}";\n// your code` }));
+  _LISTS.forEach(l => o.push({ title: "Sum of array", prompt: `Sum int[] nums = {${l.join(", ")}} and print the total.`, starter: `int[] nums = {${l.join(", ")}};\n// your code` }));
+  return o;
+}
+function _genExcel() {
+  const ranges = ["A1:A10","B2:B20","C1:C50","D2:D100","E2:E30","A2:A25","B1:B15","F2:F40","G2:G60","H2:H12","A1:A100","B2:B200","C2:C80","D1:D45"];
+  const thr = [35,40,50,60,75,33,45,80,90,25,55,70];
+  const crit = ["Yes","No","Sales","Paid","Pending","Chennai","Pass","Active","Completed","Approved","Male","Female"];
+  const o = [];
+  ranges.forEach(r => o.push({ title: "SUM a range", prompt: `Write a formula to add all values in ${r}.`, starter: "=" }));
+  ranges.forEach(r => o.push({ title: "AVERAGE", prompt: `Write a formula for the average of ${r}.`, starter: "=" }));
+  ranges.forEach(r => o.push({ title: "MAX value", prompt: `Write a formula to find the highest value in ${r}.`, starter: "=" }));
+  ranges.forEach(r => o.push({ title: "MIN value", prompt: `Write a formula to find the lowest value in ${r}.`, starter: "=" }));
+  ranges.forEach(r => o.push({ title: "COUNT numbers", prompt: `Write a formula to count how many numbers are in ${r}.`, starter: "=" }));
+  thr.forEach(t => o.push({ title: "IF Pass/Fail", prompt: `In C2, show 'Pass' if A2 >= ${t}, otherwise 'Fail'.`, starter: "=" }));
+  crit.forEach(c => o.push({ title: "COUNTIF", prompt: `Count how many cells in D2:D100 equal '${c}'.`, starter: "=" }));
+  crit.forEach(c => o.push({ title: "SUMIF", prompt: `Sum B2:B100 where A2:A100 equals '${c}'.`, starter: "=" }));
+  return o;
+}
+function _genTally() {
+  const amts = [5000,8000,10000,12000,15000,20000,25000,2000,4800,1200,6000,30000,7500,18000,3500,9000];
+  const rates = [5,12,18,28];
+  const o = [];
+  amts.forEach(a => o.push({ title: "Paid by cash", prompt: `Pass the journal entry: Paid office rent ₹${_inr(a)} by cash.` }));
+  amts.forEach(a => o.push({ title: "Cash sales", prompt: `Pass the journal entry: Made cash sales of ₹${_inr(a)}.` }));
+  amts.forEach(a => o.push({ title: "Bought by cheque", prompt: `Pass the journal entry: Bought furniture worth ₹${_inr(a)} by cheque.` }));
+  amts.forEach(a => o.push({ title: "Salary payable", prompt: `Pass the journal entry: Salary of ₹${_inr(a)} is due but not yet paid.` }));
+  rates.forEach(r => amts.slice(0, 8).forEach(a => o.push({ title: "Purchase with GST", prompt: `Purchased goods worth ₹${_inr(a)} + ${r}% GST on credit. Pass the entry.` })));
+  rates.forEach(r => amts.slice(0, 6).forEach(a => o.push({ title: "GST calculation", prompt: `Goods worth ₹${_inr(a)} attract ${r}% GST. Find CGST, SGST and the total invoice value.` })));
+  return o;
+}
+function _genEnglish() {
+  const o = [];
+  const describe = ["your family","your best friend","your school or college","your home town","your favourite teacher","your daily routine","your favourite food","your hobby","your favourite festival","your dream job","your favourite subject","a movie you liked","a book you read","your last holiday","your city","your favourite sport","your role model","your happiest day","your favourite place","your morning routine"];
+  const talk = ["the importance of English","how you use your mobile phone","your goals for this year","a skill you want to learn","your favourite app","why education is important","a person you admire","a memorable trip","your favourite hobby","what you did last weekend"];
+  const roleplay = ["booking a train ticket","complaining about a late delivery","ordering food at a restaurant","asking for directions to the bus stand","introducing yourself in an interview","making a doctor's appointment","returning a defective product","asking about a job vacancy","greeting a new customer","handling an angry customer politely","enquiring about a course fee","checking into a hotel","asking your manager for leave","explaining a problem to tech support","welcoming a guest to your office"];
+  const opinion = ["online classes vs offline classes","living in a city vs a village","reading books vs watching videos","working from home vs the office","using cash vs UPI","should students learn coding","is social media good or bad","are exams the best way to judge students"];
+  const tense = ["Talk about what you did yesterday (use past tense).","Talk about your plans for tomorrow (use future tense).","Describe what you are doing right now (present continuous).","Talk about your daily habits (use present tense).","Describe a place you visited last year (past tense)."];
+  const mkWords = ["beautiful","because","success","opportunity","experience","confident","improve","important","future","careful","develop","language","practice","knowledge","interview","professional","customer","meeting","schedule","project"];
+  const fix = ["He go to school everyday.","She don't like coffee.","I am having two brothers.","They was playing cricket.","We discussed about the plan.","He is more taller than me.","I didn't went there.","She can sings well.","Myself Ravi.","He suggested me to wait."];
+  const iq = ["Tell me about yourself.","Why should we hire you?","What are your strengths?","What are your weaknesses?","Where do you see yourself in 5 years?","Why do you want this job?","Tell me about your family.","What are your hobbies?","Describe your college life.","Why did you choose your field?","What motivates you?","How do you handle stress?","What is your biggest achievement?","Are you a team player?","Do you have any questions for us?"];
+  describe.forEach(d => o.push({ title: "Describe", prompt: `Describe ${d} in 4-5 sentences in English.` }));
+  talk.forEach(t => o.push({ title: "Speak 1 minute", prompt: `Speak for about one minute about ${t}.` }));
+  roleplay.forEach(r => o.push({ title: "Role-play", prompt: `Role-play in English: ${r}.` }));
+  opinion.forEach(op => o.push({ title: "Give your opinion", prompt: `Give your opinion in English: ${op}.` }));
+  tense.forEach(s => o.push({ title: "Grammar practice", prompt: s }));
+  mkWords.forEach(w => o.push({ title: "Make a sentence", prompt: `Make a correct English sentence using the word '${w}'.` }));
+  fix.forEach(f => o.push({ title: "Correct the sentence", prompt: `Correct this English sentence and explain the fix: "${f}"` }));
+  iq.forEach(q => o.push({ title: "Interview answer", prompt: `Answer this interview question in spoken English: "${q}"` }));
+  return o;
+}
+function _genSQL() {
+  const tables = [
+    { t: "students", txt: "city", texts: ["name","city","grade"], nums: ["marks","age"] },
+    { t: "employees", txt: "dept", texts: ["name","dept","city"], nums: ["salary","age"] },
+    { t: "products", txt: "category", texts: ["name","category","brand"], nums: ["price","stock"] },
+    { t: "orders", txt: "status", texts: ["customer","status","city"], nums: ["amount","quantity"] },
+  ];
+  const thr = [50,100,500,1000,25,75,200,18];
+  const letters = ["A","S","R","M","K","P","B","D"];
+  const o = [];
+  tables.forEach(tb => {
+    o.push({ title: "Select all", prompt: `Select all columns from the ${tb.t} table.`, starter: "SELECT " });
+    tb.texts.forEach(c => o.push({ title: "Select column", prompt: `Select only the ${c} column from ${tb.t}.`, starter: "SELECT " }));
+    tb.nums.forEach(c => thr.slice(0, 4).forEach(v => o.push({ title: "WHERE filter", prompt: `Select rows from ${tb.t} where ${c} is greater than ${v}.`, starter: "SELECT " })));
+    tb.nums.forEach(c => o.push({ title: "ORDER BY", prompt: `Select all from ${tb.t} ordered by ${c} in descending order.`, starter: "SELECT " }));
+    o.push({ title: "COUNT rows", prompt: `Count how many rows are in the ${tb.t} table.`, starter: "SELECT " });
+    tb.nums.forEach(c => o.push({ title: "Average", prompt: `Find the average ${c} in ${tb.t}.`, starter: "SELECT " }));
+    tb.nums.forEach(c => o.push({ title: "Total (SUM)", prompt: `Find the total ${c} in ${tb.t}.`, starter: "SELECT " }));
+    o.push({ title: "DISTINCT", prompt: `Get the distinct ${tb.txt} values from ${tb.t}.`, starter: "SELECT " });
+    letters.slice(0, 4).forEach(L => o.push({ title: "LIKE", prompt: `Select rows from ${tb.t} where ${tb.texts[0]} starts with '${L}'.`, starter: "SELECT " }));
+    o.push({ title: "GROUP BY", prompt: `Count rows for each ${tb.txt} in ${tb.t}.`, starter: "SELECT " });
+  });
+  return o;
+}
+function _genAptitude() {
+  const o = [];
+  const perc = [5,10,12,15,20,25,30,40]; const base = [200,240,300,150,500,80,1200,450,600,720];
+  perc.forEach((p, i) => base.forEach((n, j) => { if ((i + j) % 2 === 0) o.push({ title: "Percentage", prompt: `What is ${p}% of ${_inr(n)}? Show the steps.` }); }));
+  const sets = [[12,18,24,30],[10,20,30],[5,15,25,35,45],[8,16,24],[100,200,300],[7,14,21,28],[9,18,27,36],[50,60,70,80]];
+  sets.forEach(s => o.push({ title: "Average", prompt: `Find the average of ${s.join(", ")}.` }));
+  const P = [1000,5000,2000,8000,12000,3000]; const R = [5,8,10,12]; const Tn = [2,3,4];
+  P.forEach(p => R.forEach(r => o.push({ title: "Simple interest", prompt: `Find the simple interest on ₹${_inr(p)} at ${r}% per year for ${Tn[(p + r) % Tn.length]} years.` })));
+  const cp = [200,500,800,1000,1500]; const sp = [250,600,720,1200,1800];
+  cp.forEach((c, i) => o.push({ title: "Profit %", prompt: `An item is bought for ₹${_inr(c)} and sold for ₹${_inr(sp[i])}. Find the profit or loss percentage.` }));
+  const dist = [120,150,180,240,300]; const time = [2,3,4,5,6];
+  dist.forEach((d, i) => o.push({ title: "Speed", prompt: `A vehicle travels ${d} km in ${time[i]} hours. Find its speed in km/h.` }));
+  const ratios = ["2:3","3:5","1:4","4:1","5:7","2:7"]; const money = [600,800,1000,1200];
+  ratios.forEach((rt, i) => money.forEach((m, j) => { if ((i + j) % 2 === 0) o.push({ title: "Ratio sharing", prompt: `Divide ₹${_inr(m)} between two people in the ratio ${rt}. How much does each get?` }); }));
+  const series = ["2, 6, 12, 20, 30","1, 4, 9, 16, 25","3, 6, 12, 24","5, 10, 20, 40","1, 1, 2, 3, 5, 8","2, 5, 10, 17, 26","10, 20, 30, 40","100, 90, 80, 70"];
+  series.forEach(s => o.push({ title: "Number series", prompt: `Find the next number in the series: ${s}, ?` }));
+  return o;
+}
+function _genPowerBI() {
+  const tables = ["Sales","Orders","Customers","Products","Revenue","Invoices"];
+  const cols = ["Amount","Quantity","Price","Total","Profit","Discount"];
+  const aggs = [["total","SUM"],["average","AVERAGE"],["highest","MAX"]];
+  const o = [];
+  tables.forEach(t => cols.forEach(c => aggs.forEach(a => o.push({ title: "DAX " + a[1], prompt: `Write a DAX measure for the ${a[0]} of ${t}[${c}].`, starter: "Measure = " }))));
+  const concepts = ["What is Power BI and where is it used? Give 2 examples.","Which visual is best for showing a monthly sales trend, and why?","How do you show only 'Completed' orders in a report? Describe the steps.","What is a relationship between two tables, and what is a one-to-many relationship?","What is a slicer in Power BI and when would you use it?","What is the difference between a calculated column and a measure?"];
+  concepts.forEach(c => o.push({ title: "Concept", prompt: c }));
+  return o;
+}
+
+const _LAB_GEN = {
+  python: _genPython(), excel: _genExcel(), tally: _genTally(), english: _genEnglish(),
+  sql: _genSQL(), webjs: _genWebJS(), java: _genJava(), aptitude: _genAptitude(), powerbi: _genPowerBI(),
+};
+const LAB_QUESTIONS = {};
+LABS.forEach(l => {
+  const seen = new Set();
+  const all = [];
+  [...(l.challenges || []), ...(_LAB_GEN[l.id] || [])].forEach(q => {
+    if (q && q.prompt && !seen.has(q.prompt)) { seen.add(q.prompt); all.push(q); }
+  });
+  LAB_QUESTIONS[l.id] = all.length ? all : (l.challenges || []);
+});
+
+// ── Dashboard hero: greeting + level/points in one professional card ─────────
+function DashboardHero({ user, onOpen }) {
+  const points = getPoints();
+  const lvl = getBeeLevel(points);
+  const streak = getStreak();
+  const h = new Date().getHours();
+  const greet = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  let dateStr = "";
+  try { dateStr = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" }); } catch { dateStr = ""; }
+  return (
+    <div style={{ background: "linear-gradient(135deg,#0f172a 0%,#134e4a 100%)", borderRadius: "var(--radius-xl)", padding: "24px 26px", marginBottom: 24, color: "white", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", right: -22, top: -22, width: 120, height: 120, opacity: 0.08, pointerEvents: "none" }}><img src={LOGO_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(10)" }} /></div>
+      <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.6)", fontWeight: 600, marginBottom: 5, letterSpacing: "0.02em" }}>{greet}{dateStr ? " · " + dateStr : ""}</div>
+      <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 3 }}>{user.name}</div>
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", marginBottom: 20 }}>{user.course ? user.course : "Welcome back to Allbee Learn AI"}</div>
+
+      <div onClick={() => onOpen && onOpen("rewards")} className="card-hover" style={{ cursor: "pointer", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "var(--radius-lg)", padding: "14px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(255,255,255,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{lvl.current.emoji}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700 }}>{lvl.current.name}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{points} points{streak.count > 0 ? "  ·  🔥 " + streak.count + "-day streak" : ""}</div>
+          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#5eead4", whiteSpace: "nowrap" }}>Rewards →</div>
+        </div>
+        <Bar pct={lvl.pct} color="rgba(255,255,255,0.92)" track="rgba(255,255,255,0.16)" height={6} />
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>{lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached 👑"}</div>
+      </div>
     </div>
   );
 }
