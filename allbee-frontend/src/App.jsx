@@ -6825,3 +6825,4 @@ function VoiceTeacherScreen({ user, onBack }) {
     </div>
   );
 }
+
