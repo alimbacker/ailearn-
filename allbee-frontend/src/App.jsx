@@ -338,6 +338,34 @@ const getSkillProgress = () => {
   });
 };
 
+// ── Real course progress: which lesson topics the student has actually read ──
+// Stored as { [courseId]: { [topic]: true } }. This powers the dashboard's
+// "My Learning" progress and the "Lessons read" count (and syncs to the cloud).
+const LESSONS_READ_KEY = "allbee_lessons_read";
+const getLessonProgress = () => {
+  try { return JSON.parse(localStorage.getItem(LESSONS_READ_KEY)) || {}; }
+  catch { return {}; }
+};
+const markLessonRead = (courseId, topic) => {
+  if (!courseId || !topic) return;
+  const all = getLessonProgress();
+  if (!all[courseId]) all[courseId] = {};
+  if (all[courseId][topic]) return;            // already counted — don't double-count
+  all[courseId][topic] = true;
+  try { localStorage.setItem(LESSONS_READ_KEY, JSON.stringify(all)); } catch { /* silent */ }
+  bumpProgress("lessonsRead");                 // increments the counter + syncs to cloud
+};
+
+// Fisher–Yates shuffle (used for randomising interview & lab questions)
+const shuffleArr = (arr) => {
+  const b = arr.slice();
+  for (let i = b.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = b[i]; b[i] = b[j]; b[j] = t;
+  }
+  return b;
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  ADMIN + LIVE CLASS + SHARED CLOUD  (added)
 //  ---------------------------------------------------------------------------
@@ -522,10 +550,11 @@ Rules:
 - Give content structure tips (how many slides, what to put on each)`,
 
   interviewQ: `You are an AI technical + HR interviewer at Allbee Learn AI for Tamil Nadu freshers.
-The user gives a JOB ROLE. Generate exactly 5 interview questions for that role, mixing basic technical and HR/behavioural questions, ordered easy to medium.
+The user gives a JOB ROLE plus a random variety seed. Generate 8 interview questions for that role, mixing basic technical, situational and HR/behavioural questions, ordered easy to medium.
 Rules:
-- Return ONLY the 5 questions, each on its own line, numbered 1-5. No preamble, no answers, no extra text.
+- Return ONLY the 8 questions, each on its own line, numbered 1-8. No preamble, no answers, no extra text.
 - Keep each question short and clear (one sentence).
+- IMPORTANT: vary the questions every time — use the variety seed to choose a DIFFERENT random mix of topics so repeated attempts are not the same.
 - Suitable for a fresher / entry-level candidate.`,
 
   interviewEval: `You are a supportive AI interviewer at Allbee Learn AI scoring a mock interview for a Tamil Nadu fresher.
@@ -614,7 +643,17 @@ FIT: <0-100>%
 💡 <one line of advice>
 Rules:
 - The FIRST line MUST start with "FIT:".
-- Keep it short. Tanglish is fine.`
+- Keep it short. Tanglish is fine.`,
+
+  labGen: `You are a practice-lab question setter at Allbee Learn AI for Tamil Nadu beginners.
+Given a LAB type, create ONE fresh, beginner-level practice challenge for that lab.
+Reply in EXACTLY this format and nothing else:
+TITLE: <a short 2-4 word title>
+CHALLENGE: <one or two sentences describing the task the student must solve>
+Rules:
+- Match the lab type (Python / Excel / Tally & GST / SQL / JavaScript / Java / Aptitude / Power BI / Spoken English).
+- Keep it beginner-friendly and solvable in a few lines or a short answer.
+- Use the variety seed to make it clearly different from common textbook questions.`
 };
 
 // ─── ICONS ───────────────────────────────────────────────────────────────────
@@ -1183,6 +1222,15 @@ const COURSES = CATEGORIES.flatMap((cat) =>
 );
 const COURSE_COUNT = COURSES.length;
 const CATEGORY_COUNT = CATEGORIES.length;
+
+// ⭐ Important / most-popular courses — shown FIRST on the Courses page and used
+// as "start these" suggestions on the dashboard. Edit this list to feature the
+// courses you actually teach. The remaining courses still appear below by category.
+const FEATURED_IDS = [
+  "excel", "tally-prime", "python", "gst-filing", "powerbi",
+  "ms-office-complete", "chatgpt-mastery", "canva-design-mastery", "ai-for-beginners",
+];
+const FEATURED_COURSES = FEATURED_IDS.map(id => COURSES.find(c => c.id === id)).filter(Boolean);
 
 // ─── PRE-WRITTEN LESSONS (load instantly, no AI needed) ───────────────────────
 // Keyed by course id -> topic title -> lesson text.
@@ -2913,7 +2961,7 @@ Write a 3-line application message you could send with a resume for a job you wa
 };
 
 // ─── DASHBOARD ────────────────────────────────────────────────────────────────
-const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen }) => {
+const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, onOpenCourse }) => {
   const [hist, setHist] = useState([]);
   useEffect(() => { setHist(getHistory()); }, []);
   const greetHour = new Date().getHours();
@@ -2955,7 +3003,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen }) 
       {/* NEW: gamification + stats + skill progress */}
       <DashboardBee onOpen={onOpen} />
       <DashboardStats />
-      <SkillProgress />
+      <CourseProgress onOpenCourse={onOpenCourse} onOpenCourses={onCourses} />
 
       {/* Feature grid */}
       <div className="section-label" style={{ marginBottom: 12 }}>🛠️ AI Learning Tools</div>
@@ -3424,8 +3472,8 @@ const HistoryScreen = ({ onBack }) => {
 };
 
 // ─── COURSES SCREEN ───────────────────────────────────────────────────────────
-const CoursesScreen = ({ onBack, onAskAI }) => {
-  const [selected, setSelected] = useState(null);
+const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
+  const [selected, setSelected] = useState(initialCourseId || null);
   const [lesson, setLesson]     = useState(null);  // { topic, c } currently being read
   const [query, setQuery]       = useState("");
   const [catFilter, setCatFilter] = useState("all");
@@ -3490,6 +3538,7 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
   // Open a lesson (content loads via the effect above)
   const openLesson = (course, topic) => {
     setLesson({ topic, c: course });
+    markLessonRead(course.id, topic);   // ← counts toward "My Learning" progress
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -3749,6 +3798,47 @@ const CoursesScreen = ({ onBack, onAskAI }) => {
           );
         })}
       </div>
+
+      {/* ⭐ Featured / important courses shown FIRST */}
+      {!q && catFilter === "all" && (
+        <div style={{ marginBottom: 30 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#d97706,#f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⭐</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: "var(--slate-900)" }}>Popular Courses</div>
+              <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>Most in-demand — start here 🔥</div>
+            </div>
+            <span style={{ background: "#fffbeb", color: "#d97706", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{FEATURED_COURSES.length}</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 14 }}>
+            {FEATURED_COURSES.map((c, i) => (
+              <button key={c.id} onClick={() => { setSelected(c.id); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="card card-hover" style={{ padding: 0, textAlign: "left", border: "1.5px solid #fde68a", animation: `fadeIn 0.35s ease ${Math.min(i * 0.05, 0.4)}s both`, cursor: "pointer", overflow: "hidden", background: "white" }}>
+                <div style={{ background: c.gradient, padding: "16px 18px 14px", position: "relative", overflow: "hidden" }}>
+                  <div style={{ position: "absolute", right: -10, top: -10, fontSize: 56, opacity: 0.15, pointerEvents: "none" }}>{c.emoji}</div>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div style={{ fontSize: 26 }}>{c.emoji}</div>
+                    <div style={{ background: "rgba(255,255,255,0.22)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 700, color: "white" }}>⭐ Popular</div>
+                  </div>
+                  <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "white", lineHeight: 1.3 }}>{c.title}</div>
+                </div>
+                <div style={{ padding: "12px 16px 14px" }}>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                    <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>⏱️ {c.duration}</span>
+                    <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>📘 {c.topics.length} lessons</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 12, lineHeight: 1.5 }}><strong style={{ color: "var(--slate-700)" }}>Topics:</strong> {c.topics.slice(0, 3).join(" · ")}{c.topics.length > 3 ? ` +${c.topics.length - 3} more` : ""}</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: c.color }}>View Details →</span>
+                    <span style={{ fontSize: 10.5, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>🤖 AI</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+          <div style={{ marginTop: 24, height: 1, background: "var(--slate-100)" }} />
+          <div className="section-label" style={{ marginTop: 18, marginBottom: 0 }}>All courses by category ↓</div>
+        </div>
+      )}
 
       {/* Category sections */}
       {visibleCats.length === 0 ? (
@@ -4028,6 +4118,7 @@ function DashboardStats() {
   const p = getProgress();
   const cards = [
     { emoji: "💬", label: "AI Questions", value: getHistory().length, color: "var(--blue-600)" },
+    { emoji: "📚", label: "Lessons Read", value: p.lessonsRead, color: "#0d9488" },
     { emoji: "🔥", label: "Day Streak", value: getStreak().count, color: "#d97706" },
     { emoji: "🎤", label: "Best Interview", value: bestInterviewScore() + "%", color: "#7c3aed" },
     { emoji: "🧪", label: "Labs Solved", value: p.labsDone, color: "#0891b2" },
@@ -4499,14 +4590,49 @@ function ResumeBuilderScreen({ user, onBack }) {
 // ═══════════════════════════════════════════════════════════════════════════
 //  AI MOCK INTERVIEW · role-based questions · voice · scoring · report
 // ═══════════════════════════════════════════════════════════════════════════
+const INTERVIEW_Q_COUNT = 8;
 const INTERVIEW_ROLES = [
-  { id: "Python Developer",  emoji: "🐍", bg: "#f0fdfa" },
-  { id: "Data Analyst",      emoji: "📊", bg: "#eff6ff" },
-  { id: "Accountant",        emoji: "🧾", bg: "#f0fdf4" },
-  { id: "Office Executive",  emoji: "🗂️", bg: "#fff7ed" },
-  { id: "Digital Marketing", emoji: "📣", bg: "#faf5ff" },
-  { id: "Customer Support",  emoji: "🎧", bg: "#fef2f2" },
+  { id: "Python Developer",       emoji: "🐍", bg: "#f0fdfa" },
+  { id: "Web Developer",          emoji: "🌐", bg: "#eef2ff" },
+  { id: "Java Developer",         emoji: "☕", bg: "#fff7ed" },
+  { id: "React Developer",        emoji: "⚛️", bg: "#ecfeff" },
+  { id: "Data Analyst",           emoji: "📊", bg: "#eff6ff" },
+  { id: "Power BI Developer",     emoji: "📈", bg: "#e0f2fe" },
+  { id: "Accountant",             emoji: "🧾", bg: "#f0fdf4" },
+  { id: "Tally / GST Accountant", emoji: "📒", bg: "#fefce8" },
+  { id: "Office Executive",       emoji: "🗂️", bg: "#fff7ed" },
+  { id: "Data Entry Operator",    emoji: "⌨️", bg: "#f1f5f9" },
+  { id: "Digital Marketing",      emoji: "📣", bg: "#faf5ff" },
+  { id: "SEO Specialist",         emoji: "🔍", bg: "#f5f3ff" },
+  { id: "Graphic Designer",       emoji: "🎨", bg: "#fdf2f8" },
+  { id: "Video Editor",           emoji: "🎬", bg: "#fef2f2" },
+  { id: "Content Writer",         emoji: "✍️", bg: "#f0fdfa" },
+  { id: "Sales Executive",        emoji: "🤝", bg: "#fffbeb" },
+  { id: "HR Executive",           emoji: "👔", bg: "#eff6ff" },
+  { id: "Customer Support",       emoji: "🎧", bg: "#fef2f2" },
 ];
+
+// Fallback questions if the AI is momentarily unavailable — shuffled per attempt
+// and flavoured with the chosen role so they still feel relevant.
+const fallbackInterviewQuestions = (role) => {
+  const bank = [
+    "Tell me about yourself.",
+    "Why do you want to work as a " + role + "?",
+    "What are your biggest strengths, and one weakness?",
+    "Describe a project or task you are proud of.",
+    "How do you handle pressure or tight deadlines?",
+    "Where do you see yourself in 2 years?",
+    "Why should we hire you for this role?",
+    "How do you keep your skills up to date?",
+    "Tell me about a time you solved a difficult problem.",
+    "What do you know about our company and industry?",
+    "How do you work as part of a team?",
+    "What are the most important skills for a " + role + "?",
+    "How do you handle feedback or criticism?",
+    "Describe a mistake you made and what you learned.",
+  ];
+  return shuffleArr(bank).slice(0, INTERVIEW_Q_COUNT);
+};
 
 function InterviewScreen({ onBack }) {
   const [stage, setStage] = useState("pick");  // pick | answer | result
@@ -4519,20 +4645,15 @@ function InterviewScreen({ onBack }) {
   const start = async (r) => {
     setRole(r); setLoading(true); setStage("answer"); setResult(null);
     try {
-      const out = await callAI(PROMPTS.interviewQ, "Role: " + r);
+      const seed = Math.random().toString(36).slice(2, 8);
+      const out = await callAI(PROMPTS.interviewQ, "Role: " + r + "\nVariety seed: " + seed + " (use this to randomise the mix so repeats differ)");
       const qs = out.split("\n").map(l => l.trim()).filter(l => l && /[a-zA-Z]/.test(l))
-        .map(l => l.replace(/^\d+[\).\-:]?\s*/, "")).filter(Boolean).slice(0, 5);
-      const list = qs.length ? qs : [
-        "Tell me about yourself.",
-        "Why do you want this role?",
-        "What are your key strengths?",
-        "Describe a project or task you worked on.",
-        "Where do you see yourself in 2 years?",
-      ];
+        .map(l => l.replace(/^\d+[\).\-:]?\s*/, "")).filter(Boolean).slice(0, INTERVIEW_Q_COUNT);
+      const list = qs.length >= 3 ? qs : fallbackInterviewQuestions(r);
       setQuestions(list); setAnswers(list.map(() => ""));
     } catch (e) {
-      setQuestions(["Tell me about yourself.", "Why this role?", "Your strengths?", "A project you did?", "Your goals?"]);
-      setAnswers(["", "", "", "", ""]);
+      const list = fallbackInterviewQuestions(r);
+      setQuestions(list); setAnswers(list.map(() => ""));
     }
     setLoading(false);
   };
@@ -4573,7 +4694,7 @@ function InterviewScreen({ onBack }) {
         <ScreenHeader emoji="🎤" title="AI Mock Interview" subtitle="Pick a role — AI will interview & score you" onBack={onBack} tint="#f5f3ff" />
         <div className="card" style={{ padding: "16px 18px", marginBottom: 18, display: "flex", gap: 12, alignItems: "center", background: "linear-gradient(135deg,#faf5ff,#ffffff)" }}>
           <div style={{ fontSize: 26 }}>🧑‍💼</div>
-          <div style={{ fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>Choose a role. You'll get <b>5 questions</b>, answer by typing{SPEECH_OK ? " or voice" : ""}, then get a <b>score /100</b> with feedback and a downloadable report.</div>
+          <div style={{ fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>Choose a role. You'll get <b>{INTERVIEW_Q_COUNT} questions</b>, answer by typing{SPEECH_OK ? " or voice" : ""}, then get a <b>score /100</b> with feedback and a downloadable report.</div>
         </div>
         <div className="section-label" style={{ marginBottom: 12 }}>Choose a role</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
@@ -4660,6 +4781,17 @@ const LABS = [
       { title: "Even or Odd", prompt: "Read a number n and print 'Even' or 'Odd'.", starter: "n = 7\n# your code" },
       { title: "Reverse a string", prompt: "Reverse the string 'allbee' and print it.", starter: "s = 'allbee'\n# your code" },
       { title: "Count vowels", prompt: "Count how many vowels are in 'education' and print the count.", starter: "word = 'education'\n# your code" },
+      { title: "Largest of three", prompt: "Given a=5, b=9, c=2, print the largest value.", starter: "a, b, c = 5, 9, 2\n# your code" },
+      { title: "Factorial", prompt: "Print the factorial of 5 (i.e. 5*4*3*2*1).", starter: "n = 5\n# your code" },
+      { title: "Multiplication table", prompt: "Print the multiplication table of 7 from 1 to 10.", starter: "n = 7\n# your code" },
+      { title: "Palindrome check", prompt: "Check if 'madam' is a palindrome and print True or False.", starter: "s = 'madam'\n# your code" },
+      { title: "Sum of digits", prompt: "Print the sum of the digits of 1234 (1+2+3+4).", starter: "n = 1234\n# your code" },
+      { title: "FizzBuzz", prompt: "Print 1 to 15. Print 'Fizz' for multiples of 3, 'Buzz' for 5, 'FizzBuzz' for both.", starter: "# your code" },
+      { title: "Count words", prompt: "Count the words in 'learn python with allbee' and print the count.", starter: "text = 'learn python with allbee'\n# your code" },
+      { title: "Max without max()", prompt: "Find the largest number in [12, 45, 2, 89, 33] without using max().", starter: "nums = [12, 45, 2, 89, 33]\n# your code" },
+      { title: "Simple interest", prompt: "Compute simple interest for P=1000, R=5, T=2 and print it. (SI = P*R*T/100)", starter: "P, R, T = 1000, 5, 2\n# your code" },
+      { title: "Remove duplicates", prompt: "Remove duplicates from [1, 2, 2, 3, 3, 3] and print the unique list.", starter: "nums = [1, 2, 2, 3, 3, 3]\n# your code" },
+      { title: "Dictionary lookup", prompt: "Given prices = {'pen': 10, 'book': 50}, print the price of 'book'.", starter: "prices = {'pen': 10, 'book': 50}\n# your code" },
     ],
   },
   {
@@ -4672,17 +4804,36 @@ const LABS = [
       { title: "IF Pass/Fail", prompt: "In C2, show 'Pass' if A2 >= 35, else 'Fail'.", starter: "=" },
       { title: "VLOOKUP", prompt: "Look up the name in F2 within table A2:C50 and return the 3rd column (exact match).", starter: "=" },
       { title: "COUNTIF", prompt: "Count how many cells in D2:D100 are equal to 'Yes'.", starter: "=" },
+      { title: "SUMIF", prompt: "Sum the amounts in B2:B100 where the category in A2:A100 is 'Sales'.", starter: "=" },
+      { title: "MAX value", prompt: "Write a formula to find the highest value in E2:E50.", starter: "=" },
+      { title: "Join names", prompt: "Join the first name in A2 and last name in B2 with a space between them.", starter: "=" },
+      { title: "First 3 letters", prompt: "Get the first 3 characters of the text in A2.", starter: "=" },
+      { title: "ROUND", prompt: "Round the value in A2 to 2 decimal places.", starter: "=" },
+      { title: "Today's date", prompt: "Write a formula that shows today's date.", starter: "=" },
+      { title: "COUNTA", prompt: "Count the non-empty cells in A2:A100.", starter: "=" },
+      { title: "IFERROR", prompt: "Divide A2 by B2, but show 0 if there is an error.", starter: "=" },
+      { title: "LEN", prompt: "Count how many characters are in the text in A2.", starter: "=" },
+      { title: "Percentage", prompt: "In C2, show what percentage A2 is of B2 (e.g. marks out of total).", starter: "=" },
+      { title: "Nested IF grade", prompt: "In C2: show 'A' if A2>=75, 'B' if A2>=50, otherwise 'C'.", starter: "=" },
     ],
   },
   {
-    id: "tally", label: "Tally Lab", emoji: "🧾", color: "#b45309", bg: "#fff7ed", mono: false, voice: false,
+    id: "tally", label: "Tally & GST Lab", emoji: "🧾", color: "#b45309", bg: "#fff7ed", mono: false, voice: false,
     intro: "Practice journal entries & GST. AI checks debit/credit and GST treatment.",
     ph: "Dr … / Cr … (with amounts)",
     challenges: [
-      { title: "Paid rent by cash", prompt: "Pass the journal entry: Paid office rent ₹5,000 by cash.", starter: "" },
-      { title: "Purchase with GST", prompt: "Purchased goods worth ₹10,000 + 18% GST from a supplier on credit. Pass the entry.", starter: "" },
-      { title: "Cash sales", prompt: "Made cash sales of ₹8,000. Pass the journal entry.", starter: "" },
-      { title: "Salary payable", prompt: "Salary of ₹20,000 is due but not yet paid. Pass the entry.", starter: "" },
+      { title: "Paid rent by cash", prompt: "Pass the journal entry: Paid office rent ₹5,000 by cash." },
+      { title: "Purchase with GST", prompt: "Purchased goods worth ₹10,000 + 18% GST from a supplier on credit. Pass the entry." },
+      { title: "Cash sales", prompt: "Made cash sales of ₹8,000. Pass the journal entry." },
+      { title: "Salary payable", prompt: "Salary of ₹20,000 is due but not yet paid. Pass the entry." },
+      { title: "Sales with GST", prompt: "Sold goods worth ₹25,000 + 18% GST to a customer on credit. Pass the entry." },
+      { title: "Bought furniture", prompt: "Bought office furniture worth ₹15,000 by cheque. Pass the entry." },
+      { title: "Cash to bank", prompt: "Deposited ₹12,000 cash into the bank. Pass the entry." },
+      { title: "Discount allowed", prompt: "Received ₹4,800 from a customer in full settlement of ₹5,000 due. Pass the entry." },
+      { title: "Owner's capital", prompt: "The owner started the business with ₹1,00,000 cash. Pass the entry." },
+      { title: "Electricity bill", prompt: "Paid the electricity bill ₹1,200 by cash. Pass the entry." },
+      { title: "GST calculation", prompt: "Goods worth ₹6,000 attract 12% GST. Find the CGST, SGST and the total invoice value." },
+      { title: "Purchase return", prompt: "Returned defective goods worth ₹2,000 to a supplier (originally bought on credit). Pass the entry." },
     ],
   },
   {
@@ -4694,11 +4845,165 @@ const LABS = [
       { title: "Your daily routine", prompt: "Describe your daily routine using present-tense sentences." },
       { title: "Favourite subject", prompt: "Talk about your favourite subject and why you like it." },
       { title: "Handle a customer", prompt: "A customer is unhappy about a late delivery. Respond politely in English." },
+      { title: "Describe your town", prompt: "Describe your town or village in 4-5 sentences." },
+      { title: "Talk about a hobby", prompt: "Talk about a hobby you enjoy and why you like it." },
+      { title: "Ask for directions", prompt: "You are lost. Politely ask a stranger for directions to the railway station." },
+      { title: "Phone call", prompt: "Role-play a phone call to book an appointment with a doctor." },
+      { title: "Weekend plans", prompt: "Talk about your plans for the coming weekend using future tense." },
+      { title: "Past experience", prompt: "Describe something interesting you did last month using past tense." },
+      { title: "Give an opinion", prompt: "Do you think online classes are better than offline classes? Give your opinion in English." },
+      { title: "Your strengths", prompt: "Explain your top three strengths for a job, in simple spoken English." },
+    ],
+  },
+  {
+    id: "sql", label: "SQL Lab", emoji: "🗃️", color: "#4f46e5", bg: "#eef2ff", mono: true, voice: false,
+    intro: "Practice database queries. AI checks your SQL and shows the correct query.",
+    ph: "SELECT ...",
+    challenges: [
+      { title: "Select all", prompt: "Write a query to select all columns from a table named students.", starter: "SELECT " },
+      { title: "Select columns", prompt: "Select only the name and marks columns from students.", starter: "SELECT " },
+      { title: "WHERE filter", prompt: "Select students whose marks are greater than 50.", starter: "SELECT " },
+      { title: "ORDER BY", prompt: "Select all students ordered by marks in descending order.", starter: "SELECT " },
+      { title: "COUNT rows", prompt: "Count how many rows are in the students table.", starter: "SELECT " },
+      { title: "Average marks", prompt: "Find the average of the marks column in students.", starter: "SELECT " },
+      { title: "DISTINCT", prompt: "Get the list of distinct cities from the students table.", starter: "SELECT " },
+      { title: "LIKE", prompt: "Select students whose name starts with the letter 'A'.", starter: "SELECT " },
+      { title: "GROUP BY", prompt: "Count how many students are in each city.", starter: "SELECT " },
+      { title: "INSERT", prompt: "Insert a new student ('Ravi', 78) into students(name, marks).", starter: "INSERT " },
+      { title: "UPDATE", prompt: "Update the marks to 90 for the student named 'Ravi'.", starter: "UPDATE " },
+      { title: "DELETE", prompt: "Delete the student named 'Ravi' from the table.", starter: "DELETE " },
+    ],
+  },
+  {
+    id: "webjs", label: "Web / JavaScript Lab", emoji: "🟨", color: "#7c3aed", bg: "#f5f3ff", mono: true, voice: false,
+    intro: "Practice JavaScript & web basics. AI checks your code and explains fixes.",
+    ph: "// write your JavaScript here",
+    challenges: [
+      { title: "Log a message", prompt: "Print 'Hello Allbee' to the console.", starter: "// your code" },
+      { title: "Add two numbers", prompt: "Create variables a=5 and b=7 and log their sum.", starter: "let a = 5, b = 7;\n// your code" },
+      { title: "Even or odd", prompt: "Given n = 9, log 'Even' or 'Odd'.", starter: "let n = 9;\n// your code" },
+      { title: "Array sum", prompt: "Sum the array [10, 20, 30] and log the total.", starter: "let nums = [10, 20, 30];\n// your code" },
+      { title: "Uppercase", prompt: "Convert 'allbee' to uppercase and log it.", starter: "let s = 'allbee';\n// your code" },
+      { title: "Loop 1 to 5", prompt: "Use a for loop to log the numbers 1 to 5.", starter: "// your code" },
+      { title: "Greet function", prompt: "Write a function greet(name) that returns 'Hi ' + name.", starter: "// your code" },
+      { title: "Array length", prompt: "Log how many items are in ['a', 'b', 'c', 'd'].", starter: "// your code" },
+      { title: "Reverse string", prompt: "Reverse the string 'code' and log the result.", starter: "let s = 'code';\n// your code" },
+      { title: "Find max", prompt: "Log the largest number in [3, 9, 1, 7].", starter: "let nums = [3, 9, 1, 7];\n// your code" },
+      { title: "Change text (DOM)", prompt: "Write JS to set the text of the element with id 'title' to 'Welcome'.", starter: "// your code" },
+      { title: "Button click", prompt: "Add a click event to a button with id 'btn' that shows an alert 'Clicked!'.", starter: "// your code" },
+    ],
+  },
+  {
+    id: "java", label: "Java Lab", emoji: "☕", color: "#ea580c", bg: "#fff7ed", mono: true, voice: false,
+    intro: "Practice core Java. AI checks your logic & syntax and shows corrected code.",
+    ph: "// write your Java here",
+    challenges: [
+      { title: "Print message", prompt: "Print 'Hello Allbee' to the console in Java.", starter: "public class Main {\n  public static void main(String[] args) {\n    // your code\n  }\n}" },
+      { title: "Add two numbers", prompt: "Declare int a=5 and b=7 and print their sum.", starter: "int a = 5, b = 7;\n// your code" },
+      { title: "Even or odd", prompt: "Given int n = 8, print 'Even' or 'Odd'.", starter: "int n = 8;\n// your code" },
+      { title: "For loop", prompt: "Print the numbers 1 to 5 using a for loop.", starter: "// your code" },
+      { title: "Sum of array", prompt: "Sum int[] nums = {4, 8, 15} and print the total.", starter: "int[] nums = {4, 8, 15};\n// your code" },
+      { title: "String length", prompt: "Print the length of the string \"java\".", starter: "String s = \"java\";\n// your code" },
+      { title: "Largest of two", prompt: "Given a=10 and b=20, print the larger number.", starter: "int a = 10, b = 20;\n// your code" },
+      { title: "Reverse a number", prompt: "Reverse the number 123 and print it (321).", starter: "int n = 123;\n// your code" },
+      { title: "Factorial", prompt: "Print the factorial of 5.", starter: "int n = 5;\n// your code" },
+      { title: "Multiplication table", prompt: "Print the multiplication table of 6 from 1 to 10.", starter: "int n = 6;\n// your code" },
+    ],
+  },
+  {
+    id: "aptitude", label: "Aptitude & Reasoning Lab", emoji: "🧠", color: "#0891b2", bg: "#ecfeff", mono: false, voice: false,
+    intro: "Sharpen aptitude for placements. Solve, then AI checks your answer & method.",
+    ph: "Write your answer and the steps…",
+    challenges: [
+      { title: "Percentage", prompt: "What is 15% of 240? Show your working." },
+      { title: "Average", prompt: "Find the average of 12, 18, 24 and 30." },
+      { title: "Ratio sharing", prompt: "Divide ₹600 between A and B in the ratio 2:3. How much does each get?" },
+      { title: "Simple interest", prompt: "Find the simple interest on ₹5,000 at 8% per year for 3 years." },
+      { title: "Profit percent", prompt: "An item is bought for ₹200 and sold for ₹250. Find the profit percentage." },
+      { title: "Time & work", prompt: "If 4 workers finish a job in 6 days, how many days will 3 workers take?" },
+      { title: "Speed", prompt: "A car travels 150 km in 3 hours. What is its speed in km/h?" },
+      { title: "Number series", prompt: "Find the next number: 2, 6, 12, 20, 30, ?" },
+      { title: "Odd one out", prompt: "Which number is the odd one out: 3, 5, 7, 9, 11? Why?" },
+      { title: "Ages", prompt: "A is twice as old as B. If B is 12, how old is A?" },
+      { title: "Compare fractions", prompt: "Which is greater: 3/4 or 5/8? Show why." },
+      { title: "Coding-decoding", prompt: "If CAT is written as DBU, how is DOG written?" },
+    ],
+  },
+  {
+    id: "powerbi", label: "Power BI / Data Lab", emoji: "📈", color: "#d97706", bg: "#fffbeb", mono: false, voice: false,
+    intro: "Practice DAX & data thinking. AI checks your measure or reasoning.",
+    ph: "Write your DAX measure or answer…",
+    challenges: [
+      { title: "What is Power BI", prompt: "In your own words, what is Power BI used for? Give 2 real examples." },
+      { title: "DAX total", prompt: "Write a DAX measure that totals a column named Sales[Amount].", starter: "Total Sales = " },
+      { title: "DAX average", prompt: "Write a DAX measure for the average of Sales[Amount].", starter: "Avg Sales = " },
+      { title: "DAX count rows", prompt: "Write a DAX measure that counts the rows of the Sales table.", starter: "Row Count = " },
+      { title: "Relationship", prompt: "You have Sales and Customers tables. Which column would relate them, and what type of relationship is it?" },
+      { title: "Choose a chart", prompt: "You want to show the monthly sales trend. Which visual would you use and why?" },
+      { title: "Filter orders", prompt: "How would you show only 'Completed' orders in a report? Describe the steps." },
+      { title: "DAX with filter", prompt: "Write a DAX measure for total Sales[Amount] only for the 'South' region.", starter: "South Sales = " },
     ],
   },
 ];
 
-function LabRunner({ lab, ch, onBack }) {
+// ── One challenge at a time: shuffles the question bank + endless AI challenges
+function LabSession({ lab, onBack }) {
+  const [order, setOrder] = useState(() => shuffleArr(lab.challenges.map((_, i) => i)));
+  const [pos, setPos] = useState(0);
+  const [aiCh, setAiCh] = useState(null);       // an AI-generated challenge, or null
+  const [generating, setGenerating] = useState(false);
+  const [nonce, setNonce] = useState(0);        // bump → remount LabRunner with a fresh answer box
+
+  const bankCh = lab.challenges[order[pos]] || lab.challenges[0];
+  const current = aiCh || bankCh;
+  const total = lab.challenges.length;
+
+  const next = () => {
+    setAiCh(null);
+    setPos((p) => {
+      const np = p + 1;
+      if (np >= order.length) { setOrder(shuffleArr(lab.challenges.map((_, i) => i))); return 0; }
+      return np;
+    });
+    setNonce((n) => n + 1);
+  };
+
+  const newAI = async () => {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const seed = Math.random().toString(36).slice(2, 8);
+      const out = await callAI(PROMPTS.labGen, "LAB: " + lab.label + "\nCreate ONE fresh beginner challenge. Variety seed: " + seed);
+      const tM = out.match(/TITLE:\s*(.+)/i);
+      const cM = out.match(/CHALLENGE:\s*([\s\S]+)/i);
+      const title = (tM ? tM[1] : "AI Challenge").trim().slice(0, 60);
+      const prompt = (cM ? cM[1] : out).trim();
+      const starter = lab.mono ? (String(lab.ph).trim().startsWith("=") ? "=" : "") : "";
+      setAiCh({ title, prompt, starter });
+      setNonce((n) => n + 1);
+    } catch (e) {
+      next(); // if AI is unavailable, just move to the next bank question
+    }
+    setGenerating(false);
+  };
+
+  return (
+    <LabRunner
+      key={lab.id + "-" + nonce}
+      lab={lab}
+      ch={current}
+      onBack={onBack}
+      qIndex={aiCh ? 0 : pos + 1}
+      qTotal={total}
+      isAI={!!aiCh}
+      onNext={next}
+      onNewAI={newAI}
+      generating={generating}
+    />
+  );
+}
+
+function LabRunner({ lab, ch, onBack, qIndex, qTotal, isAI, onNext, onNewAI, generating }) {
   const [code, setCode] = useState(ch.starter || "");
   const [loading, setLoading] = useState(false);
   const [fb, setFb] = useState("");
@@ -4722,8 +5027,14 @@ function LabRunner({ lab, ch, onBack }) {
   return (
     <div style={PAGE}>
       <ScreenHeader emoji={lab.emoji} title={ch.title} subtitle={lab.label} onBack={onBack} tint={lab.bg} />
+
       <div className="card" style={{ padding: "16px 18px", marginBottom: 14, borderLeft: "4px solid " + lab.color }}>
-        <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)", marginBottom: 6 }}>Challenge</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)" }}>Challenge</div>
+          <span style={{ fontSize: 11, fontWeight: 700, color: lab.color, background: lab.bg, padding: "3px 10px", borderRadius: 99 }}>
+            {isAI ? "🎲 AI question" : (qTotal ? "Question " + qIndex + " of " + qTotal : "")}
+          </span>
+        </div>
         <div style={{ fontSize: 14.5, color: "var(--slate-800)", lineHeight: 1.6 }}>{ch.prompt}</div>
       </div>
 
@@ -4741,12 +5052,20 @@ function LabRunner({ lab, ch, onBack }) {
       </div>
 
       {fb && (
-        <div className="card fade-in" style={{ padding: "16px 18px" }}>
+        <div className="card fade-in" style={{ padding: "16px 18px", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <div style={{ width: 9, height: 9, borderRadius: "50%", background: rColor }} />
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "var(--slate-900)" }}>{resultLine.replace(/^RESULT:\s*/i, "") || "Result"}</div>
           </div>
           <div className="output-box"><AiText text={fb.replace(/^RESULT:.*\n?/i, "")} /></div>
+        </div>
+      )}
+
+      {/* One-at-a-time navigation */}
+      {(onNext || onNewAI) && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {onNext && <button className="btn-primary" style={{ flex: 1, justifyContent: "center", minWidth: 150, background: lab.color, border: "none" }} onClick={onNext}>Next question →</button>}
+          {onNewAI && <button className="btn-secondary" style={{ flex: 1, justifyContent: "center", minWidth: 150, color: lab.color, borderColor: lab.color + "55" }} onClick={onNewAI} disabled={generating}>{generating ? <><span className="spinner spinner-blue" /> Generating…</> : <>🎲 New AI question</>}</button>}
         </div>
       )}
     </div>
@@ -4755,42 +5074,22 @@ function LabRunner({ lab, ch, onBack }) {
 
 function LabsScreen({ onBack }) {
   const [lab, setLab] = useState(null);
-  const [ch, setCh] = useState(null);
+  if (lab) return <LabSession lab={lab} onBack={() => setLab(null)} />;
 
-  if (lab && ch) return <LabRunner lab={lab} ch={ch} onBack={() => setCh(null)} />;
-
-  if (lab) {
-    return (
-      <div style={PAGE}>
-        <ScreenHeader emoji={lab.emoji} title={lab.label} subtitle="Pick a challenge" onBack={() => setLab(null)} tint={lab.bg} />
-        <div className="card" style={{ padding: "14px 16px", marginBottom: 16, background: "linear-gradient(135deg," + lab.bg + ",#ffffff)" }}>
-          <div style={{ fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>{lab.intro}</div>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
-          {lab.challenges.map((c, i) => (
-            <button key={i} onClick={() => setCh(c)} className="card card-hover" style={{ padding: "18px 18px", textAlign: "left", cursor: "pointer", background: "white" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <div style={{ width: 30, height: 30, borderRadius: 8, background: lab.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: lab.color }}>{i + 1}</div>
-                <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14.5, fontWeight: 700, color: "var(--slate-900)" }}>{c.title}</div>
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>{c.prompt}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
+  const totalQ = LABS.reduce((a, l) => a + l.challenges.length, 0);
   return (
     <div style={PAGE}>
       <ScreenHeader emoji="🧪" title="AI Practice Labs" subtitle="Hands-on practice with instant AI feedback" onBack={onBack} tint="#ecfeff" />
+      <div className="card" style={{ padding: "12px 16px", marginBottom: 16, background: "linear-gradient(135deg,#ecfeff,#ffffff)", fontSize: 13, color: "var(--slate-600)", lineHeight: 1.6 }}>
+        {LABS.length} topics · {totalQ}+ practice questions · one question at a time, plus endless 🎲 AI-generated challenges.
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
         {LABS.map((l, i) => (
           <button key={l.id} onClick={() => setLab(l)} className="card card-hover" style={{ padding: "22px 20px", textAlign: "left", cursor: "pointer", background: "white", animation: `fadeIn 0.4s ease ${i * 0.05}s both` }}>
             <div style={{ width: 46, height: 46, background: l.bg, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, marginBottom: 14 }}>{l.emoji}</div>
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15.5, fontWeight: 700, color: "var(--slate-900)", marginBottom: 6 }}>{l.label}</div>
             <div style={{ fontSize: 13, color: "var(--slate-500)", lineHeight: 1.5 }}>{l.intro}</div>
-            <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: l.color, display: "flex", alignItems: "center", gap: 4 }}>{l.challenges.length} challenges <span style={{ fontSize: 14 }}>→</span></div>
+            <div style={{ marginTop: 12, fontSize: 12, fontWeight: 600, color: l.color, display: "flex", alignItems: "center", gap: 4 }}>{l.challenges.length}+ questions <span style={{ fontSize: 14 }}>→</span></div>
           </button>
         ))}
       </div>
@@ -5026,6 +5325,7 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [activeFeature, setActiveFeature] = useState(null);
   const [courseQuestion, setCourseQuestion] = useState("");
+  const [coursePreselect, setCoursePreselect] = useState(null);
 
   useEffect(() => {
     try { updateStreak(); } catch (e) { /* */ }
@@ -5041,7 +5341,7 @@ export default function App() {
 
   if (user.isAdmin) return <AdminScreen onExit={logout} />;
 
-  const handleNav = (v) => setView(v);
+  const handleNav = (v) => { if (v === "courses") setCoursePreselect(null); setView(v); };
 
   const handleAskAI = (question) => {
     setCourseQuestion(question);
@@ -5056,9 +5356,10 @@ export default function App() {
           user={user}
           onFeature={id => { setActiveFeature(id); setView("feature"); }}
           onHistory={() => setView("history")}
-          onCourses={() => setView("courses")}
+          onCourses={() => { setCoursePreselect(null); setView("courses"); }}
           onLogout={logout}
           onOpen={setView}
+          onOpenCourse={(id) => { setCoursePreselect(id); setView("courses"); }}
         />
       )}
       {view === "feature" && activeFeature && activeFeature !== "msoffice" && (
@@ -5069,6 +5370,8 @@ export default function App() {
       )}
       {view === "courses" && (
         <CoursesScreen
+          key={coursePreselect || "list"}
+          initialCourseId={coursePreselect}
           onBack={() => setView("dashboard")}
           onAskAI={(q) => { setCourseQuestion(q); setActiveFeature("doubt"); setView("courseask"); }}
         />
@@ -5774,6 +6077,64 @@ function AdminScreen({ onExit }) {
             The admin code keeps students out in normal use, but a technical person could read it from the app's code. For a class app that's usually fine. For stronger protection, host the admin page separately or add a real server login later.
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Dashboard "My Learning": real progress on started courses + start suggestions
+function CourseProgress({ onOpenCourse, onOpenCourses }) {
+  const prog = getLessonProgress();
+  const started = COURSES
+    .map((c) => {
+      const readMap = prog[c.id] || {};
+      const read = c.topics.filter((t) => readMap[t]).length;
+      return { c, read, total: c.topics.length, pct: c.topics.length ? Math.round((read / c.topics.length) * 100) : 0 };
+    })
+    .filter((x) => x.read > 0)
+    .sort((a, b) => b.pct - a.pct || b.read - a.read)
+    .slice(0, 6);
+
+  const hasStarted = started.length > 0;
+  const suggestions = FEATURED_COURSES.slice(0, 6);
+
+  return (
+    <div className="card" style={{ padding: "18px 20px", marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: hasStarted ? 14 : 8 }}>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "var(--slate-900)", display: "flex", alignItems: "center", gap: 8 }}>📚 My Learning</div>
+        <button onClick={onOpenCourses} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--blue-600)", fontSize: 12.5, fontWeight: 700 }}>Browse all →</button>
+      </div>
+
+      {hasStarted ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {started.map(({ c, read, total, pct }) => (
+            <button key={c.id} onClick={() => onOpenCourse && onOpenCourse(c.id)} style={{ background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", width: "100%" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                <span style={{ fontSize: 18 }}>{c.emoji}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 600, color: "var(--slate-700)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: c.color }}>{pct}%</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 99, background: "var(--slate-100)", overflow: "hidden" }}>
+                <div style={{ width: pct + "%", height: "100%", borderRadius: 99, background: c.gradient, transition: "width .4s" }} />
+              </div>
+              <div style={{ fontSize: 11, color: "var(--slate-400)", marginTop: 4 }}>{read} of {total} lessons read{pct === 100 ? " · ✅ done" : " · continue →"}</div>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <>
+          <div style={{ fontSize: 13, color: "var(--slate-500)", lineHeight: 1.6, marginBottom: 14 }}>
+            You haven't started a course yet. Tap one below to read your first lesson — your progress will then show up here. 🐝
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
+            {suggestions.map((c) => (
+              <button key={c.id} onClick={() => onOpenCourse && onOpenCourse(c.id)} className="card-hover" style={{ display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1px solid " + c.color + "22", background: c.bg, cursor: "pointer", textAlign: "left" }}>
+                <span style={{ fontSize: 20, flexShrink: 0 }}>{c.emoji}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: c.color, lineHeight: 1.25 }}>{c.title}</span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
