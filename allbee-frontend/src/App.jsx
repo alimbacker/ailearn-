@@ -478,6 +478,42 @@ const setTeacherNote = async (course, topic, text) => {
   return map;
 };
 
+// ── Admin job postings (shared via the Sheet; students only see, admin posts) ─
+const JOBS_CACHE_KEY = "allbee_jobs_cache";
+const getJobsLocal  = () => { try { return JSON.parse(localStorage.getItem(JOBS_CACHE_KEY)) || []; } catch { return []; } };
+const saveJobsLocal = (arr) => { try { localStorage.setItem(JOBS_CACHE_KEY, JSON.stringify(arr)); } catch { /* */ } };
+const fetchCloudJobs = async () => {
+  if (cloudEnabled()) {
+    const r = await cloudGet("jobs");
+    if (r && Array.isArray(r.jobs)) { saveJobsLocal(r.jobs); return r.jobs; }
+  }
+  return getJobsLocal();
+};
+const setCloudJob = async (job) => {
+  const arr = getJobsLocal().filter(j => j.id !== job.id);
+  arr.unshift(job); saveJobsLocal(arr);
+  if (cloudEnabled()) { try { await cloudPost({ action: "setJob", job }); } catch { /* */ } }
+  return arr;
+};
+const deleteCloudJob = async (id) => {
+  const arr = getJobsLocal().filter(j => j.id !== id); saveJobsLocal(arr);
+  if (cloudEnabled()) { try { await cloudPost({ action: "deleteJob", id }); } catch { /* */ } }
+  return arr;
+};
+
+// ── Certificates: student requests, teacher approves (shared via the Sheet) ──
+const normPhone10 = (p) => String(p || "").replace(/\D/g, "").slice(-10);
+const fetchCerts = async () => {
+  if (cloudEnabled()) { const r = await cloudGet("certs"); if (r && Array.isArray(r.certs)) return r.certs; }
+  return [];
+};
+const requestCert = async (phone, name, course) => {
+  if (cloudEnabled()) { try { await cloudPost({ action: "requestCert", cert: { phone: normPhone10(phone), name, course } }); } catch { /* */ } }
+};
+const decideCert = async (phone, course, status) => {
+  if (cloudEnabled()) { try { await cloudPost({ action: "decideCert", cert: { phone: normPhone10(phone), course, status } }); } catch { /* */ } }
+};
+
 // ── Local log of class recordings made ON THIS device ────────────────────────
 const REC_LOG_KEY  = "allbee_recordings";
 const getRecordings = () => { try { return JSON.parse(localStorage.getItem(REC_LOG_KEY)) || []; } catch { return []; } };
@@ -4389,16 +4425,18 @@ const POINT_RULES = [
 ];
 
 function CertificateBlock({ user }) {
-  const [name, setName] = useState(user?.name || "");
+  const phone = normPhone10(user && user.phone);
+  const [certs, setCerts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [course, setCourse] = useState("");
-  const [cert, setCert] = useState(null);
-  const genCode = () => "ALB-" + Math.random().toString(36).slice(2, 8).toUpperCase() + "-" + new Date().getFullYear();
-  const generate = () => {
-    if (!name.trim() || !course.trim()) return;
-    const c = { name: name.trim(), course: course.trim(), date: new Date().toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }), code: genCode() };
-    setCert(c);
-    bumpProgress("certificates");
-  };
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const myCerts = certs.filter(c => normPhone10(c.phone) === phone);
+
+  const load = async () => { setLoading(true); const all = await fetchCerts(); setCerts(all || []); setLoading(false); };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
   const certHTML = (c) => `<!doctype html><html><head><meta charset="utf-8"><title>${esc(c.course)} Certificate</title>
   <style>body{margin:0;font-family:Georgia,serif;background:#f8fafc}
   .cert{width:900px;max-width:96%;margin:24px auto;background:#fff;border:10px solid #0d9488;border-radius:14px;padding:48px 56px;text-align:center;position:relative}
@@ -4419,41 +4457,62 @@ function CertificateBlock({ user }) {
   <div class="name">${esc(c.name)}</div>
   <div class="sub">for successfully completing</div>
   <div class="course">${esc(c.course)}</div>
-  <div class="meta">Issued on ${esc(c.date)} &nbsp;·&nbsp; Verification ID: ${esc(c.code)}</div>
-  <div class="foot"><div class="sig">Allbee Solutions</div><div style="font-size:12px;color:#94a3b8">Verify at allbee · ID ${esc(c.code)}</div><div class="sig">Course Director</div></div>
+  <div class="meta">Issued on ${esc(c.date || "")} &nbsp;·&nbsp; Verification ID: ${esc(c.code || "")}</div>
+  <div class="foot"><div class="sig">Allbee Solutions</div><div style="font-size:12px;color:#94a3b8">Approved by your teacher</div><div class="sig">Course Director</div></div>
   </div><script>window.onload=function(){setTimeout(function(){window.print()},300)}</script></body></html>`;
+
+  const request = async () => {
+    const cName = (course || (user && user.course) || "").trim();
+    if (!cName) { setMsg("Please choose a course first."); return; }
+    if (!cloudEnabled()) { setMsg("Certificates are approved by your teacher and need the class Google Sheet connected."); return; }
+    if (myCerts.some(c => c.course === cName && (c.status || "pending") !== "rejected")) { setMsg("You already requested a certificate for this course."); return; }
+    setBusy(true); setMsg("");
+    await requestCert(phone, (user && user.name) || "", cName);
+    await load();
+    setBusy(false);
+    setMsg("✅ Request sent! Your teacher will review and approve it.");
+  };
+
   return (
     <div className="card" style={{ padding: "18px 20px", marginBottom: 20 }}>
-      <div className="section-label" style={{ marginBottom: 12 }}>🎓 Generate a Certificate</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="Student name" style={{ fontSize: 14 }} />
-        <input value={course} onChange={e => setCourse(e.target.value)} placeholder="Course name (e.g., Python Basics)" style={{ fontSize: 14 }} />
-      </div>
-      <button className="btn-primary" onClick={generate}><Icon name="award" size={16} color="white" /> Generate Certificate</button>
+      <div className="section-label" style={{ marginBottom: 6 }}>🎓 Certificates</div>
+      <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 14, lineHeight: 1.6 }}>Request a certificate for a course you've completed. Your teacher approves it, then you can download it.</div>
 
-      {cert && (
-        <div className="fade-in" style={{ marginTop: 18 }}>
-          <div style={{ border: "6px solid var(--blue-600)", borderRadius: 14, padding: "26px 22px", textAlign: "center", background: "linear-gradient(180deg,#ffffff,#f0fdfa)" }}>
-            <div style={{ fontSize: 11, letterSpacing: 2, textTransform: "uppercase", color: "var(--slate-400)", fontWeight: 700 }}>Allbee Solutions · Learn. Grow. Succeed.</div>
-            <div style={{ width: 90, height: 5, background: "linear-gradient(90deg,#115e59,#14b8a6)", borderRadius: 99, margin: "10px auto" }} />
-            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, color: "var(--blue-800)" }}>Certificate of Completion</div>
-            <div style={{ fontSize: 12, color: "var(--slate-400)", marginTop: 8 }}>proudly presented to</div>
-            <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 26, fontWeight: 800, color: "var(--slate-900)", margin: "6px 0" }}>{cert.name}</div>
-            <div style={{ fontSize: 12, color: "var(--slate-400)" }}>for successfully completing</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: "var(--blue-700)", margin: "4px 0 14px" }}>{cert.course}</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18, flexWrap: "wrap" }}>
-              <PseudoQR text={cert.code} size={92} />
-              <div style={{ textAlign: "left", fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.7 }}>
-                <div>Issued: <b style={{ color: "var(--slate-700)" }}>{cert.date}</b></div>
-                <div>Verify ID: <b style={{ color: "var(--slate-700)" }}>{cert.code}</b></div>
-                <div style={{ color: "var(--slate-400)" }}>Scan the code to verify</div>
+      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 12.5, marginBottom: 12, lineHeight: 1.6 }}>⚠️ Certificate approval needs your class Google Sheet connected. Please ask your teacher.</div>}
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <select value={course} onChange={e => setCourse(e.target.value)} style={{ flex: 1, minWidth: 200, padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--slate-200)", fontSize: 14, background: "white" }}>
+          <option value="">Choose a course…</option>
+          {COURSES.map(c => <option key={c.id} value={c.title}>{c.emoji} {c.title}</option>)}
+        </select>
+        <button className="btn-primary" onClick={request} disabled={busy}>{busy ? <><span className="spinner" /> Sending…</> : <><Icon name="award" size={16} color="white" /> Request certificate</>}</button>
+      </div>
+      {msg && <div style={{ fontSize: 12.5, color: "var(--slate-600)", marginTop: 10 }}>{msg}</div>}
+
+      {loading ? (
+        <div style={{ marginTop: 14, color: "var(--slate-500)", fontSize: 13 }}><span className="spinner spinner-blue" /> Loading your certificates…</div>
+      ) : myCerts.length > 0 && (
+        <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="section-label" style={{ marginBottom: 0 }}>My requests</div>
+          {myCerts.map((c, i) => {
+            const st = c.status || "pending";
+            const badge = st === "approved" ? { t: "✅ Approved", bg: "#dcfce7", fg: "#166534" } : st === "rejected" ? { t: "✕ Not approved", bg: "#fee2e2", fg: "#b91c1c" } : { t: "⏳ Pending", bg: "#fef9c3", fg: "#854d0e" };
+            return (
+              <div key={i} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--slate-800)" }}>{c.course}</div>
+                  <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>{c.code ? "ID " + c.code + " · " : ""}{st === "approved" ? "Approved by teacher" : st === "rejected" ? "Please talk to your teacher" : "Waiting for teacher approval"}</div>
+                </div>
+                <span style={{ background: badge.bg, color: badge.fg, fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{badge.t}</span>
+                {st === "approved" && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn-primary" onClick={() => printHTML(certHTML(c))} style={{ padding: "8px 12px" }}><Icon name="download" size={14} color="white" /> PDF</button>
+                    <button className="btn-secondary" onClick={() => downloadDoc(certHTML(c), c.course + "-Certificate.doc")} style={{ padding: "8px 12px" }}>Word</button>
+                  </div>
+                )}
               </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-            <button className="btn-primary" onClick={() => printHTML(certHTML(cert))}><Icon name="download" size={15} color="white" /> Download PDF</button>
-            <button className="btn-secondary" onClick={() => downloadDoc(certHTML(cert), `${cert.course}-Certificate.doc`)}>Download Word</button>
-          </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -5283,18 +5342,7 @@ function LabsScreen({ onBack }) {
 //  JOB PORTAL · search · apply · save · track · AI fit · employer post
 // ═══════════════════════════════════════════════════════════════════════════
 const JOB_CATS = ["All", "Python", "Data", "Accounts", "Office", "Marketing", "Support", "Web"];
-const SEED_JOBS = [
-  { id: "j1", title: "Junior Python Developer", company: "Zephyr Tech", location: "Coimbatore", type: "Full-time", exp: "0-1 yr", salary: "₹2.5–3.5 LPA", cat: "Python", skills: ["Python", "SQL", "Git"], desc: "Write and debug Python scripts, work with REST APIs and databases. Freshers with a project portfolio are welcome." },
-  { id: "j2", title: "Data Analyst Trainee", company: "InsightWorks", location: "Chennai", type: "Full-time", exp: "0-2 yr", salary: "₹3–4 LPA", cat: "Data", skills: ["Excel", "SQL", "Power BI"], desc: "Clean data, build dashboards in Power BI and present insights. Strong Excel and basic SQL required." },
-  { id: "j3", title: "Accounts Executive (Tally)", company: "Sri Balaji Traders", location: "Trichy", type: "Full-time", exp: "0-1 yr", salary: "₹1.8–2.6 LPA", cat: "Accounts", skills: ["Tally Prime", "GST", "MS Excel"], desc: "Maintain day books, GST filing support and ledger reconciliation in Tally Prime." },
-  { id: "j4", title: "Back Office Executive", company: "NovaBPO", location: "Madurai", type: "Full-time", exp: "Fresher", salary: "₹1.6–2.2 LPA", cat: "Office", skills: ["MS Office", "Typing", "Data Entry"], desc: "Handle data entry, documentation and MS Office reports. Good typing speed preferred." },
-  { id: "j5", title: "Digital Marketing Intern", company: "Reach Media", location: "Remote", type: "Internship", exp: "Fresher", salary: "₹8–12k/mo", cat: "Marketing", skills: ["Social Media", "Canva", "SEO"], desc: "Create social posts, run basic SEO tasks and assist campaigns. Creativity + Canva skills valued." },
-  { id: "j6", title: "Customer Support Associate", company: "HelpHive", location: "Chennai", type: "Full-time", exp: "0-1 yr", salary: "₹2–2.8 LPA", cat: "Support", skills: ["Communication", "Spoken English", "CRM"], desc: "Resolve customer queries over chat/voice. Clear spoken English and patience required." },
-  { id: "j7", title: "Junior Web Developer", company: "Pixelo", location: "Coimbatore", type: "Full-time", exp: "0-2 yr", salary: "₹2.8–4 LPA", cat: "Web", skills: ["HTML", "CSS", "JavaScript"], desc: "Build responsive web pages with HTML, CSS and JavaScript. React knowledge is a plus." },
-  { id: "j8", title: "Power BI Analyst", company: "GridData", location: "Remote", type: "Full-time", exp: "1-2 yr", salary: "₹4–6 LPA", cat: "Data", skills: ["Power BI", "DAX", "Excel"], desc: "Design interactive Power BI reports and DAX measures for business teams." },
-  { id: "j9", title: "Python Automation Intern", company: "AutoNest", location: "Remote", type: "Internship", exp: "Fresher", salary: "₹10–15k/mo", cat: "Python", skills: ["Python", "Automation", "APIs"], desc: "Automate repetitive tasks with Python scripts and simple bots. Great for learners." },
-  { id: "j10", title: "Junior Accountant", company: "Kavery Foods", location: "Trichy", type: "Full-time", exp: "0-1 yr", salary: "₹1.9–2.7 LPA", cat: "Accounts", skills: ["Tally Prime", "GST", "Bookkeeping"], desc: "Record purchases/sales, assist monthly GST and support audits." },
-];
+const SEED_JOBS = [];  // sample jobs removed — real openings are posted by the admin
 
 const loadArr = (k) => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; } };
 const saveArr = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } };
@@ -5385,16 +5433,22 @@ function JobsScreen({ onBack, onOpen }) {
   const [cat, setCat] = useState("All");
   const [saved, setSaved] = useState(() => loadArr(JOBS_SAVED_KEY));
   const [apps, setApps] = useState(() => loadArr(JOBS_APPLIED_KEY));
-  const [posted, setPosted] = useState(() => loadArr(JOBS_POSTED_KEY));
+  const [posted, setPosted] = useState(() => getJobsLocal());
+  useEffect(() => { fetchCloudJobs().then(setPosted).catch(() => {}); }, []);
   const [sel, setSel] = useState(null);
   const [form, setForm] = useState({ title: "", company: "", location: "", salary: "", skills: "", desc: "" });
 
-  const allJobs = [...posted, ...SEED_JOBS];
+  const allJobs = posted;
   const isSaved = (id) => saved.includes(id);
   const isApplied = (id) => apps.some(a => a.jobId === id);
 
   const toggleSave = (id) => { const n = isSaved(id) ? saved.filter(x => x !== id) : [...saved, id]; setSaved(n); saveArr(JOBS_SAVED_KEY, n); };
-  const apply = (id) => { if (isApplied(id)) return; const n = [{ jobId: id, date: new Date().toISOString(), status: "Applied" }, ...apps]; setApps(n); saveArr(JOBS_APPLIED_KEY, n); bumpProgress("jobsApplied"); setSel(null); setTab("applied"); };
+  const apply = (id) => {
+    if (isApplied(id)) return;
+    const job = allJobs.find(j => j.id === id);
+    if (job && job.applyUrl) { try { window.open(job.applyUrl, "_blank", "noopener,noreferrer"); } catch { /* */ } }
+    const n = [{ jobId: id, date: new Date().toISOString(), status: "Applied" }, ...apps]; setApps(n); saveArr(JOBS_APPLIED_KEY, n); bumpProgress("jobsApplied"); setSel(null); setTab("applied");
+  };
   const withdraw = (id) => { const n = apps.filter(a => a.jobId !== id); setApps(n); saveArr(JOBS_APPLIED_KEY, n); setSel(null); };
 
   const filtered = allJobs.filter(j => {
@@ -5412,12 +5466,12 @@ function JobsScreen({ onBack, onOpen }) {
     setForm({ title: "", company: "", location: "", salary: "", skills: "", desc: "" }); setTab("browse");
   };
 
-  const TABS = [{ id: "browse", label: "Browse" }, { id: "saved", label: `Saved (${saved.length})` }, { id: "applied", label: `Applied (${apps.length})` }, { id: "post", label: "Post a Job" }];
+  const TABS = [{ id: "browse", label: "Browse" }, { id: "saved", label: `Saved (${saved.length})` }, { id: "applied", label: `Applied (${apps.length})` }];
 
   return (
     <div style={PAGE}>
       <ScreenHeader emoji="💼" title="Job Portal" subtitle="Search · apply · save · track" onBack={onBack} tint="#fffbeb" />
-      <div style={{ fontSize: 11.5, color: "var(--slate-400)", marginBottom: 12 }}>Sample listings for practice. Apply, save and track just like a real portal.</div>
+      <div style={{ fontSize: 11.5, color: "var(--slate-400)", marginBottom: 12 }}>Openings shared by your teacher — apply, save and track your applications.</div>
 
       {/* Tabs */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
@@ -5439,7 +5493,7 @@ function JobsScreen({ onBack, onOpen }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
             {filtered.length ? filtered.map(j => <JobCard key={j.id} job={j} saved={isSaved(j.id)} applied={isApplied(j.id)} onOpen={setSel} onToggleSave={toggleSave} />)
-              : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "30px 0" }}>No jobs match your search.</div>}
+              : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "40px 16px" }}>{allJobs.length === 0 ? <><div style={{ fontSize: 40, marginBottom: 10 }}>💼</div><div style={{ fontWeight: 700, color: "var(--slate-600)", marginBottom: 4 }}>No job openings yet</div><div style={{ fontSize: 13 }}>Your teacher will post openings here soon — check back later.</div></> : "No jobs match your search."}</div>}
           </div>
         </>
       )}
@@ -5910,7 +5964,7 @@ function LiveClassScreen({ user, onBack, host }) {
   const topic  = (live && live.topic) ? live.topic : "";
   const isLive = live ? live.liveOn : null;
   const displayName = host ? "👨‍🏫 Teacher" : (user && user.name ? user.name : "Student");
-  const showRoom = host || joined || isLive === true || isLive === null;
+  const showRoom = host || isLive === true;   // students join ONLY when the teacher has started
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 12px 96px" }}>
@@ -5928,12 +5982,11 @@ function LiveClassScreen({ user, onBack, host }) {
         {host && <RecordButton compact />}
       </div>
 
-      {!host && isLive === false && !joined && (
-        <div className="card" style={{ padding: 24, textAlign: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>⏳</div>
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16, marginBottom: 6 }}>No live class right now</div>
-          <div style={{ fontSize: 13.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Your teacher hasn't started the class yet. A red “LIVE” banner will appear on your home screen when it begins. You can still enter the room below to test your camera &amp; mic.</div>
-          <button className="btn-secondary" onClick={() => setJoined(true)}>Enter room anyway →</button>
+      {!host && isLive !== true && (
+        <div className="card" style={{ padding: 28, textAlign: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 44, marginBottom: 10 }}>⏳</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 6 }}>No live class right now</div>
+          <div style={{ fontSize: 13.5, color: "var(--slate-500)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>Your teacher hasn't started a class yet. When they do, a red <b>LIVE</b> banner appears on your home screen and this room opens automatically. 🐝</div>
         </div>
       )}
 
@@ -6068,6 +6121,8 @@ function AdminScreen({ onExit }) {
     { id: "overview",   label: "Overview",   emoji: "📊" },
     { id: "students",   label: "Students",   emoji: "👥" },
     { id: "notes",      label: "Notes",      emoji: "📝" },
+    { id: "jobs",       label: "Jobs",       emoji: "💼" },
+    { id: "certs",      label: "Certificates", emoji: "🎓" },
     { id: "live",       label: "Live Class", emoji: "🔴" },
     { id: "recordings", label: "Recordings", emoji: "🎥" },
     { id: "setup",      label: "Setup",      emoji: "⚙️" },
@@ -6240,6 +6295,8 @@ function AdminScreen({ onExit }) {
       )}
 
       {!loading && tab === "notes" && <AdminNotes />}
+      {!loading && tab === "jobs" && <AdminJobs />}
+      {!loading && tab === "certs" && <AdminCerts />}
 
       {!loading && tab === "setup" && (
         <div className="fade-in" style={{ maxWidth: 720 }}>
@@ -6861,6 +6918,123 @@ function VoiceTeacherScreen({ user, onBack }) {
         <button className="btn-primary" onClick={() => { handleUser(input); setInput(""); }} disabled={thinking || !input.trim()} style={{ flexShrink: 0 }}>Ask</button>
       </div>
       {!SPEECH_OK && <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>ℹ️ Voice input needs Chrome or Edge. You can type your question above and still hear the spoken answer.</div>}
+    </div>
+  );
+}
+
+// ── Admin → Jobs: teacher posts real openings that students see & apply to ────
+function AdminJobs() {
+  const [jobs, setJobs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const blank = { title: "", company: "", location: "", type: "Full-time", salary: "", cat: "All", skills: "", applyUrl: "", desc: "" };
+  const [f, setF] = useState(blank);
+
+  const load = async () => { setLoading(true); setJobs(await fetchCloudJobs()); setLoading(false); };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const save = async () => {
+    if (!f.title.trim() || !f.company.trim()) return;
+    setSaving(true);
+    const job = { id: editId || ("job-" + Date.now()), title: f.title.trim(), company: f.company.trim(), location: f.location.trim() || "Remote", type: f.type || "Full-time", salary: f.salary.trim() || "Negotiable", cat: f.cat || "All", skills: f.skills.split(",").map(s => s.trim()).filter(Boolean), applyUrl: f.applyUrl.trim(), desc: f.desc.trim() || "", exp: "Fresher" };
+    await setCloudJob(job);
+    setF(blank); setEditId(null);
+    await load(); setSaving(false);
+  };
+  const edit = (j) => { setEditId(j.id); setF({ title: j.title || "", company: j.company || "", location: j.location || "", type: j.type || "Full-time", salary: j.salary || "", cat: j.cat || "All", skills: (j.skills || []).join(", "), applyUrl: j.applyUrl || "", desc: j.desc || "" }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const del = async (id) => { await deleteCloudJob(id); await load(); };
+  const inp = { width: "100%", padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--slate-200)", fontSize: 14, background: "white" };
+
+  return (
+    <div className="fade-in" style={{ maxWidth: 760 }}>
+      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>⚠️ Connect your Google Sheet (Setup tab) so posted jobs reach students on their phones. Jobs save on this device meanwhile.</div>}
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 14 }}>{editId ? "✏️ Edit job" : "➕ Post a job opening"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+          <input placeholder="Job title *" value={f.title} onChange={e => setF({ ...f, title: e.target.value })} style={inp} />
+          <input placeholder="Company *" value={f.company} onChange={e => setF({ ...f, company: e.target.value })} style={inp} />
+          <input placeholder="Location (e.g. Chennai / Remote)" value={f.location} onChange={e => setF({ ...f, location: e.target.value })} style={inp} />
+          <input placeholder="Salary (e.g. ₹2–3 LPA)" value={f.salary} onChange={e => setF({ ...f, salary: e.target.value })} style={inp} />
+          <select value={f.type} onChange={e => setF({ ...f, type: e.target.value })} style={inp}>{["Full-time", "Part-time", "Internship", "Contract"].map(t => <option key={t}>{t}</option>)}</select>
+          <select value={f.cat} onChange={e => setF({ ...f, cat: e.target.value })} style={inp}>{JOB_CATS.map(c => <option key={c}>{c}</option>)}</select>
+        </div>
+        <input placeholder="Skills (comma separated: Python, SQL, Excel)" value={f.skills} onChange={e => setF({ ...f, skills: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+        <input placeholder="Apply link (a website URL or mailto:hr@company.com) — optional" value={f.applyUrl} onChange={e => setF({ ...f, applyUrl: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+        <textarea placeholder="Short description" value={f.desc} onChange={e => setF({ ...f, desc: e.target.value })} rows={3} style={{ ...inp, marginBottom: 12, fontFamily: "'DM Sans', sans-serif" }} />
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn-primary" onClick={save} disabled={saving || !f.title.trim() || !f.company.trim()}>{saving ? <><span className="spinner" /> Saving…</> : (editId ? "Save changes" : "Post job")}</button>
+          {editId && <button className="btn-secondary" onClick={() => { setF(blank); setEditId(null); }}>Cancel</button>}
+          <button className="btn-ghost" onClick={load} style={{ marginLeft: "auto" }}>Refresh</button>
+        </div>
+      </div>
+
+      <div className="section-label" style={{ marginBottom: 10 }}>Posted jobs ({jobs.length})</div>
+      {loading ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-500)" }}><span className="spinner spinner-blue" /> Loading…</div>
+        : jobs.length === 0 ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-400)", fontSize: 13.5 }}>No jobs posted yet. Add one above ↑</div>
+        : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {jobs.map(j => (
+              <div key={j.id} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--slate-800)" }}>{j.title}</div>
+                  <div style={{ fontSize: 12, color: "var(--slate-400)" }}>{j.company} · {j.location} · {j.salary}{j.applyUrl ? " · has apply link" : ""}</div>
+                </div>
+                <button className="btn-ghost" onClick={() => edit(j)} style={{ fontSize: 12.5 }}>Edit</button>
+                <button className="btn-ghost" onClick={() => del(j.id)} style={{ fontSize: 12.5, color: "var(--red-500)" }}>Delete</button>
+              </div>
+            ))}
+          </div>}
+    </div>
+  );
+}
+
+// ── Admin → Certificates: approve/reject student certificate requests ─────────
+function AdminCerts() {
+  const [certs, setCerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+
+  const load = async () => { setLoading(true); setCerts(await fetchCerts()); setLoading(false); };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  const decide = async (c, status) => { setBusy(c.phone + c.course); await decideCert(c.phone, c.course, status); await load(); setBusy(""); };
+
+  const pending = certs.filter(c => (c.status || "pending") === "pending");
+  const others = certs.filter(c => (c.status || "pending") !== "pending");
+  const row = (c, showActions) => (
+    <div key={c.phone + c.course} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--slate-800)" }}>{c.name || "Student"} <span style={{ color: "var(--slate-400)", fontWeight: 500 }}>· {c.phone}</span></div>
+        <div style={{ fontSize: 12, color: "var(--slate-400)" }}>{c.course}{c.code ? " · ID " + c.code : ""}</div>
+      </div>
+      {showActions ? (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn-primary" onClick={() => decide(c, "approved")} disabled={busy === c.phone + c.course} style={{ padding: "8px 14px", background: "#16a34a" }}>✓ Approve</button>
+          <button className="btn-secondary" onClick={() => decide(c, "rejected")} disabled={busy === c.phone + c.course} style={{ padding: "8px 14px", color: "var(--red-500)", borderColor: "#fecaca" }}>Reject</button>
+        </div>
+      ) : (
+        <span style={{ background: c.status === "approved" ? "#dcfce7" : "#fee2e2", color: c.status === "approved" ? "#166534" : "#b91c1c", fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{c.status === "approved" ? "✅ Approved" : "✕ Rejected"}{c.status === "approved" ? "" : ""}</span>
+      )}
+      {c.status !== "pending" && !showActions && c.status === "rejected" && <button className="btn-ghost" onClick={() => decide(c, "approved")} style={{ fontSize: 12 }}>Approve now</button>}
+    </div>
+  );
+
+  return (
+    <div className="fade-in" style={{ maxWidth: 760 }}>
+      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>⚠️ Connect your Google Sheet (Setup tab) so students can request certificates and you can approve them.</div>}
+      <div className="card" style={{ padding: 18, marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>Students request a certificate for a completed course; approve it here and it becomes downloadable for them.</div>
+        <button className="btn-ghost" onClick={load}>Refresh</button>
+      </div>
+
+      <div className="section-label" style={{ marginBottom: 10 }}>Pending approval ({pending.length})</div>
+      {loading ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-500)" }}><span className="spinner spinner-blue" /> Loading…</div>
+        : pending.length === 0 ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-400)", fontSize: 13.5 }}>No pending requests. 🎉</div>
+        : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{pending.map(c => row(c, true))}</div>}
+
+      {others.length > 0 && <>
+        <div className="section-label" style={{ margin: "18px 0 10px" }}>Decided ({others.length})</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{others.map(c => row(c, false))}</div>
+      </>}
     </div>
   );
 }
