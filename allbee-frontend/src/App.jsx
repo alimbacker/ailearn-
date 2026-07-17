@@ -3027,6 +3027,25 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
       <DashboardStats />
       <CourseProgress onOpenCourse={onOpenCourse} onOpenCourses={onCourses} />
 
+      {/* AI Tutor + Voice Teacher — flagship AI features */}
+      <div className="section-label" style={{ marginBottom: 12 }}>AI Tutor</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 28 }}>
+        <button onClick={() => onOpen("tutor")} className="card-hover" style={{ textAlign: "left", cursor: "pointer", border: "none", borderRadius: "var(--radius-xl)", padding: "20px 22px", color: "white", background: "linear-gradient(135deg,#4338ca 0%,#6366f1 100%)", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", right: -10, top: -10, fontSize: 78, opacity: 0.16 }}>🤖</div>
+          <div style={{ fontSize: 30, marginBottom: 10 }}>🤖</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, marginBottom: 4 }}>AI Tutor</div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>Ask anything — chat with examples, quizzes & notes in Tamil, English, Hindi or Arabic.</div>
+          <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 700, color: "white", display: "flex", alignItems: "center", gap: 4 }}>Start chatting →</div>
+        </button>
+        <button onClick={() => onOpen("voice")} className="card-hover" style={{ textAlign: "left", cursor: "pointer", border: "none", borderRadius: "var(--radius-xl)", padding: "20px 22px", color: "white", background: "linear-gradient(135deg,#0e7490 0%,#06b6d4 100%)", position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", right: -10, top: -10, fontSize: 78, opacity: 0.16 }}>🎙️</div>
+          <div style={{ fontSize: 30, marginBottom: 10 }}>🎙️</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, marginBottom: 4 }}>AI Voice Teacher</div>
+          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>Speak your question and hear the answer spoken back — with language & speed control.</div>
+          <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 700, color: "white", display: "flex", alignItems: "center", gap: 4 }}>Talk to your tutor →</div>
+        </button>
+      </div>
+
       {/* Feature grid */}
       <div className="section-label" style={{ marginBottom: 12 }}>AI Learning Tools</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 16, marginBottom: 32 }}>
@@ -4132,6 +4151,35 @@ const speak = (text) => {
     window.speechSynthesis.speak(u);
   } catch { /* silent */ }
 };
+
+// Voice output with language + speed control (used by the AI Voice Teacher).
+let _voicesCache = [];
+const _loadVoices = () => { try { _voicesCache = window.speechSynthesis.getVoices() || []; } catch { _voicesCache = []; } };
+if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  _loadVoices();
+  try { window.speechSynthesis.onvoiceschanged = _loadVoices; } catch { /* */ }
+}
+const pickVoice = (langCode) => {
+  if (!_voicesCache.length) _loadVoices();
+  const lc = (langCode || "en-IN").toLowerCase();
+  const base = lc.slice(0, 2);
+  return _voicesCache.find(v => (v.lang || "").toLowerCase() === lc)
+      || _voicesCache.find(v => (v.lang || "").toLowerCase().startsWith(base))
+      || null;
+};
+const speakAdvanced = (text, langCode = "en-IN", rate = 1, onEnd) => {
+  try {
+    if (!("speechSynthesis" in window)) { if (onEnd) onEnd(); return; }
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = langCode; u.rate = Math.max(0.5, Math.min(1.6, rate));
+    const v = pickVoice(langCode); if (v) u.voice = v;
+    if (onEnd) u.onend = onEnd;
+    window.speechSynthesis.speak(u);
+  } catch { if (onEnd) onEnd(); }
+};
+const stopSpeaking = () => { try { window.speechSynthesis.cancel(); } catch { /* silent */ } };
+const TTS_OK = typeof window !== "undefined" && "speechSynthesis" in window;
 const SPEECH_OK = typeof window !== "undefined" && ("webkitSpeechRecognition" in window || "SpeechRecognition" in window);
 function MicButton({ onResult, lang = "en-IN", label = "Speak" }) {
   const [listening, setListening] = useState(false);
@@ -5504,6 +5552,8 @@ export default function App() {
       {view === "jobs" && <JobsScreen onBack={() => setView("dashboard")} onOpen={setView} />}
       {view === "rewards" && <RewardsScreen user={user} onBack={() => setView("dashboard")} onOpen={setView} />}
       {view === "live" && <LiveClassScreen user={user} onBack={() => setView("dashboard")} />}
+      {view === "tutor" && <AITutorScreen user={user} onBack={() => setView("dashboard")} />}
+      {view === "voice" && <VoiceTeacherScreen user={user} onBack={() => setView("dashboard")} />}
       <BottomNav view={view} onNav={handleNav} />
     </div>
   );
@@ -6536,6 +6586,242 @@ function DashboardHero({ user, onOpen }) {
         <Bar pct={lvl.pct} color="rgba(255,255,255,0.92)" track="rgba(255,255,255,0.16)" height={6} />
         <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>{lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached 👑"}</div>
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  AI TUTOR (ChatGPT-style, multi-language) + AI VOICE TEACHER
+// ═══════════════════════════════════════════════════════════════════════════
+const TUTOR_LANGS = [
+  { id: "en", label: "English", native: "English", rec: "en-IN", tts: "en-IN", rtl: false, instr: "Respond in clear, simple English." },
+  { id: "ta", label: "Tamil",   native: "தமிழ்",   rec: "ta-IN", tts: "ta-IN", rtl: false, instr: "Respond in Tamil (தமிழ்) using simple, clear language. Technical terms may stay in English." },
+  { id: "hi", label: "Hindi",   native: "हिन्दी",  rec: "hi-IN", tts: "hi-IN", rtl: false, instr: "Respond in Hindi (हिन्दी) using simple, clear language. Technical terms may stay in English." },
+  { id: "ar", label: "Arabic",  native: "العربية", rec: "ar-SA", tts: "ar-SA", rtl: true,  instr: "Respond in Modern Standard Arabic (العربية) using simple, clear language. Technical terms may stay in English." },
+];
+const TUTOR_CHAT_KEY = "allbee_tutor_chat";
+const VOICE_CHAT_KEY = "allbee_voice_chat";
+const tutorSys = (lang, spoken) =>
+  "You are Allbee AI Tutor, a friendly expert teacher for students and job-seekers in Tamil Nadu (courses include Python, C, C++, Web Development, MS Office, Advanced Excel, Power BI, Tally, GST, Spoken English and AI tools). " +
+  "Teach clearly and simply, step by step, with a concrete example. " + lang.instr + " " +
+  (spoken
+    ? "This answer will be READ ALOUD, so keep it short and conversational — about 3 to 6 sentences. Do not use bullet points or symbols. "
+    : "Use short paragraphs and simple bullet points (•) where helpful. ") +
+  "Do NOT use markdown symbols like # or *.";
+
+function AITutorScreen({ user, onBack }) {
+  const [langId, setLangId] = useState("en");
+  const [messages, setMessages] = useState(() => { try { return JSON.parse(localStorage.getItem(TUTOR_CHAT_KEY)) || []; } catch { return []; } });
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [speakingIdx, setSpeakingIdx] = useState(-1);
+  const endRef = useRef(null);
+  const lang = TUTOR_LANGS.find(l => l.id === langId) || TUTOR_LANGS[0];
+
+  useEffect(() => { try { localStorage.setItem(TUTOR_CHAT_KEY, JSON.stringify(messages.slice(-60))); } catch { /* */ } }, [messages]);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => () => stopSpeaking(), []);
+
+  const ask = async (textOverride) => {
+    const q = (textOverride != null ? textOverride : input).trim();
+    if (!q || loading) return;
+    const next = [...messages, { role: "user", text: q }];
+    setMessages(next); setInput(""); setLoading(true);
+    const ctx = next.slice(-7, -1).map(m => (m.role === "user" ? "Student" : "Tutor") + ": " + m.text).join("\n");
+    const um = (ctx ? "Earlier conversation:\n" + ctx + "\n\n" : "") + "Student: " + q;
+    try {
+      const out = await callAI(tutorSys(lang, false), um);
+      setMessages(m => [...m, { role: "assistant", text: out }]);
+      try { saveHistory({ feature: "AI Tutor", input: q, output: out }); } catch { /* */ }
+    } catch (e) {
+      setMessages(m => [...m, { role: "assistant", text: "⚠️ Couldn't get an answer just now. Please tap Send again." }]);
+    }
+    setLoading(false);
+  };
+
+  const readAloud = (text, idx) => {
+    if (speakingIdx === idx) { stopSpeaking(); setSpeakingIdx(-1); return; }
+    setSpeakingIdx(idx);
+    speakAdvanced(text, lang.tts, 1, () => setSpeakingIdx(-1));
+  };
+
+  const lastAssistant = [...messages].reverse().find(m => m.role === "assistant");
+  const saveNotes = () => {
+    if (!lastAssistant) return;
+    const html = `<html><head><meta charset="utf-8"><title>Allbee AI Tutor Notes</title></head><body style="font-family:Arial,sans-serif;line-height:1.7;max-width:720px;margin:24px auto;padding:0 18px;color:#1e293b"><h2 style="color:#4338ca">Allbee AI Tutor — Notes</h2><div style="white-space:pre-wrap">${esc(lastAssistant.text)}</div><hr style="margin-top:24px;border:none;border-top:1px solid #e2e8f0"><div style="font-size:12px;color:#94a3b8">Generated by Allbee Learn AI</div></body></html>`;
+    downloadDoc(html, "Allbee-Tutor-Notes.doc");
+  };
+
+  const suggestions = ["Explain Python loops", "Teach Excel Pivot Table", "Explain GST in simple terms", "Create a resume for an Accountant", "What is Prompt Engineering?"];
+  const actions = [
+    { label: "📝 Example", q: "Give me one more simple, real-world example for that." },
+    { label: "❓ Quiz", q: "Create a short 5-question quiz (with the answers at the end) on that topic." },
+    { label: "✍️ Practice", q: "Give me 5 practice questions on that topic for me to try myself." },
+    { label: "🔎 Simpler", q: "Explain that again even more simply, as if I am a complete beginner." },
+  ];
+
+  return (
+    <div style={{ maxWidth: 820, margin: "0 auto", padding: "0 12px 120px" }}>
+      <div style={{ paddingTop: 18, paddingBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name="back" size={18} color="var(--slate-600)" /></button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>🤖 AI Tutor</div>
+          <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Ask any topic — get a clear answer with examples</div>
+        </div>
+        {messages.length > 0 && <button className="btn-ghost" onClick={() => { setMessages([]); stopSpeaking(); }} style={{ fontSize: 12.5, color: "var(--slate-500)" }}>Clear</button>}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
+        {TUTOR_LANGS.map(l => (
+          <button key={l.id} onClick={() => setLangId(l.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid", borderColor: langId === l.id ? "#6366f1" : "var(--slate-200)", background: langId === l.id ? "#eef2ff" : "white", color: langId === l.id ? "#4338ca" : "var(--slate-600)" }}>{l.native}</button>
+        ))}
+      </div>
+
+      {messages.length === 0 ? (
+        <div className="card" style={{ padding: "24px 20px", marginBottom: 14, textAlign: "center" }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🤖</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Hi {user && user.name ? user.name.split(" ")[0] : "there"}! What shall we learn?</div>
+          <div style={{ fontSize: 13.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Ask me to explain a topic, teach a skill, or create something. Try one of these:</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+            {suggestions.map(s => <button key={s} onClick={() => ask(s)} className="card-hover" style={{ background: "#eef2ff", color: "#4338ca", border: "1px solid #c7d2fe", borderRadius: 99, padding: "8px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{s}</button>)}
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 14 }}>
+          {messages.map((m, i) => m.role === "user" ? (
+            <div key={i} style={{ alignSelf: "flex-end", maxWidth: "85%", background: "linear-gradient(135deg,#4338ca,#6366f1)", color: "white", borderRadius: "16px 16px 4px 16px", padding: "10px 14px", fontSize: 14, lineHeight: 1.6 }}>{m.text}</div>
+          ) : (
+            <div key={i} style={{ alignSelf: "flex-start", maxWidth: "92%", background: "white", border: "1px solid var(--slate-200)", borderRadius: "16px 16px 16px 4px", padding: "12px 16px" }}>
+              <div dir={lang.rtl ? "rtl" : "ltr"} style={{ fontSize: 14, color: "var(--slate-800)" }}><AiText text={m.text} /></div>
+              {TTS_OK && <button onClick={() => readAloud(m.text, i)} style={{ marginTop: 8, background: speakingIdx === i ? "#fee2e2" : "var(--slate-100)", color: speakingIdx === i ? "#b91c1c" : "var(--slate-500)", border: "none", borderRadius: 99, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{speakingIdx === i ? "■ Stop" : "🔊 Read aloud"}</button>}
+            </div>
+          ))}
+          {loading && <div style={{ alignSelf: "flex-start", background: "white", border: "1px solid var(--slate-200)", borderRadius: 16, padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, color: "var(--slate-500)", fontSize: 13 }}><span className="spinner spinner-blue" /> Tutor is thinking…</div>}
+          <div ref={endRef} />
+        </div>
+      )}
+
+      {lastAssistant && !loading && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+          {actions.map(a => <button key={a.label} onClick={() => ask(a.q)} style={{ background: "white", border: "1px solid var(--slate-200)", borderRadius: 99, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, color: "var(--slate-600)", cursor: "pointer" }}>{a.label}</button>)}
+          <button onClick={saveNotes} style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 99, padding: "7px 13px", fontSize: 12.5, fontWeight: 700, color: "#047857", cursor: "pointer" }}>⬇️ Save notes</button>
+        </div>
+      )}
+
+      <div style={{ position: "sticky", bottom: 12, background: "white", border: "1.5px solid var(--slate-200)", borderRadius: "var(--radius-lg)", padding: 8, display: "flex", gap: 8, alignItems: "flex-end", boxShadow: "0 6px 20px rgba(0,0,0,0.06)" }}>
+        <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }} rows={1} placeholder="Ask your doubt…" style={{ flex: 1, border: "none", resize: "none", fontSize: 14.5, padding: "8px", background: "transparent", maxHeight: 120 }} />
+        {SPEECH_OK && <MicButton lang={lang.rec} label="" onResult={(t) => setInput(prev => (prev ? prev + " " + t : t))} />}
+        <button onClick={() => ask()} disabled={loading || !input.trim()} className="btn-primary" style={{ flexShrink: 0, padding: "10px 16px" }}>Send</button>
+      </div>
+    </div>
+  );
+}
+
+function VoiceTeacherScreen({ user, onBack }) {
+  const [langId, setLangId] = useState("en");
+  const [rate, setRate] = useState(1);
+  const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(VOICE_CHAT_KEY)) || []; } catch { return []; } });
+  const [listening, setListening] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [input, setInput] = useState("");
+  const recRef = useRef(null);
+  const endRef = useRef(null);
+  const lang = TUTOR_LANGS.find(l => l.id === langId) || TUTOR_LANGS[0];
+
+  useEffect(() => { try { localStorage.setItem(VOICE_CHAT_KEY, JSON.stringify(history.slice(-60))); } catch { /* */ } }, [history]);
+  useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" }); }, [history, thinking]);
+  useEffect(() => () => { stopSpeaking(); try { recRef.current && recRef.current.stop(); } catch { /* */ } }, []);
+
+  const handleUser = async (text) => {
+    const q = (text || "").trim(); if (!q || thinking) return;
+    const next = [...history, { role: "user", text: q }];
+    setHistory(next); setThinking(true);
+    const ctx = next.slice(-7, -1).map(m => (m.role === "user" ? "Student" : "Tutor") + ": " + m.text).join("\n");
+    const um = (ctx ? "Earlier conversation:\n" + ctx + "\n\n" : "") + "Student: " + q;
+    try {
+      const out = await callAI(tutorSys(lang, true), um);
+      setHistory(m => [...m, { role: "assistant", text: out }]);
+      try { saveHistory({ feature: "AI Voice Teacher", input: q, output: out }); } catch { /* */ }
+      setThinking(false);
+      setSpeaking(true);
+      speakAdvanced(out, lang.tts, rate, () => setSpeaking(false));
+    } catch (e) {
+      setHistory(m => [...m, { role: "assistant", text: "⚠️ Sorry, I couldn't answer. Please try again." }]);
+      setThinking(false);
+    }
+  };
+
+  const listen = () => {
+    if (!SPEECH_OK) { alert("Voice input works best in Chrome or Edge. You can type your question instead — you'll still hear the spoken answer."); return; }
+    if (listening) { try { recRef.current && recRef.current.stop(); } catch { /* */ } setListening(false); return; }
+    try {
+      stopSpeaking(); setSpeaking(false);
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      const rec = new SR();
+      rec.lang = lang.rec; rec.interimResults = false; rec.maxAlternatives = 1;
+      rec.onresult = (e) => { const t = e.results[0][0].transcript; setListening(false); handleUser(t); };
+      rec.onend = () => setListening(false);
+      rec.onerror = () => setListening(false);
+      recRef.current = rec; setListening(true); rec.start();
+    } catch { setListening(false); }
+  };
+
+  const status = listening ? "Listening… speak now" : thinking ? "Thinking…" : speaking ? "Speaking… tap the circle to interrupt" : "Tap the circle and ask your question";
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "0 16px 120px" }}>
+      <div style={{ paddingTop: 18, paddingBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name="back" size={18} color="var(--slate-600)" /></button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>🎙️ AI Voice Teacher</div>
+          <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Speak your question, hear the answer</div>
+        </div>
+        {history.length > 0 && <button className="btn-ghost" onClick={() => { setHistory([]); stopSpeaking(); }} style={{ fontSize: 12.5, color: "var(--slate-500)" }}>Clear</button>}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
+        {TUTOR_LANGS.map(l => (
+          <button key={l.id} onClick={() => setLangId(l.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid", borderColor: langId === l.id ? "#06b6d4" : "var(--slate-200)", background: langId === l.id ? "#ecfeff" : "white", color: langId === l.id ? "#0e7490" : "var(--slate-600)" }}>{l.native}</button>
+        ))}
+      </div>
+
+      <div className="card" style={{ padding: "12px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--slate-500)", whiteSpace: "nowrap" }}>🐢 Voice speed</span>
+        <input type="range" min="0.6" max="1.4" step="0.1" value={rate} onChange={e => setRate(parseFloat(e.target.value))} style={{ flex: 1 }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--slate-700)", width: 40, textAlign: "right" }}>{rate.toFixed(1)}×</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 22 }}>
+        <button onClick={listen} style={{ width: 122, height: 122, borderRadius: "50%", border: "none", cursor: "pointer", color: "white", fontSize: 44, display: "flex", alignItems: "center", justifyContent: "center", background: listening ? "linear-gradient(135deg,#dc2626,#ef4444)" : "linear-gradient(135deg,#0e7490,#06b6d4)", boxShadow: listening ? "0 0 0 10px rgba(239,68,68,0.14)" : "0 10px 30px rgba(6,182,212,0.35)", transition: "all .2s" }}>
+          {listening ? "■" : "🎤"}
+        </button>
+        <div style={{ marginTop: 14, fontSize: 13.5, fontWeight: 600, color: "var(--slate-600)", minHeight: 20, textAlign: "center" }}>{status}</div>
+        {speaking && <button onClick={() => { stopSpeaking(); setSpeaking(false); }} className="btn-secondary" style={{ marginTop: 10 }}>■ Stop speaking</button>}
+      </div>
+
+      {history.length > 0 && (
+        <>
+          <div className="section-label" style={{ marginBottom: 10 }}>Conversation</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {history.map((m, i) => (
+              <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%", background: m.role === "user" ? "#ecfeff" : "white", border: "1px solid " + (m.role === "user" ? "#a5f3fc" : "var(--slate-200)"), borderRadius: 12, padding: "10px 14px" }}>
+                <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)", marginBottom: 3 }}>{m.role === "user" ? "You said" : "Tutor"}</div>
+                <div dir={lang.rtl ? "rtl" : "ltr"} style={{ fontSize: 14, color: "var(--slate-800)", lineHeight: 1.6 }}>{m.text}</div>
+                {m.role === "assistant" && TTS_OK && <button onClick={() => { stopSpeaking(); setSpeaking(true); speakAdvanced(m.text, lang.tts, rate, () => setSpeaking(false)); }} style={{ marginTop: 6, background: "var(--slate-100)", border: "none", borderRadius: 99, padding: "3px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--slate-500)", cursor: "pointer" }}>🔊 Repeat</button>}
+              </div>
+            ))}
+            {thinking && <div style={{ alignSelf: "flex-start", color: "var(--slate-500)", fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}><span className="spinner spinner-blue" /> Thinking…</div>}
+            <div ref={endRef} />
+          </div>
+        </>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { handleUser(input); setInput(""); } }} placeholder="…or type your question" style={{ flex: 1, fontSize: 14 }} />
+        <button className="btn-primary" onClick={() => { handleUser(input); setInput(""); }} disabled={thinking || !input.trim()} style={{ flexShrink: 0 }}>Ask</button>
+      </div>
+      {!SPEECH_OK && <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>ℹ️ Voice input needs Chrome or Edge. You can type your question above and still hear the spoken answer.</div>}
     </div>
   );
 }
