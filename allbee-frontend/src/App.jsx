@@ -3137,6 +3137,8 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
 const MSOfficeScreen = ({ onBack }) => {
   const [activeApp, setActiveApp] = useState("word");
   const [input, setInput] = useState("");
+  const [langId, setLangId] = useState(getAILangId());
+  const lang = getAILang(langId);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -3149,7 +3151,7 @@ const MSOfficeScreen = ({ onBack }) => {
     if (!input.trim()) { setError("Please enter your question!"); return; }
     setError(""); setLoading(true); setOutput("");
     try {
-      const result = await callClaude(PROMPTS[activeApp], input.trim());
+      const result = await callClaude(PROMPTS[activeApp] + langWrap(lang), input.trim());
       setOutput(result);
       saveHistory({ feature: "msoffice", subFeature: activeApp, input: `[${app.label}] ${input.trim()}`, output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
@@ -3208,6 +3210,12 @@ const MSOfficeScreen = ({ onBack }) => {
             <span style={{ display: "none" }} className="show-mobile">{a.label.split(" ")[1] || a.label}</span>
           </button>
         ))}
+      </div>
+
+      {/* Answer language */}
+      <div style={{ marginBottom: 14 }}>
+        <div className="section-label" style={{ marginBottom: 8 }}>🌐 Answer language</div>
+        <LangPicker value={langId} onChange={setLangId} accent={app.color} accentBg={app.bg} />
       </div>
 
       {/* Quick suggestion chips */}
@@ -3282,6 +3290,8 @@ const MSOfficeScreen = ({ onBack }) => {
 const FeatureScreen = ({ featureId, onBack }) => {
   const feat = features.find(f => f.id === featureId);
   const [input, setInput] = useState("");
+  const [langId, setLangId] = useState(getAILangId());
+  const lang = getAILang(langId);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -3301,7 +3311,7 @@ const FeatureScreen = ({ featureId, onBack }) => {
     if (!input.trim()) { setError("Please enter something first!"); return; }
     setError(""); setLoading(true); setOutput("");
     try {
-      const result = await callClaude(PROMPTS[featureId], input.trim());
+      const result = await callClaude(PROMPTS[featureId] + langWrap(lang), input.trim());
       setOutput(result);
       saveHistory({ feature: featureId, input: input.trim(), output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
@@ -3347,6 +3357,12 @@ const FeatureScreen = ({ featureId, onBack }) => {
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "var(--slate-900)" }}>{feat.label}</div>
           <div style={{ fontSize: 12, color: "var(--slate-400)" }}>{feat.desc}</div>
         </div>
+      </div>
+
+      {/* Answer language */}
+      <div style={{ marginBottom: 14 }}>
+        <div className="section-label" style={{ marginBottom: 8 }}>🌐 Answer language</div>
+        <LangPicker value={langId} onChange={setLangId} accent="var(--blue-600)" accentBg="var(--blue-50)" />
       </div>
 
       {/* Input area */}
@@ -4089,13 +4105,15 @@ const PAGE = { maxWidth: 820, margin: "0 auto", padding: "0 16px 110px" };
 function AiText({ text }) {
   if (!text) return null;
   return text.split("\n").map((line, i) => {
-    const parts = line.split(/(`[^`]+`)/g);
+    const parts = line.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
     return (
       <div key={i} style={{ marginBottom: line === "" ? 8 : 2, lineHeight: 1.7 }}>
         {parts.map((p, j) =>
           p.startsWith("`") && p.endsWith("`")
             ? <code key={j}>{p.slice(1, -1)}</code>
-            : <span key={j}>{p}</span>
+            : (p.startsWith("**") && p.endsWith("**"))
+              ? <strong key={j}>{p.slice(2, -2)}</strong>
+              : <span key={j}>{p}</span>
         )}
       </div>
     );
@@ -5562,6 +5580,8 @@ export default function App() {
 // ─── COURSE ASK SCREEN (pre-filled doubt from courses page) ──────────────────
 function CourseAskScreen({ onBack, prefill = "" }) {
   const [input, setInput] = useState(prefill);
+  const [langId, setLangId] = useState(getAILangId());
+  const lang = getAILang(langId);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -5572,7 +5592,7 @@ function CourseAskScreen({ onBack, prefill = "" }) {
     if (!input.trim()) return;
     setLoading(true); setOutput("");
     try {
-      const result = await callClaude(PROMPTS.doubt, input.trim());
+      const result = await callClaude(PROMPTS.doubt + langWrap(lang), input.trim());
       setOutput(result);
       saveHistory({ feature: "doubt", input: input.trim(), output: result });
       setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
@@ -5605,7 +5625,9 @@ function CourseAskScreen({ onBack, prefill = "" }) {
         </div>
       </div>
       <div className="card" style={{ padding: "18px 18px 14px", marginBottom: 14 }}>
-        <div className="section-label">Your Question</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>🌐 Answer language</div>
+        <LangPicker value={langId} onChange={setLangId} />
+        <div className="section-label" style={{ marginTop: 14 }}>Your Question</div>
         <textarea value={input} onChange={e => setInput(e.target.value)} rows={4} style={{ fontSize: 14.5, marginBottom: 10 }} />
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
           <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }}>Clear</button>
@@ -6591,14 +6613,39 @@ function DashboardHero({ user, onOpen }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  SHARED LANGUAGE CHOICE (used by the AI Tutor, Voice Teacher & every AI tool)
+// ═══════════════════════════════════════════════════════════════════════════
+const AI_LANGS = [
+  { id: "en", label: "English",  native: "English",  rec: "en-IN", tts: "en-IN", rtl: false, instr: "Respond ONLY in clear, simple English. Do not mix in Tamil or other languages." },
+  { id: "ta", label: "Tamil",    native: "தமிழ்",    rec: "ta-IN", tts: "ta-IN", rtl: false, instr: "Respond ONLY in Tamil (தமிழ் script). Common technical terms (like SUM, VLOOKUP, GST, loop) may stay in English, but all the explanation must be written in Tamil script. Do not answer in English." },
+  { id: "tg", label: "Tanglish", native: "Tanglish", rec: "en-IN", tts: "en-IN", rtl: false, instr: "Respond in Tanglish — natural spoken Tamil written in ENGLISH letters (for example: 'idha select pannunga, apram enter press pannunga'). Keep technical terms in English. Do NOT use Tamil script." },
+  { id: "hi", label: "Hindi",    native: "हिन्दी",   rec: "hi-IN", tts: "hi-IN", rtl: false, instr: "Respond ONLY in Hindi (हिन्दी script). Technical terms may stay in English, but the explanation must be in Hindi. Do not answer in English otherwise." },
+  { id: "ar", label: "Arabic",   native: "العربية",  rec: "ar-SA", tts: "ar-SA", rtl: true,  instr: "Respond ONLY in Modern Standard Arabic (العربية). Technical terms may stay in English. Write right-to-left." },
+];
+const AI_LANG_KEY = "allbee_ai_lang";
+const getAILangId = () => { try { return localStorage.getItem(AI_LANG_KEY) || "en"; } catch { return "en"; } };
+const setAILangId = (id) => { try { localStorage.setItem(AI_LANG_KEY, id); } catch { /* */ } };
+const getAILang   = (id) => AI_LANGS.find(l => l.id === (id || getAILangId())) || AI_LANGS[0];
+// Appended to a system prompt so the AI answers in the chosen language + clean formatting.
+const langWrap = (lang) => "\n\nLANGUAGE: " + lang.instr + " Do NOT use markdown symbols like #, ** or | tables — use plain sentences and simple • bullet points only.";
+
+// Language selector pills (shared). Writes the global preference too.
+function LangPicker({ value, onChange, accent = "#4338ca", accentBg = "#eef2ff" }) {
+  return (
+    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8 }}>
+      {AI_LANGS.map(l => {
+        const on = value === l.id;
+        return (
+          <button key={l.id} type="button" onClick={() => { onChange(l.id); setAILangId(l.id); }} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid", borderColor: on ? accent : "var(--slate-200)", background: on ? accentBg : "white", color: on ? accent : "var(--slate-600)" }}>{l.native}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  AI TUTOR (ChatGPT-style, multi-language) + AI VOICE TEACHER
 // ═══════════════════════════════════════════════════════════════════════════
-const TUTOR_LANGS = [
-  { id: "en", label: "English", native: "English", rec: "en-IN", tts: "en-IN", rtl: false, instr: "Respond in clear, simple English." },
-  { id: "ta", label: "Tamil",   native: "தமிழ்",   rec: "ta-IN", tts: "ta-IN", rtl: false, instr: "Respond in Tamil (தமிழ்) using simple, clear language. Technical terms may stay in English." },
-  { id: "hi", label: "Hindi",   native: "हिन्दी",  rec: "hi-IN", tts: "hi-IN", rtl: false, instr: "Respond in Hindi (हिन्दी) using simple, clear language. Technical terms may stay in English." },
-  { id: "ar", label: "Arabic",  native: "العربية", rec: "ar-SA", tts: "ar-SA", rtl: true,  instr: "Respond in Modern Standard Arabic (العربية) using simple, clear language. Technical terms may stay in English." },
-];
 const TUTOR_CHAT_KEY = "allbee_tutor_chat";
 const VOICE_CHAT_KEY = "allbee_voice_chat";
 const tutorSys = (lang, spoken) =>
@@ -6606,17 +6653,17 @@ const tutorSys = (lang, spoken) =>
   "Teach clearly and simply, step by step, with a concrete example. " + lang.instr + " " +
   (spoken
     ? "This answer will be READ ALOUD, so keep it short and conversational — about 3 to 6 sentences. Do not use bullet points or symbols. "
-    : "Use short paragraphs and simple bullet points (•) where helpful. ") +
-  "Do NOT use markdown symbols like # or *.";
+    : "Use short paragraphs and simple • bullet points where helpful. ") +
+  "Do NOT use markdown symbols like #, ** or | tables.";
 
 function AITutorScreen({ user, onBack }) {
-  const [langId, setLangId] = useState("en");
+  const [langId, setLangId] = useState(getAILangId());
   const [messages, setMessages] = useState(() => { try { return JSON.parse(localStorage.getItem(TUTOR_CHAT_KEY)) || []; } catch { return []; } });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [speakingIdx, setSpeakingIdx] = useState(-1);
   const endRef = useRef(null);
-  const lang = TUTOR_LANGS.find(l => l.id === langId) || TUTOR_LANGS[0];
+  const lang = AI_LANGS.find(l => l.id === langId) || AI_LANGS[0];
 
   useEffect(() => { try { localStorage.setItem(TUTOR_CHAT_KEY, JSON.stringify(messages.slice(-60))); } catch { /* */ } }, [messages]);
   useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
@@ -6671,11 +6718,7 @@ function AITutorScreen({ user, onBack }) {
         {messages.length > 0 && <button className="btn-ghost" onClick={() => { setMessages([]); stopSpeaking(); }} style={{ fontSize: 12.5, color: "var(--slate-500)" }}>Clear</button>}
       </div>
 
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
-        {TUTOR_LANGS.map(l => (
-          <button key={l.id} onClick={() => setLangId(l.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid", borderColor: langId === l.id ? "#6366f1" : "var(--slate-200)", background: langId === l.id ? "#eef2ff" : "white", color: langId === l.id ? "#4338ca" : "var(--slate-600)" }}>{l.native}</button>
-        ))}
-      </div>
+      <div style={{ marginBottom: 12 }}><LangPicker value={langId} onChange={setLangId} accent="#4338ca" accentBg="#eef2ff" /></div>
 
       {messages.length === 0 ? (
         <div className="card" style={{ padding: "24px 20px", marginBottom: 14, textAlign: "center" }}>
@@ -6718,7 +6761,7 @@ function AITutorScreen({ user, onBack }) {
 }
 
 function VoiceTeacherScreen({ user, onBack }) {
-  const [langId, setLangId] = useState("en");
+  const [langId, setLangId] = useState(getAILangId());
   const [rate, setRate] = useState(1);
   const [history, setHistory] = useState(() => { try { return JSON.parse(localStorage.getItem(VOICE_CHAT_KEY)) || []; } catch { return []; } });
   const [listening, setListening] = useState(false);
@@ -6727,7 +6770,7 @@ function VoiceTeacherScreen({ user, onBack }) {
   const [input, setInput] = useState("");
   const recRef = useRef(null);
   const endRef = useRef(null);
-  const lang = TUTOR_LANGS.find(l => l.id === langId) || TUTOR_LANGS[0];
+  const lang = AI_LANGS.find(l => l.id === langId) || AI_LANGS[0];
 
   useEffect(() => { try { localStorage.setItem(VOICE_CHAT_KEY, JSON.stringify(history.slice(-60))); } catch { /* */ } }, [history]);
   useEffect(() => { if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" }); }, [history, thinking]);
@@ -6780,11 +6823,7 @@ function VoiceTeacherScreen({ user, onBack }) {
         {history.length > 0 && <button className="btn-ghost" onClick={() => { setHistory([]); stopSpeaking(); }} style={{ fontSize: 12.5, color: "var(--slate-500)" }}>Clear</button>}
       </div>
 
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 12 }}>
-        {TUTOR_LANGS.map(l => (
-          <button key={l.id} onClick={() => setLangId(l.id)} style={{ flexShrink: 0, padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer", border: "1.5px solid", borderColor: langId === l.id ? "#06b6d4" : "var(--slate-200)", background: langId === l.id ? "#ecfeff" : "white", color: langId === l.id ? "#0e7490" : "var(--slate-600)" }}>{l.native}</button>
-        ))}
-      </div>
+      <div style={{ marginBottom: 12 }}><LangPicker value={langId} onChange={setLangId} accent="#0e7490" accentBg="#ecfeff" /></div>
 
       <div className="card" style={{ padding: "12px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--slate-500)", whiteSpace: "nowrap" }}>🐢 Voice speed</span>
@@ -6825,4 +6864,3 @@ function VoiceTeacherScreen({ user, onBack }) {
     </div>
   );
 }
-
