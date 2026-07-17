@@ -117,6 +117,7 @@ const saveHistory = (entry) => {
     hist.unshift({ ...entry, id: Date.now(), timestamp: new Date().toISOString() });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(hist.slice(0, 100)));
   } catch { /* silent */ }
+  try { syncProgress("Used AI tutor"); } catch { /* silent */ }
 };
 
 const getHistory = () => {
@@ -258,6 +259,7 @@ const bumpProgress = (key, by = 1) => {
   const p = getProgress();
   p[key] = (p[key] || 0) + by;
   try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(p)); } catch { /* silent */ }
+  try { syncProgress("Progress: " + key); } catch { /* silent */ }
   return p;
 };
 
@@ -274,6 +276,7 @@ const updateStreak = () => {
   const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   const next = { count: s.last === yesterday ? (s.count || 0) + 1 : 1, last: today };
   try { localStorage.setItem(STREAK_KEY, JSON.stringify(next)); } catch { /* silent */ }
+  try { syncProgress("Daily streak"); } catch { /* silent */ }
   return next;
 };
 
@@ -285,6 +288,7 @@ const saveInterviewScore = (role, score) => {
   const all = getInterviewScores();
   all[role] = Math.max(all[role] || 0, score);
   try { localStorage.setItem(INTERVIEW_KEY, JSON.stringify(all)); } catch { /* silent */ }
+  try { syncProgress("Mock interview"); } catch { /* silent */ }
   return all;
 };
 const bestInterviewScore = () => {
@@ -332,6 +336,110 @@ const getSkillProgress = () => {
     const hits = blob.filter(t => s.match.some(m => t.includes(m))).length;
     return { ...s, pct: Math.min(100, hits * 18) };
   });
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ADMIN + LIVE CLASS + SHARED CLOUD  (added)
+//  ---------------------------------------------------------------------------
+//  1) ADMIN_CODE  — secret code YOU (teacher) type to open the Admin page.
+//                   CHANGE it to your own secret. Never share with students.
+//  2) CLOUD_URL   — paste your Google Apps Script Web App URL (…/exec) here so
+//                   every student's progress is saved to your Google Sheet and
+//                   the Admin page can see everyone across all devices.
+//                   Setup steps are in the file "allbee-apps-script.gs".
+//                   Leave it "" to skip — the app still works; the Admin page
+//                   will then only show your registered student roster.
+//  3) CLOUD_SECRET— must EXACTLY match the SECRET inside your Apps Script.
+// ═══════════════════════════════════════════════════════════════════════════
+const ADMIN_CODE          = "allbee-admin-2025";     // 🔑 CHANGE THIS
+const CLOUD_URL           = "";                       // 📎 paste your …/exec URL
+const CLOUD_SECRET        = "allbee-secret-key";      // 🔒 match Apps Script SECRET
+const ALLBEE_DEFAULT_ROOM = "AllBeeLiveClassRoom";    // default Jitsi room name
+
+const cloudEnabled = () => !!CLOUD_URL;
+const currentUser  = () => { try { return JSON.parse(localStorage.getItem(USER_KEY)); } catch { return null; } };
+
+// Fire a POST to the Apps Script backend. text/plain avoids a CORS preflight,
+// which Apps Script web apps do not answer — this is the reliable pattern.
+const cloudPost = async (payload) => {
+  if (!CLOUD_URL) return null;
+  try {
+    const res = await fetch(CLOUD_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ secret: CLOUD_SECRET, ...payload }),
+    });
+    try { return await res.json(); } catch { return null; }
+  } catch { return null; }
+};
+
+const cloudGet = async (action) => {
+  if (!CLOUD_URL) return null;
+  try {
+    const url = CLOUD_URL + "?secret=" + encodeURIComponent(CLOUD_SECRET)
+              + "&action=" + encodeURIComponent(action) + "&t=" + Date.now();
+    const res = await fetch(url);
+    return await res.json();
+  } catch { return null; }
+};
+
+// A full snapshot of THIS logged-in student's progress, for the shared sheet.
+const buildSnapshot = () => {
+  const u = currentUser();
+  if (!u || u.isAdmin) return null;
+  const p   = getProgress();
+  const pts = getPoints();
+  return {
+    phone:         (u.phone || "").replace(/\D/g, "").slice(-10),
+    name:          u.name   || "",
+    email:         u.email  || "",
+    course:        u.course || "",
+    points:        pts,
+    level:         getBeeLevel(pts).current.name,
+    streak:        getStreak().count || 0,
+    aiQuestions:   getHistory().length,
+    lessonsRead:   p.lessonsRead   || 0,
+    interviews:    p.interviews    || 0,
+    bestInterview: bestInterviewScore(),
+    labsDone:      p.labsDone      || 0,
+    resumes:       p.resumes       || 0,
+    jobsApplied:   p.jobsApplied   || 0,
+    certificates:  p.certificates  || 0,
+    lastActive:    new Date().toISOString(),
+  };
+};
+
+// Debounced upsert — many quick actions collapse into one network write.
+let _allbeeSyncTimer = null;
+const syncProgress = (event) => {
+  if (!cloudEnabled()) return;
+  const snap = buildSnapshot();
+  if (!snap || !snap.phone) return;
+  clearTimeout(_allbeeSyncTimer);
+  _allbeeSyncTimer = setTimeout(() => {
+    cloudPost({ action: "upsertProgress", student: snap, event: event || "" });
+  }, 500);
+};
+
+// ── Local log of class recordings made ON THIS device ────────────────────────
+const REC_LOG_KEY  = "allbee_recordings";
+const getRecordings = () => { try { return JSON.parse(localStorage.getItem(REC_LOG_KEY)) || []; } catch { return []; } };
+const logRecording  = (r) => {
+  const l = getRecordings();
+  l.unshift({ ...r, id: Date.now() });
+  try { localStorage.setItem(REC_LOG_KEY, JSON.stringify(l.slice(0, 200))); } catch { /* silent */ }
+};
+
+// small time helpers for the Admin page
+const isTodayISO = (iso) => !!iso && new Date(iso).toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10);
+const agoStr = (iso) => {
+  if (!iso) return "never";
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (isNaN(s)) return "—";
+  if (s < 60)    return "just now";
+  if (s < 3600)  return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return Math.floor(s / 86400) + "d ago";
 };
 
 // ─── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
@@ -693,6 +801,7 @@ const LoginScreen = ({ onLogin }) => {
         avatar: student.name[0].toUpperCase(),
       };
       localStorage.setItem(USER_KEY, JSON.stringify(user));
+      try { syncProgress("Logged in"); } catch { /* silent */ }
       onLogin(user);
     }, 700);
   };
@@ -701,6 +810,13 @@ const LoginScreen = ({ onLogin }) => {
     if (e.key !== "Enter") return;
     if (step === "phone") handlePhoneNext();
     else handlePasswordLogin();
+  };
+
+  // Teacher/Admin sign-in (secret code — see ADMIN_CODE at the top of this file)
+  const loginAdmin = () => {
+    const au = { isAdmin: true, name: "Teacher", phone: "", email: "", course: "Admin", avatar: "T" };
+    try { localStorage.setItem(USER_KEY, JSON.stringify(au)); } catch { /* silent */ }
+    onLogin(au);
   };
 
   return (
@@ -834,6 +950,9 @@ const LoginScreen = ({ onLogin }) => {
         <p style={{ fontSize: 11.5, color: "var(--slate-400)", marginTop: 12, lineHeight: 1.6 }}>
           After you register, Allbee adds you to the student list — then log in with your phone number 🎓
         </p>
+
+        <div style={{ height: 1, background: "var(--slate-100)", margin: "18px 0 10px" }} />
+        <AdminGate onAdmin={loginAdmin} />
       </div>
     </div>
   );
@@ -2830,6 +2949,9 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen }) 
         <div style={{ fontSize: 13, opacity: 0.8 }}>என்ன கத்துக்கணும்? Choose a tool below 👇</div>
       </div>
 
+      {/* LIVE class banner — shows when the teacher has started a class */}
+      <LiveBanner onJoin={() => onOpen && onOpen("live")} />
+
       {/* NEW: gamification + stats + skill progress */}
       <DashboardBee onOpen={onOpen} />
       <DashboardStats />
@@ -3707,6 +3829,7 @@ const BottomNav = ({ view, onNav }) => {
   const navItems = [
     { id: "dashboard", label: "Home",    icon: "home"    },
     { id: "courses",   label: "Courses", emoji: "🎓"     },
+    { id: "live",      label: "Live",    emoji: "🔴" },
     { id: "labs",      label: "Practice", emoji: "🧪" },
     { id: "jobs",      label: "Jobs",     icon: "briefcase" },
     { id: "rewards",   label: "Rewards",  emoji: "🏆" },
@@ -3716,7 +3839,7 @@ const BottomNav = ({ view, onNav }) => {
       {navItems.map(item => {
         const active = view === item.id;
         return (
-          <button key={item.id} onClick={() => onNav(item.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "4px 8px", color: active ? "var(--blue-600)" : "var(--slate-400)", transition: "color 0.2s", minWidth: 46 }}>
+          <button key={item.id} onClick={() => onNav(item.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", cursor: "pointer", padding: "4px 8px", color: active ? "var(--blue-600)" : "var(--slate-400)", transition: "color 0.2s", minWidth: 40, flex: 1 }}>
             {item.emoji
               ? <span style={{ fontSize: 22, lineHeight: 1, filter: active ? "none" : "grayscale(0.5) opacity(0.6)" }}>{item.emoji}</span>
               : <Icon name={item.icon} size={22} color={active ? "var(--blue-600)" : "var(--slate-400)"} />}
@@ -3955,6 +4078,7 @@ function SkillProgress() {
 
 // ── Dashboard: career & practice module grid ─────────────────────────────────
 const CAREER_MODULES = [
+  { id: "live",           emoji: "🔴", label: "Live Class",           desc: "Join your teacher's live online class + Q&A", color: "#dc2626", bg: "#fef2f2" },
   { id: "resume_builder", emoji: "📄", label: "Resume Builder",       desc: "Templates, ATS review, cover letter & export", color: "#0d9488", bg: "#f0fdfa" },
   { id: "interview",      emoji: "🎤", label: "AI Mock Interview",    desc: "Role questions, voice, scoring & report",      color: "#7c3aed", bg: "#f5f3ff" },
   { id: "labs",           emoji: "🧪", label: "AI Practice Labs",     desc: "Python, Excel, Tally & Spoken English drills", color: "#0891b2", bg: "#ecfeff" },
@@ -4915,6 +5039,8 @@ export default function App() {
 
   const logout = () => { localStorage.removeItem(USER_KEY); setUser(null); setView("dashboard"); };
 
+  if (user.isAdmin) return <AdminScreen onExit={logout} />;
+
   const handleNav = (v) => setView(v);
 
   const handleAskAI = (question) => {
@@ -4958,6 +5084,7 @@ export default function App() {
       {view === "labs" && <LabsScreen onBack={() => setView("dashboard")} />}
       {view === "jobs" && <JobsScreen onBack={() => setView("dashboard")} onOpen={setView} />}
       {view === "rewards" && <RewardsScreen user={user} onBack={() => setView("dashboard")} onOpen={setView} />}
+      {view === "live" && <LiveClassScreen user={user} onBack={() => setView("dashboard")} />}
       <BottomNav view={view} onNav={handleNav} />
     </div>
   );
@@ -5038,6 +5165,613 @@ function CourseAskScreen({ onBack, prefill = "" }) {
           <div className="output-box">{renderOutput(output)}</div>
           <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
             <button className="btn-secondary" onClick={onBack} style={{ fontSize: 13 }}>← Back to Courses</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  LIVE CLASS (Jitsi) + SCREEN RECORDING + ADMIN DASHBOARD   (added)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Screen + mic recorder → saves a .webm video to the teacher's computer ────
+function useScreenRecorder() {
+  const [recording, setRecording] = useState(false);
+  const [elapsed, setElapsed]     = useState(0);
+  const recRef     = useRef(null);
+  const chunksRef  = useRef([]);
+  const streamsRef = useRef([]);
+  const startedRef = useRef(0);
+  const timerRef   = useRef(null);
+
+  const cleanup = () => {
+    streamsRef.current.forEach(s => {
+      try {
+        if (s && s.getTracks) s.getTracks().forEach(t => t.stop());
+        else if (s && s.close) s.close();
+      } catch { /* */ }
+    });
+    streamsRef.current = [];
+    clearInterval(timerRef.current);
+  };
+
+  const stop = () => {
+    try { if (recRef.current && recRef.current.state !== "inactive") recRef.current.stop(); } catch { /* */ }
+  };
+
+  const start = async () => {
+    if (recording) return;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert("Screen recording needs Chrome or Edge on a laptop/desktop.");
+      return;
+    }
+    try {
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true });
+      let mic = null;
+      try { mic = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch { /* mic optional */ }
+
+      // Mix screen audio + microphone into a single audio track
+      let audioTracks = [];
+      const dispAudio = display.getAudioTracks();
+      const micAudio  = mic ? mic.getAudioTracks() : [];
+      if (dispAudio.length || micAudio.length) {
+        try {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          const ctx = new AC();
+          const dest = ctx.createMediaStreamDestination();
+          if (dispAudio.length) ctx.createMediaStreamSource(new MediaStream(dispAudio)).connect(dest);
+          if (micAudio.length)  ctx.createMediaStreamSource(new MediaStream(micAudio)).connect(dest);
+          audioTracks = dest.stream.getAudioTracks();
+          streamsRef.current.push({ close: () => { try { ctx.close(); } catch { /* */ } } });
+        } catch {
+          audioTracks = micAudio.length ? micAudio : dispAudio;
+        }
+      }
+
+      const mixed = new MediaStream([...display.getVideoTracks(), ...audioTracks]);
+      streamsRef.current.push(display);
+      if (mic) streamsRef.current.push(mic);
+
+      const pick = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+        .find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "video/webm";
+      const rec = new MediaRecorder(mixed, { mimeType: pick, videoBitsPerSecond: 2500000 });
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const blob  = new Blob(chunksRef.current, { type: "video/webm" });
+        const secs  = Math.round((Date.now() - startedRef.current) / 1000);
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        const fname = "AllBee-Class-" + stamp + ".webm";
+        const url   = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        logRecording({ name: fname, date: new Date().toISOString(), seconds: secs, size: blob.size });
+        cleanup(); setRecording(false); setElapsed(0);
+      };
+      const vt = display.getVideoTracks()[0];
+      if (vt) vt.addEventListener("ended", stop); // teacher clicked "Stop sharing"
+
+      rec.start(1000);
+      recRef.current = rec;
+      startedRef.current = Date.now();
+      setRecording(true);
+      timerRef.current = setInterval(() => setElapsed(Math.round((Date.now() - startedRef.current) / 1000)), 500);
+    } catch (e) {
+      if (e && e.name !== "NotAllowedError") alert("Couldn't start recording: " + (e && e.message ? e.message : e));
+      cleanup();
+    }
+  };
+
+  useEffect(() => () => { stop(); cleanup(); }, []);
+  return { recording, elapsed, start, stop };
+}
+
+function RecordButton({ compact }) {
+  const { recording, elapsed, start, stop } = useScreenRecorder();
+  const mmss = (s) => String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  return (
+    <button
+      onClick={recording ? stop : start}
+      className={recording ? "" : "btn-primary"}
+      title="Records your screen + microphone to a video file on your computer"
+      style={recording
+        ? { background: "#dc2626", color: "white", padding: compact ? "8px 14px" : "12px 20px", borderRadius: "var(--radius)", fontSize: 14, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 8 }
+        : { padding: compact ? "8px 14px" : "12px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 8 }}
+    >
+      {recording
+        ? <><span style={{ width: 10, height: 10, borderRadius: "50%", background: "white", animation: "pulse 1s infinite" }} /> Stop &amp; save · {mmss(elapsed)}</>
+        : <><span style={{ width: 10, height: 10, borderRadius: "50%", background: "white" }} /> Record class</>}
+    </button>
+  );
+}
+
+// ── Poll the shared backend to know if a class is LIVE right now ──────────────
+function useLiveStatus(pollMs) {
+  const [live, setLive] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      const r = await cloudGet("live");
+      if (alive && r && r.live) setLive(r.live);
+    };
+    load();
+    if (!cloudEnabled()) return;
+    const id = setInterval(load, pollMs || 20000);
+    return () => { alive = false; clearInterval(id); };
+  }, [pollMs]);
+  return live;
+}
+
+function LiveBanner({ onJoin }) {
+  const live = useLiveStatus(15000);
+  if (!live || !live.liveOn) return null;
+  return (
+    <div onClick={onJoin} className="card-hover" style={{ cursor: "pointer", background: "linear-gradient(135deg,#b91c1c,#dc2626)", color: "white", borderRadius: "var(--radius-xl)", padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
+      <span style={{ width: 12, height: 12, borderRadius: "50%", background: "white", animation: "pulse 1s infinite", flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16 }}>🔴 LIVE class in progress</div>
+        <div style={{ fontSize: 13, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{live.topic ? live.topic : "Tap to join your teacher now"}</div>
+      </div>
+      <div style={{ background: "white", color: "#dc2626", fontWeight: 800, fontSize: 13, padding: "8px 16px", borderRadius: 99, flexShrink: 0 }}>Join →</div>
+    </div>
+  );
+}
+
+// ── Embedded Jitsi video call (external API, with iframe fallback) ────────────
+function JitsiRoom({ room, displayName, onLeave }) {
+  const boxRef = useRef(null);
+  const apiRef = useRef(null);
+  const [mode, setMode] = useState("loading"); // loading | api | iframe
+
+  useEffect(() => {
+    let cancelled = false;
+    const DOMAIN = "meet.jit.si";
+
+    const startApi = () => {
+      if (cancelled || !boxRef.current) return;
+      try {
+        const api = new window.JitsiMeetExternalAPI(DOMAIN, {
+          roomName: room,
+          parentNode: boxRef.current,
+          width: "100%",
+          height: "100%",
+          userInfo: { displayName: displayName || "Student" },
+          configOverwrite: {
+            prejoinPageEnabled: false,
+            disableDeepLinking: true,
+            startWithAudioMuted: false,
+            startWithVideoMuted: true,
+          },
+          interfaceConfigOverwrite: {
+            MOBILE_APP_PROMO: false,
+            SHOW_JITSI_WATERMARK: false,
+            SHOW_CHROME_EXTENSION_BANNER: false,
+          },
+        });
+        apiRef.current = api;
+        if (onLeave) api.addEventListener("readyToClose", onLeave);
+        setMode("api");
+      } catch {
+        setMode("iframe");
+      }
+    };
+
+    if (window.JitsiMeetExternalAPI) {
+      startApi();
+      return () => { cancelled = true; try { apiRef.current && apiRef.current.dispose(); } catch { /* */ } };
+    }
+
+    const onload  = () => startApi();
+    const onerror = () => setMode("iframe");
+    const existing = document.getElementById("jitsi-ext-api");
+    if (existing) {
+      existing.addEventListener("load", onload);
+      existing.addEventListener("error", onerror);
+    } else {
+      const s = document.createElement("script");
+      s.id = "jitsi-ext-api";
+      s.src = "https://meet.jit.si/external_api.js";
+      s.async = true;
+      s.addEventListener("load", onload);
+      s.addEventListener("error", onerror);
+      document.body.appendChild(s);
+    }
+    const t = setTimeout(() => { if (!apiRef.current && !cancelled) setMode(m => (m === "loading" ? "iframe" : m)); }, 6000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      try { apiRef.current && apiRef.current.dispose(); } catch { /* */ }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, displayName]);
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#0b0f14", borderRadius: "var(--radius-lg)", overflow: "hidden" }}>
+      {mode === "iframe" ? (
+        <iframe
+          title="Live Class"
+          src={"https://meet.jit.si/" + encodeURIComponent(room) + "#userInfo.displayName=%22" + encodeURIComponent(displayName || "Student") + "%22&config.prejoinPageEnabled=false"}
+          allow="camera; microphone; fullscreen; display-capture; autoplay; clipboard-write"
+          style={{ width: "100%", height: "100%", border: "none" }}
+        />
+      ) : (
+        <div ref={boxRef} style={{ width: "100%", height: "100%" }} />
+      )}
+      {mode === "loading" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "white", gap: 12 }}>
+          <span className="spinner" /> <span style={{ fontSize: 13, opacity: 0.85 }}>Connecting to the live class…</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Live Class screen (students join here; teacher opens it as host) ──────────
+function LiveClassScreen({ user, onBack, host }) {
+  const live = useLiveStatus(15000);
+  const [joined, setJoined] = useState(false);
+  const room   = (live && live.room)  ? live.room  : ALLBEE_DEFAULT_ROOM;
+  const topic  = (live && live.topic) ? live.topic : "";
+  const isLive = live ? live.liveOn : null;
+  const displayName = host ? "👨‍🏫 Teacher" : (user && user.name ? user.name : "Student");
+  const showRoom = host || joined || isLive === true || isLive === null;
+
+  return (
+    <div style={{ maxWidth: 1000, margin: "0 auto", padding: "0 12px 96px" }}>
+      <div style={{ paddingTop: 18, paddingBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
+        <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+          <Icon name="back" size={18} color="var(--slate-600)" />
+        </button>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+            🔴 Live Class
+            {isLive === true && <span className="badge" style={{ background: "#fee2e2", color: "#b91c1c" }}>LIVE NOW</span>}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--slate-400)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{topic || "Allbee Learn AI — online live class"}</div>
+        </div>
+        {host && <RecordButton compact />}
+      </div>
+
+      {!host && isLive === false && !joined && (
+        <div className="card" style={{ padding: 24, textAlign: "center", marginBottom: 14 }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>⏳</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16, marginBottom: 6 }}>No live class right now</div>
+          <div style={{ fontSize: 13.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Your teacher hasn't started the class yet. A red “LIVE” banner will appear on your home screen when it begins. You can still enter the room below to test your camera &amp; mic.</div>
+          <button className="btn-secondary" onClick={() => setJoined(true)}>Enter room anyway →</button>
+        </div>
+      )}
+
+      {showRoom && (
+        <>
+          <div style={{ height: "min(72vh, 620px)", marginBottom: 12 }}>
+            <JitsiRoom room={room} displayName={displayName} onLeave={onBack} />
+          </div>
+          <div className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 12.5, color: "var(--slate-500)", flex: 1, minWidth: 180 }}>
+              Room: <code style={{ background: "var(--slate-100)", padding: "1px 6px", borderRadius: 4 }}>{room}</code>
+              {host ? " · You're the host. Tap “Record class” to save the session." : " · Use the in-call chat or raise-hand to ask doubts."}
+            </div>
+            {!host && <RecordButton compact />}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Admin login gate (secret code) shown on the login screen ─────────────────
+function AdminGate({ onAdmin }) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [err, setErr]   = useState("");
+  const submit = () => {
+    if (code.trim() === ADMIN_CODE) { setErr(""); onAdmin(); }
+    else setErr("Wrong admin code.");
+  };
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate-400)", fontSize: 12.5, fontWeight: 600 }}>
+        🔒 Teacher / Admin login
+      </button>
+    );
+  }
+  return (
+    <div className="fade-in" style={{ textAlign: "left" }}>
+      <div className="section-label">Admin code</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input type="password" placeholder="Enter admin code…" value={code} autoFocus
+          onChange={e => { setCode(e.target.value); setErr(""); }}
+          onKeyDown={e => { if (e.key === "Enter") submit(); }} style={{ fontSize: 14 }} />
+        <button className="btn-primary" onClick={submit} style={{ flexShrink: 0 }}>Enter</button>
+      </div>
+      {err && <div style={{ color: "var(--red-500)", fontSize: 12.5, marginTop: 8 }}>⚠️ {err}</div>}
+      <button onClick={() => { setOpen(false); setCode(""); setErr(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate-400)", fontSize: 12, marginTop: 8 }}>Cancel</button>
+    </div>
+  );
+}
+
+// ── Admin dashboard — see every student, run the live class, recordings ──────
+function AdminScreen({ onExit }) {
+  const [tab, setTab]         = useState("overview");
+  const [roster, setRoster]   = useState([]);
+  const [cloud, setCloud]     = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [note, setNote]       = useState("");
+  const [hosting, setHosting] = useState(false);
+  const [q, setQ]             = useState("");
+  const [roomInput, setRoomInput]   = useState(ALLBEE_DEFAULT_ROOM);
+  const [topicInput, setTopicInput] = useState("");
+
+  const load = async () => {
+    setLoading(true); setNote("");
+    let r = [];
+    try { r = await fetchStudents(); } catch { /* roster optional */ }
+    setRoster(r);
+    if (cloudEnabled()) {
+      const c = await cloudGet("all");
+      if (c && !c.error) {
+        setCloud(c);
+        if (c.live) { setRoomInput(c.live.room || ALLBEE_DEFAULT_ROOM); setTopicInput(c.live.topic || ""); }
+      } else {
+        setNote(c && c.error ? ("Backend said: " + c.error) : "Couldn't reach your Google Sheet backend. Check CLOUD_URL & CLOUD_SECRET.");
+      }
+    }
+    setLoading(false);
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const setLiveState = async (on) => {
+    if (!cloudEnabled()) { setNote("Add your Apps Script URL (CLOUD_URL) so students get the LIVE banner automatically."); return; }
+    setNote(on ? "Starting class…" : "Ending class…");
+    await cloudPost({ action: "setLive", live: { liveOn: on, room: roomInput || ALLBEE_DEFAULT_ROOM, topic: topicInput } });
+    await load();
+    setNote(on ? "🔴 Class is now LIVE — students see a Join banner on their home screen." : "Class ended.");
+  };
+
+  if (hosting) {
+    return <LiveClassScreen user={{ name: "Teacher" }} host onBack={() => { setHosting(false); load(); }} />;
+  }
+
+  // Merge registered roster + synced progress (matched by phone) → see EVERYONE
+  const byPhone = {};
+  ((cloud && cloud.students) || []).forEach(s => {
+    const k = String(s.phone || "").replace(/\D/g, "").slice(-10);
+    if (k) byPhone[k] = s;
+  });
+  const base = roster.length ? roster : ((cloud && cloud.students) || []);
+  const students = base.map(st => {
+    const k = String(st.phone || "").replace(/\D/g, "").slice(-10);
+    const p = byPhone[k] || {};
+    return {
+      name: st.name || p.name || "—", phone: k, course: st.course || p.course || "",
+      points: +p.points || 0, level: p.level || "—", streak: +p.streak || 0,
+      aiQuestions: +p.aiQuestions || 0, lessonsRead: +p.lessonsRead || 0,
+      interviews: +p.interviews || 0, bestInterview: +p.bestInterview || 0,
+      labsDone: +p.labsDone || 0, resumes: +p.resumes || 0,
+      jobsApplied: +p.jobsApplied || 0, certificates: +p.certificates || 0,
+      lastActive: p.lastActive || null, active: !!p.lastActive,
+    };
+  });
+  students.sort((a, b) => b.points - a.points);
+  const filtered = q.trim()
+    ? students.filter(s => (s.name + " " + s.phone + " " + s.course).toLowerCase().includes(q.trim().toLowerCase()))
+    : students;
+
+  const sum = (k) => students.reduce((a, s) => a + (s[k] || 0), 0);
+  const totals = {
+    students: students.length,
+    activeToday: students.filter(s => isTodayISO(s.lastActive)).length,
+    aiQuestions: sum("aiQuestions"), lessonsRead: sum("lessonsRead"),
+    interviews: sum("interviews"), resumes: sum("resumes"),
+    jobsApplied: sum("jobsApplied"), certificates: sum("certificates"),
+  };
+  const recs = getRecordings();
+  const live = cloud && cloud.live;
+
+  const TABS = [
+    { id: "overview",   label: "Overview",   emoji: "📊" },
+    { id: "students",   label: "Students",   emoji: "👥" },
+    { id: "live",       label: "Live Class", emoji: "🔴" },
+    { id: "recordings", label: "Recordings", emoji: "🎥" },
+    { id: "setup",      label: "Setup",      emoji: "⚙️" },
+  ];
+
+  const statCard = (emoji, label, value, color) => (
+    <div className="card" style={{ padding: "16px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ fontSize: 24 }}>{emoji}</div>
+      <div>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, color, lineHeight: 1.1 }}>{value}</div>
+        <div style={{ fontSize: 12, color: "var(--slate-500)", fontWeight: 600 }}>{label}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 1080, margin: "0 auto", padding: "0 16px 60px", minHeight: "100vh" }}>
+      <div style={{ paddingTop: 22, paddingBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ width: 42, height: 42, background: "#0f172a", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          <img src={LOGO_SRC} alt="Allbee" style={{ width: 32, height: 32, objectFit: "contain" }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800 }}>Admin Dashboard <span style={{ color: "var(--blue-600)" }}>· Teacher</span></div>
+          <div style={{ fontSize: 12, color: "var(--slate-400)" }}>{cloudEnabled() ? "Live data from your Google Sheet" : "Roster only — connect your Sheet in Setup"}</div>
+        </div>
+        <button className="btn-ghost" onClick={load} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}><Icon name="refresh" size={16} /> <span className="hide-mobile">Refresh</span></button>
+        <button className="btn-ghost" onClick={onExit} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--slate-500)" }}><Icon name="logout" size={16} /> <span className="hide-mobile">Exit</span></button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ flexShrink: 0, padding: "8px 16px", borderRadius: 99, fontSize: 13.5, fontWeight: 700, border: "1.5px solid", borderColor: tab === t.id ? "var(--blue-600)" : "var(--slate-200)", background: tab === t.id ? "var(--blue-600)" : "white", color: tab === t.id ? "white" : "var(--slate-600)" }}>{t.emoji} {t.label}</button>
+        ))}
+      </div>
+
+      {note && <div style={{ background: "var(--blue-50)", border: "1px solid var(--blue-200)", color: "var(--blue-800)", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14 }}>{note}</div>}
+      {loading && <div className="card" style={{ padding: 24, textAlign: "center", color: "var(--slate-500)" }}><span className="spinner spinner-blue" /> Loading…</div>}
+
+      {!loading && tab === "overview" && (
+        <div className="fade-in">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
+            {statCard("👥", "Students", totals.students, "var(--blue-600)")}
+            {statCard("🟢", "Active today", totals.activeToday, "#059669")}
+            {statCard("💬", "AI questions", totals.aiQuestions, "#0891b2")}
+            {statCard("📚", "Lessons read", totals.lessonsRead, "#d97706")}
+            {statCard("🎤", "Interviews", totals.interviews, "#7c3aed")}
+            {statCard("📄", "Resumes", totals.resumes, "#0d9488")}
+            {statCard("💼", "Jobs applied", totals.jobsApplied, "#059669")}
+            {statCard("🎓", "Certificates", totals.certificates, "#a855f7")}
+          </div>
+          {!cloudEnabled() && (
+            <div className="card" style={{ padding: 18, fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>
+              You're seeing your <b>registered student roster</b> only. Progress, streaks and scores live on each student's own device — to see them here, connect your Google Sheet backend in the <b>Setup</b> tab.
+            </div>
+          )}
+          {cloudEnabled() && cloud && cloud.activity && cloud.activity.length > 0 && (
+            <>
+              <div className="section-label" style={{ margin: "6px 0 10px" }}>Recent activity</div>
+              <div className="card" style={{ padding: "6px 4px", maxHeight: 320, overflowY: "auto" }}>
+                {cloud.activity.slice(0, 40).map((a, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "1px solid var(--slate-100)" }}>
+                    <div style={{ width: 30, height: 30, borderRadius: "50%", background: "var(--blue-50)", color: "var(--blue-700)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{(a.name || "?")[0]}</div>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 13 }}><b>{a.name || "Student"}</b> <span style={{ color: "var(--slate-500)" }}>— {a.event}</span></div>
+                    <div style={{ fontSize: 11.5, color: "var(--slate-400)", flexShrink: 0 }}>{agoStr(a.time)}</div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {!loading && tab === "students" && (
+        <div className="fade-in">
+          <div style={{ position: "relative", marginBottom: 14 }}>
+            <div style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)" }}><Icon name="search" size={16} color="var(--slate-400)" /></div>
+            <input placeholder="Search by name, phone or course…" value={q} onChange={e => setQ(e.target.value)} style={{ paddingLeft: 40 }} />
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--slate-400)", marginBottom: 10 }}>{filtered.length} of {students.length} students{cloudEnabled() ? "" : " · roster only"}</div>
+          <div className="card" style={{ padding: 0, overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
+              <thead>
+                <tr style={{ background: "var(--slate-50)", textAlign: "left" }}>
+                  {["#", "Name", "Course", "Points", "Level", "🔥", "AI Q", "Lessons", "Interview", "Labs", "Resumes", "Jobs", "Certs", "Last active"].map(h => (
+                    <th key={h} style={{ padding: "10px 12px", fontWeight: 700, color: "var(--slate-500)", whiteSpace: "nowrap", borderBottom: "1px solid var(--slate-200)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((s, i) => (
+                  <tr key={s.phone + i} style={{ borderBottom: "1px solid var(--slate-100)" }}>
+                    <td style={{ padding: "10px 12px", color: "var(--slate-400)" }}>{i + 1}</td>
+                    <td style={{ padding: "10px 12px" }}>
+                      <div style={{ fontWeight: 700, color: "var(--slate-800)", whiteSpace: "nowrap" }}>{s.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--slate-400)" }}>{s.phone || "—"}{s.active ? "" : " · not active yet"}</div>
+                    </td>
+                    <td style={{ padding: "10px 12px", color: "var(--slate-500)", whiteSpace: "nowrap" }}>{s.course || "—"}</td>
+                    <td style={{ padding: "10px 12px", fontWeight: 800, color: "var(--blue-700)" }}>{s.points}</td>
+                    <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>{s.level}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.streak}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.aiQuestions}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.lessonsRead}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.bestInterview ? s.bestInterview + "%" : "—"}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.labsDone}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.resumes}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.jobsApplied}</td>
+                    <td style={{ padding: "10px 12px" }}>{s.certificates}</td>
+                    <td style={{ padding: "10px 12px", color: s.active ? "var(--slate-500)" : "var(--slate-300)", whiteSpace: "nowrap" }}>{agoStr(s.lastActive)}</td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={14} style={{ padding: 24, textAlign: "center", color: "var(--slate-400)" }}>No students found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {!loading && tab === "live" && (
+        <div className="fade-in" style={{ maxWidth: 620 }}>
+          <div className="card" style={{ padding: 22 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <span style={{ width: 12, height: 12, borderRadius: "50%", background: live && live.liveOn ? "#dc2626" : "var(--slate-300)", animation: live && live.liveOn ? "pulse 1s infinite" : "none" }} />
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16 }}>{live && live.liveOn ? "Class is LIVE" : "Class is offline"}</div>
+            </div>
+            <div className="section-label">Class topic (shown to students)</div>
+            <input value={topicInput} onChange={e => setTopicInput(e.target.value)} placeholder="e.g. Excel VLOOKUP — live doubt session" style={{ marginBottom: 14 }} />
+            <div className="section-label">Room name (students auto-join this)</div>
+            <input value={roomInput} onChange={e => setRoomInput(e.target.value.replace(/\s+/g, ""))} placeholder="AllBeeLiveClassRoom" style={{ marginBottom: 18 }} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {live && live.liveOn
+                ? <button onClick={() => setLiveState(false)} style={{ background: "var(--slate-200)", color: "var(--slate-700)", padding: "12px 20px", borderRadius: "var(--radius)", fontWeight: 700, fontSize: 14 }}>■ End class</button>
+                : <button className="btn-primary" style={{ background: "#dc2626" }} onClick={() => setLiveState(true)}>● Start live class</button>}
+              <button className="btn-primary" onClick={() => setHosting(true)}>🎥 Open room as host</button>
+            </div>
+            {!cloudEnabled() && <div style={{ marginTop: 14, fontSize: 12.5, color: "#b45309" }}>⚠️ Connect your Google Sheet (Setup tab) so students get the LIVE banner automatically. You can still open the room and share the room name manually.</div>}
+          </div>
+          <div className="card" style={{ padding: 18, marginTop: 14, fontSize: 13, color: "var(--slate-600)", lineHeight: 1.7 }}>
+            <b>How it works:</b> tap <b>Start live class</b>, then <b>Open room as host</b> to join the video call and press <b>Record class</b> to save the session. Students tap the red <b>LIVE</b> banner on their home screen and join the same room. When finished, tap <b>End class</b>.
+          </div>
+        </div>
+      )}
+
+      {!loading && tab === "recordings" && (
+        <div className="fade-in" style={{ maxWidth: 720 }}>
+          <div className="card" style={{ padding: 20, marginBottom: 14, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Record a class</div>
+              <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>Captures your screen + microphone and saves a video file to this computer.</div>
+            </div>
+            <RecordButton />
+          </div>
+          <div className="section-label" style={{ marginBottom: 10 }}>Recordings made on this device</div>
+          {recs.length === 0
+            ? <div className="card" style={{ padding: 22, textAlign: "center", color: "var(--slate-400)", fontSize: 13.5 }}>No recordings yet. Start one above — the video downloads to your computer automatically when you stop.</div>
+            : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {recs.map(r => (
+                  <div key={r.id} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ fontSize: 22 }}>🎥</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-700)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>{formatTime(r.date)} · {Math.floor((r.seconds || 0) / 60)}m {(r.seconds || 0) % 60}s{r.size ? " · " + (r.size / 1048576).toFixed(1) + " MB" : ""}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>}
+          <div style={{ marginTop: 14, fontSize: 12, color: "var(--slate-400)", lineHeight: 1.6 }}>ℹ️ Files are saved on your computer (not uploaded). To share a recording, upload the downloaded video to YouTube or Google Drive and send students the link.</div>
+        </div>
+      )}
+
+      {!loading && tab === "setup" && (
+        <div className="fade-in" style={{ maxWidth: 720 }}>
+          <div className="card" style={{ padding: 20, marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <span style={{ width: 10, height: 10, borderRadius: "50%", background: cloudEnabled() ? "#22c55e" : "#ef4444" }} />
+              <div style={{ fontWeight: 800, fontSize: 15 }}>{cloudEnabled() ? "Google Sheet backend connected" : "Backend not connected"}</div>
+            </div>
+            <div style={{ fontSize: 13, color: "var(--slate-600)", lineHeight: 1.7 }}>
+              {cloudEnabled()
+                ? <>Student progress is saving to your Google Sheet and showing here across all devices. Registered in roster: <b>{roster.length}</b> · with synced activity: <b>{(cloud && cloud.students ? cloud.students.length : 0)}</b>.</>
+                : <>Right now the Admin page shows your <b>registered roster</b> ({roster.length} students) only. To see live progress, streaks and scores from every device, connect a free Google Apps Script backend:</>}
+            </div>
+            {!cloudEnabled() && (
+              <ol style={{ margin: "12px 0 0 18px", fontSize: 13, color: "var(--slate-600)", lineHeight: 1.9 }}>
+                <li>Open the file <code>allbee-apps-script.gs</code> included with this app.</li>
+                <li>In your Google Sheet: <b>Extensions → Apps Script</b>, paste it all, Save.</li>
+                <li><b>Deploy → New deployment → Web app</b>. Execute as <b>Me</b>, access <b>Anyone</b>. Copy the <code>…/exec</code> URL.</li>
+                <li>In <code>App.jsx</code> set <code>CLOUD_URL</code> to that URL and <code>CLOUD_SECRET</code> to match the <code>SECRET</code> in the script.</li>
+                <li>Redeploy the app — this page then fills with live data.</li>
+              </ol>
+            )}
+          </div>
+          <div className="card" style={{ padding: 20, fontSize: 13, color: "var(--slate-600)", lineHeight: 1.7 }}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Security note</div>
+            The admin code keeps students out in normal use, but a technical person could read it from the app's code. For a class app that's usually fine. For stronger protection, host the admin page separately or add a real server login later.
           </div>
         </div>
       )}
