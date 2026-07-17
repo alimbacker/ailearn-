@@ -449,6 +449,35 @@ const syncProgress = (event) => {
   }, 500);
 };
 
+// ── Teacher notes: admin writes them, students read them (shared via the Sheet)
+const NOTES_CACHE_KEY = "allbee_notes_v1";
+const noteKey = (course, topic) => String(course || "") + "::" + String(topic || "");
+const getNotesLocal  = () => { try { return JSON.parse(localStorage.getItem(NOTES_CACHE_KEY)) || {}; } catch { return {}; } };
+const saveNotesLocal = (map) => { try { localStorage.setItem(NOTES_CACHE_KEY, JSON.stringify(map)); } catch { /* silent */ } };
+// Pull all teacher notes from the cloud (falls back to the local cache offline).
+const fetchTeacherNotes = async () => {
+  if (cloudEnabled()) {
+    const r = await cloudGet("notes");
+    if (r && Array.isArray(r.notes)) {
+      const map = {};
+      r.notes.forEach(n => { if (n && n.text) map[noteKey(n.course, n.topic)] = n.text; });
+      saveNotesLocal(map);
+      return map;
+    }
+  }
+  return getNotesLocal();
+};
+// Save/replace one note (empty text deletes it). Updates local cache + cloud.
+const setTeacherNote = async (course, topic, text) => {
+  const map = getNotesLocal();
+  const k = noteKey(course, topic);
+  const t = (text || "").trim();
+  if (t) map[k] = t; else delete map[k];
+  saveNotesLocal(map);
+  if (cloudEnabled()) { try { await cloudPost({ action: "setNote", note: { course, topic, text: t } }); } catch { /* silent */ } }
+  return map;
+};
+
 // ── Local log of class recordings made ON THIS device ────────────────────────
 const REC_LOG_KEY  = "allbee_recordings";
 const getRecordings = () => { try { return JSON.parse(localStorage.getItem(REC_LOG_KEY)) || []; } catch { return []; } };
@@ -3488,6 +3517,17 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
   const lessonCacheKey = (cid, topic) => "allbee_lesson_v1::" + cid + "::" + topic;
   const activeKeyRef = useRef(""); // which lesson is currently on screen (prevents stale AI results)
 
+  // Detailed (full professional) notes — generated on demand, cached separately.
+  const [detail, setDetail]               = useState(false);
+  const [detailText, setDetailText]       = useState("");
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError]     = useState(false);
+  const detailCacheKey = (cid, topic) => "allbee_lesson_full_v1::" + cid + "::" + topic;
+  const detailKeyRef = useRef("");
+
+  // Teacher notes (added by the admin, shown to students) — fetched once.
+  const [notesMap, setNotesMap] = useState(() => getNotesLocal());
+
   const generateLesson = async (course, topic, force) => {
     const myKey = course.id + "||" + topic;
     activeKeyRef.current = myKey;
@@ -3508,11 +3548,20 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
     // 3) Otherwise write it with the AI, then cache it.
     setLessonLoading(true); setLessonError(false); setLessonText("");
     const sys =
-      "You are a warm, encouraging teacher at Allbee Learn AI teaching school and college students in Tamil Nadu. " +
-      "Write ONE complete, easy BEGINNER lesson. Use very simple English with a little natural Tanglish where it helps. " +
+      "You are a professional trainer at Allbee Learn AI teaching school/college students and job-seekers in Tamil Nadu. " +
+      "Write ONE clear, well-structured lesson on the given topic for a beginner who wants job-ready understanding. " +
+      "Use simple, professional English with a little natural Tanglish only where it truly helps. " +
       "Format the lesson EXACTLY with these emoji section headers, each on its own line, with short bullet points (•) or numbered steps under them:\n" +
-      "📌 WHAT YOU LEARN\n💡 WHY IT MATTERS\n🪜 STEP BY STEP\n✅ QUICK SUMMARY\n✏️ TRY THIS\n" +
-      "Keep it practical and motivating, about 250–350 words. Do not use markdown symbols like # or *.";
+      "📌 WHAT YOU'LL LEARN\n" +
+      "📖 EXPLANATION (explain the concept clearly in 2-4 short paragraphs)\n" +
+      "🔑 KEY TERMS (3-5 important words, one-line meaning each)\n" +
+      "🧩 EXAMPLE (one concrete worked example a beginner can follow)\n" +
+      "🪜 STEP BY STEP (numbered practical steps)\n" +
+      "💼 WHERE IT'S USED (real job / real life uses)\n" +
+      "⚠️ COMMON MISTAKES (2-3 mistakes beginners make)\n" +
+      "✅ SUMMARY (3-4 quick takeaways)\n" +
+      "✏️ PRACTICE (2-3 small tasks or questions to try)\n" +
+      "Keep it accurate, practical and motivating, about 450-650 words. Do NOT use markdown symbols like # or *; use only the emoji headers and • bullets.";
     const usr =
       "Write the full beginner lesson for the topic \"" + topic + "\" from the \"" + course.title +
       "\" course. Assume the student is a complete beginner from Tamil Nadu.";
@@ -3531,9 +3580,40 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
   const lessonKey = lesson ? lesson.c.id + "||" + lesson.topic : "";
   useEffect(() => {
     if (!lesson) return;
+    setDetail(false); setDetailText(""); setDetailError(false);
     generateLesson(lesson.c, lesson.topic, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonKey]);
+
+  // Load teacher notes once (from the shared sheet if connected).
+  useEffect(() => { fetchTeacherNotes().then(setNotesMap).catch(() => {}); }, []);
+
+  // In-depth professional notes for the current topic (own cache key).
+  const generateDetailed = async (course, topic, force) => {
+    const myKey = course.id + "||" + topic;
+    detailKeyRef.current = myKey;
+    const ck = detailCacheKey(course.id, topic);
+    if (!force) {
+      try { const cached = localStorage.getItem(ck); if (cached) { setDetailText(cached); setDetailLoading(false); setDetailError(false); return; } } catch {}
+    }
+    setDetailLoading(true); setDetailError(false); setDetailText("");
+    const sys =
+      "You are a senior trainer at Allbee Learn AI creating in-depth, professional study notes for students and job-seekers in Tamil Nadu. " +
+      "Write COMPREHENSIVE, exam-and-interview-ready notes on the given topic. Be thorough but still beginner-friendly, using clear professional English with light Tanglish only where it helps. " +
+      "Use these emoji section headers, each on its own line, with • bullets or numbered steps:\n" +
+      "📌 OVERVIEW\n🎯 LEARNING OBJECTIVES\n📖 DETAILED EXPLANATION (use sub-points; explain the 'why', not just the 'what')\n🔑 KEY TERMS & DEFINITIONS\n🧩 WORKED EXAMPLES (at least 2, with steps)\n🪜 STEP-BY-STEP METHOD\n💡 TIPS & BEST PRACTICES\n⚠️ COMMON MISTAKES & HOW TO AVOID THEM\n💼 REAL-WORLD / JOB APPLICATIONS\n🎤 LIKELY INTERVIEW / VIVA QUESTIONS (3-5 with short answers)\n✅ SUMMARY\n✏️ PRACTICE EXERCISES (4-5 tasks)\n" +
+      "Aim for about 800-1100 words. Be accurate and well-organised. Do NOT use markdown symbols like # or *; use only the emoji headers and • bullets.";
+    const usr = "Write detailed professional study notes for the topic \"" + topic + "\" from the \"" + course.title + "\" course, for a beginner in Tamil Nadu who wants job-ready understanding.";
+    try {
+      const out = await callAI(sys, usr);
+      if (detailKeyRef.current !== myKey) return;
+      setDetailText(out); setDetailLoading(false);
+      try { localStorage.setItem(ck, out); } catch {}
+    } catch (e) {
+      if (detailKeyRef.current !== myKey) return;
+      setDetailLoading(false); setDetailError(true);
+    }
+  };
 
   // Open a lesson (content loads via the effect above)
   const openLesson = (course, topic) => {
@@ -3548,6 +3628,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
     const idx = c.topics.indexOf(lesson.topic);
     const nextTopic = idx >= 0 && idx < c.topics.length - 1 ? c.topics[idx + 1] : null;
     const isPrewritten = !!(LESSONS[c.id] && LESSONS[c.id][lesson.topic]);
+    const teacherNote  = notesMap[noteKey(c.id, lesson.topic)] || "";
     return (
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 16px 100px" }}>
         {/* Header */}
@@ -3565,25 +3646,68 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>{lesson.topic}</div>
         </div>
 
-        {/* Lesson content — hand-written loads instantly; others are written by AI on first open, then cached */}
-        {lessonLoading ? (
+        {/* 👩‍🏫 Teacher's notes (added by the teacher in Admin → Notes) */}
+        {teacherNote && (
+          <div className="card fade-in" style={{ padding: "16px 18px", marginBottom: 16, background: "#fffdf5", border: "1.5px solid #fde68a", borderLeft: "4px solid #f59e0b" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 18 }}>👩‍🏫</span>
+              <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 14, color: "#b45309" }}>Teacher's Notes</span>
+            </div>
+            <div className="output-box" style={{ background: "transparent", border: "none", padding: 0 }}>{teacherNote}</div>
+          </div>
+        )}
+
+        {/* Notes depth: quick summary vs full professional notes */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 14, background: "var(--slate-100)", padding: 4, borderRadius: 99, width: "fit-content" }}>
+          {[{ k: false, label: "📄 Quick notes" }, { k: true, label: "📖 Detailed notes" }].map(opt => (
+            <button key={String(opt.k)} onClick={() => { setDetail(opt.k); if (opt.k && !detailText && !detailLoading) generateDetailed(c, lesson.topic, false); }}
+              style={{ border: "none", cursor: "pointer", padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: 700, background: detail === opt.k ? "white" : "transparent", color: detail === opt.k ? c.color : "var(--slate-500)", boxShadow: detail === opt.k ? "0 1px 3px rgba(0,0,0,0.08)" : "none", transition: "all .15s" }}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Content — Detailed (AI, in-depth) or Quick (instant) notes */}
+        {detail ? (
+          detailLoading ? (
+            <div className="card fade-in" style={{ padding: "26px 22px", marginBottom: 18, textAlign: "center" }}>
+              <div style={{ width: 30, height: 30, margin: "0 auto 14px", border: `3px solid ${c.color}30`, borderTopColor: c.color, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--slate-800)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>📖 Preparing detailed notes…</div>
+              <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginTop: 5 }}>Writing in-depth professional notes with examples. Saved for instant reopening.</div>
+            </div>
+          ) : detailText ? (
+            <>
+              <div className="output-box fade-in" style={{ marginBottom: 8 }}>{detailText}</div>
+              <div style={{ textAlign: "right", marginBottom: 14 }}>
+                <button onClick={() => generateDetailed(c, lesson.topic, true)} style={{ background: "none", border: "none", color: "var(--slate-400)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 4 }}>↻ Regenerate detailed notes</button>
+              </div>
+            </>
+          ) : (
+            <div className="card fade-in" style={{ padding: "20px 22px", marginBottom: 18 }}>
+              <div style={{ fontSize: 14, color: "var(--slate-600)", marginBottom: 12 }}>The AI is very busy right now and couldn't finish the detailed notes. Please try again.</div>
+              <button className="btn-primary" onClick={() => generateDetailed(c, lesson.topic, true)} style={{ background: c.gradient, border: "none" }}>↻ Try Again</button>
+            </div>
+          )
+        ) : lessonLoading ? (
           <div className="card fade-in" style={{ padding: "26px 22px", marginBottom: 18, textAlign: "center" }}>
             <div style={{ width: 30, height: 30, margin: "0 auto 14px", border: `3px solid ${c.color}30`, borderTopColor: c.color, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--slate-800)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✍️ Writing your lesson…</div>
-            <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginTop: 5 }}>Just a few seconds. We’ll save it so it opens instantly next time.</div>
+            <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginTop: 5 }}>Just a few seconds. We'll save it so it opens instantly next time.</div>
           </div>
         ) : lessonText ? (
           <>
-            <div className="output-box fade-in" style={{ marginBottom: isPrewritten ? 18 : 8 }}>{lessonText}</div>
-            {!isPrewritten && (
+            <div className="output-box fade-in" style={{ marginBottom: 8 }}>{lessonText}</div>
+            {!isPrewritten ? (
               <div style={{ textAlign: "right", marginBottom: 14 }}>
                 <button onClick={() => generateLesson(c, lesson.topic, true)} style={{ background: "none", border: "none", color: "var(--slate-400)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 4 }}>↻ Regenerate lesson</button>
               </div>
+            ) : (
+              <div style={{ marginBottom: 14, fontSize: 12.5, color: "var(--slate-400)" }}>💡 Want more depth, examples & interview questions? Tap <b style={{ color: c.color }}>📖 Detailed notes</b> above.</div>
             )}
           </>
         ) : (
           <div className="card fade-in" style={{ padding: "20px 22px", marginBottom: 18 }}>
-            <div style={{ fontSize: 14, color: "var(--slate-600)", marginBottom: 12 }}>The AI is very busy right now and couldn’t finish this lesson. Please try again — it usually works on the next try.</div>
+            <div style={{ fontSize: 14, color: "var(--slate-600)", marginBottom: 12 }}>The AI is very busy right now and couldn't finish this lesson. Please try again — it usually works on the next try.</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button className="btn-primary" onClick={() => generateLesson(c, lesson.topic, true)} style={{ background: c.gradient, border: "none" }}>↻ Try Again</button>
               <button className="btn-secondary" onClick={() => onAskAI(`Teach me the topic "${lesson.topic}" from the "${c.title}" course step by step for a beginner.`)} style={{ color: c.color, borderColor: `${c.color}40` }}>🤖 Ask AI Instead</button>
@@ -5879,6 +6003,7 @@ function AdminScreen({ onExit }) {
   const TABS = [
     { id: "overview",   label: "Overview",   emoji: "📊" },
     { id: "students",   label: "Students",   emoji: "👥" },
+    { id: "notes",      label: "Notes",      emoji: "📝" },
     { id: "live",       label: "Live Class", emoji: "🔴" },
     { id: "recordings", label: "Recordings", emoji: "🎥" },
     { id: "setup",      label: "Setup",      emoji: "⚙️" },
@@ -6050,6 +6175,8 @@ function AdminScreen({ onExit }) {
         </div>
       )}
 
+      {!loading && tab === "notes" && <AdminNotes />}
+
       {!loading && tab === "setup" && (
         <div className="fade-in" style={{ maxWidth: 720 }}>
           <div className="card" style={{ padding: 20, marginBottom: 14 }}>
@@ -6135,6 +6262,96 @@ function CourseProgress({ onOpenCourse, onOpenCourses }) {
             ))}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Admin → Notes: teacher writes notes per lesson; students see them ─────────
+function AdminNotes() {
+  const [notes, setNotes]       = useState({});
+  const [loading, setLoading]   = useState(true);
+  const [courseId, setCourseId] = useState(FEATURED_IDS[0] || (COURSES[0] && COURSES[0].id));
+  const [topic, setTopic]       = useState("");
+  const [text, setText]         = useState("");
+  const [saving, setSaving]     = useState(false);
+  const [msg, setMsg]           = useState("");
+
+  const course = COURSES.find(c => c.id === courseId) || COURSES[0];
+
+  const load = async () => { setLoading(true); const m = await fetchTeacherNotes(); setNotes(m || {}); setLoading(false); };
+  useEffect(() => { load(); }, []);
+  // When course changes, default the topic to the first topic of that course.
+  useEffect(() => { if (course) setTopic(course.topics[0] || ""); /* eslint-disable-next-line */ }, [courseId]);
+  // Load any existing note text for the selected course + topic.
+  useEffect(() => { setText(notes[noteKey(courseId, topic)] || ""); }, [courseId, topic, notes]);
+
+  const save = async () => {
+    if (!topic) return;
+    setSaving(true); setMsg("");
+    const m = await setTeacherNote(courseId, topic, text);
+    setNotes({ ...m }); setSaving(false);
+    setMsg(text.trim() ? "✅ Saved. Students will see this on that lesson." : "Note cleared.");
+  };
+  const del = async () => {
+    setSaving(true);
+    const m = await setTeacherNote(courseId, topic, "");
+    setNotes({ ...m }); setText(""); setSaving(false); setMsg("Note deleted.");
+  };
+
+  const list = Object.keys(notes).map(k => {
+    const [cid, tp] = k.split("::");
+    const c = COURSES.find(x => x.id === cid);
+    return { key: k, cid, tp, title: c ? c.title : cid, emoji: c ? c.emoji : "📘", text: notes[k] };
+  });
+  const selStyle = { marginBottom: 14, width: "100%", padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--slate-200)", fontSize: 14, background: "white" };
+
+  return (
+    <div className="fade-in" style={{ maxWidth: 760 }}>
+      {!cloudEnabled() && (
+        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
+          ⚠️ Your Google Sheet isn't connected yet, so notes save only on this device. Connect it in the <b>Setup</b> tab so your students see the notes on their phones.
+        </div>
+      )}
+      <div className="card" style={{ padding: 20, marginBottom: 16 }}>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 4 }}>✍️ Add a note to a lesson</div>
+        <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Pick a course and topic, write your note, then Save. Students see it as “👩‍🏫 Teacher's Notes” at the top of that lesson.</div>
+
+        <div className="section-label">Course</div>
+        <select value={courseId} onChange={e => setCourseId(e.target.value)} style={selStyle}>
+          {COURSES.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.title}</option>)}
+        </select>
+
+        <div className="section-label">Topic / Lesson</div>
+        <select value={topic} onChange={e => setTopic(e.target.value)} style={selStyle}>
+          {course && course.topics.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <div className="section-label">Your note {notes[noteKey(courseId, topic)] ? "· (editing existing)" : ""}</div>
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={6} placeholder="Type your note, tips, exam pointers, or important instructions for students…" style={{ marginBottom: 12, fontFamily: "'DM Sans', sans-serif", fontSize: 14 }} />
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button className="btn-primary" onClick={save} disabled={saving || !topic}>{saving ? <><span className="spinner" /> Saving…</> : "💾 Save note"}</button>
+          {notes[noteKey(courseId, topic)] && <button className="btn-secondary" onClick={del} disabled={saving} style={{ color: "var(--red-500)", borderColor: "#fecaca" }}>Delete</button>}
+          <button className="btn-ghost" onClick={load} style={{ marginLeft: "auto" }}>Refresh</button>
+        </div>
+        {msg && <div style={{ marginTop: 12, fontSize: 13, color: "var(--slate-600)" }}>{msg}</div>}
+      </div>
+
+      <div className="section-label" style={{ marginBottom: 10 }}>All notes ({list.length})</div>
+      {loading ? (
+        <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-500)" }}><span className="spinner spinner-blue" /> Loading…</div>
+      ) : list.length === 0 ? (
+        <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-400)", fontSize: 13.5 }}>No notes yet. Add one above ↑</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {list.map(n => (
+            <button key={n.key} onClick={() => { setCourseId(n.cid); setTopic(n.tp); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="card card-hover" style={{ padding: "12px 16px", textAlign: "left", cursor: "pointer", background: "white" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-800)", marginBottom: 2 }}>{n.emoji} {n.title} <span style={{ color: "var(--slate-400)", fontWeight: 500 }}>· {n.tp}</span></div>
+              <div style={{ fontSize: 12.5, color: "var(--slate-500)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.text}</div>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );
