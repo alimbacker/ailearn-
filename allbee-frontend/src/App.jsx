@@ -217,17 +217,34 @@ const callPollinationsDirect = async (systemPrompt, userMessage) => {
   throw lastErr || new Error("Free AI failed");
 };
 
-const callAI = async (systemPrompt, userMessage) => {
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{2712}\u{2714}\u{2716}-\u{27BF}\u{2B00}-\u{2BFF}\u{2300}-\u{23FF}\u{FE0F}\u{FE0E}\u{200D}]/gu;
+
+// Removes emoji from model output (and tidies the space they leave behind)
+// so nothing decorative reaches the screen or the text-to-speech voice.
+const stripEmoji = (t) => {
+  if (typeof t !== "string") return t;
+  return t
+    .replace(EMOJI_RE, "\u0000")
+    .replace(/[ \t]*\u0000+[ \t]*/g, (m, off, s) => (off === 0 || s[off - 1] === "\n" ? "" : " "))
+    .replace(/[ \t]+$/gm, "");
+};
+
+const NO_EMOJI_RULE =
+  "\n\nIMPORTANT: Do not use any emoji, emoticons or decorative symbols anywhere in your answer. " +
+  "Use plain text headings and • bullets only.";
+
+const callAI = async (rawSystemPrompt, userMessage) => {
+  const systemPrompt = (rawSystemPrompt || "You are a helpful assistant.") + NO_EMOJI_RULE;
   // 1) Reliable backend first — answers every time once an API key is set up.
   let serverMsg = "";
   try {
-    return await callViaServer(systemPrompt, userMessage);
+    return stripEmoji(await callViaServer(systemPrompt, userMessage));
   } catch (serverErr) {
     serverMsg = (serverErr && serverErr.message) || "unknown";
   }
   // 2) Backend not configured / failed — fall back to the free service.
   try {
-    return await callPollinationsDirect(systemPrompt, userMessage);
+    return stripEmoji(await callPollinationsDirect(systemPrompt, userMessage));
   } catch (freeErr) {
     const freeMsg = (freeErr && freeErr.message) || "unknown";
     // Show the REAL reason so the problem can be pinpointed and fixed.
@@ -305,11 +322,11 @@ const getPoints = () => {
 };
 
 const BEE_LEVELS = [
-  { name: "Bronze Bee",  min: 0,    emoji: "🥉", color: "#b45309" },
-  { name: "Silver Bee",  min: 250,  emoji: "🥈", color: "#64748b" },
-  { name: "Gold Bee",    min: 700,  emoji: "🥇", color: "#d97706" },
-  { name: "Diamond Bee", min: 1500, emoji: "💎", color: "#0891b2" },
-  { name: "Queen Bee",   min: 3000, emoji: "👑", color: "#a855f7" },
+  { name: "Bronze Bee",  min: 0,    emoji: "", color: "#b45309" },
+  { name: "Silver Bee",  min: 250,  emoji: "", color: "#64748b" },
+  { name: "Gold Bee",    min: 700,  emoji: "", color: "#d97706" },
+  { name: "Diamond Bee", min: 1500, emoji: "", color: "#0891b2" },
+  { name: "Queen Bee",   min: 3000, emoji: "", color: "#a855f7" },
 ];
 const getBeeLevel = (points) => {
   let idx = 0;
@@ -323,12 +340,12 @@ const getBeeLevel = (points) => {
 
 // Light per-skill progress inferred from what the student has actually asked / practised.
 const SKILL_TRACK = [
-  { key: "python",  label: "Python",         emoji: "🐍",  match: ["python", "django", "flask"] },
-  { key: "excel",   label: "Advanced Excel", emoji: "📊",  match: ["excel", "vlookup", "pivot", "formula"] },
-  { key: "tally",   label: "Tally & GST",    emoji: "🧾",  match: ["tally", "gst", "journal", "ledger", "accounting"] },
-  { key: "powerbi", label: "Power BI",       emoji: "📈",  match: ["power bi", "powerbi", "dax", "dashboard"] },
-  { key: "english", label: "Spoken English", emoji: "🗣️", match: ["english", "grammar", "speaking", "conversation"] },
-  { key: "ai",      label: "AI Tools",       emoji: "🤖",  match: ["prompt", "chatgpt", "automation", "machine learning", "ai tool"] },
+  { key: "python",  label: "Python",         emoji: "",  match: ["python", "django", "flask"] },
+  { key: "excel",   label: "Advanced Excel", emoji: "",  match: ["excel", "vlookup", "pivot", "formula"] },
+  { key: "tally",   label: "Tally & GST",    emoji: "",  match: ["tally", "gst", "journal", "ledger", "accounting"] },
+  { key: "powerbi", label: "Power BI",       emoji: "",  match: ["power bi", "powerbi", "dax", "dashboard"] },
+  { key: "english", label: "Spoken English", emoji: "", match: ["english", "grammar", "speaking", "conversation"] },
+  { key: "ai",      label: "AI Tools",       emoji: "",  match: ["prompt", "chatgpt", "automation", "machine learning", "ai tool"] },
 ];
 const getSkillProgress = () => {
   const blob = getHistory().map(h => ((h.input || "") + " " + (h.feature || "")).toLowerCase());
@@ -379,9 +396,9 @@ const shuffleArr = (arr) => {
 //                   will then only show your registered student roster.
 //  3) CLOUD_SECRET— must EXACTLY match the SECRET inside your Apps Script.
 // ═══════════════════════════════════════════════════════════════════════════
-const ADMIN_CODE          = "allbee-admin-2025";     // 🔑 CHANGE THIS
-const CLOUD_URL           = "";                       // 📎 paste your …/exec URL
-const CLOUD_SECRET        = "allbee-secret-key";      // 🔒 match Apps Script SECRET
+const ADMIN_CODE          = "allbee-admin-2025";     // CHANGE THIS
+const CLOUD_URL           = "";                       // paste your …/exec URL
+const CLOUD_SECRET        = "allbee-secret-key";      // match Apps Script SECRET
 const ALLBEE_DEFAULT_ROOM = "AllBeeLiveClassRoom";    // default Jitsi room name
 
 const cloudEnabled = () => !!CLOUD_URL;
@@ -537,12 +554,12 @@ const agoStr = (iso) => {
 
 // ─── SYSTEM PROMPTS ──────────────────────────────────────────────────────────
 const PROMPTS = {
-  code: `You are a friendly coding teacher at Allbee Learn AI. You explain code to Tamil Nadu school and college students. 
+  code: `You are a friendly coding teacher at Allbee Learn AI. You explain code to Tamil Nadu school and college students.
 Rules:
 - Use simple Tamil+English mix (Tanglish) wherever helpful. Example: "இந்த line-ல என்னன்னா..."
 - Give line-by-line explanation in simple words
 - Detect errors and suggest fixes clearly
-- Use 🔍 for explanation, ⚠️ for errors, ✅ for fixes, 💡 for tips
+- Use plain text headings: Explanation, Errors Found, Fixed Code, Tips
 - Keep it beginner-friendly, like a teacher explaining to a student
 - Format with clear sections: Explanation, Errors Found, Fixed Code, Tips`,
 
@@ -551,7 +568,7 @@ Rules:
 - Use simple Tanglish (Tamil + English mix) where helpful
 - Give 5-8 important viva questions with simple answers
 - Add a "Quick Revision Notes" section at the end
-- Use ❓ for questions, ✅ for answers, 📝 for revision notes
+- Use plain text headings: Questions, Answers, Quick Revision Notes
 - Keep answers short — 2-3 lines max per answer
 - Focus on what teachers commonly ask`,
 
@@ -561,7 +578,7 @@ Rules:
 - Generate resume content sections: Objective, Skills, Projects, Extra sections
 - Suggest 3 project ideas from easy to advanced based on course
 - Give portfolio tips
-- Use 📄 for resume sections, 💡 for project ideas, 🌟 for tips
+- Use plain text headings: Resume Sections, Project Ideas, Tips
 - Keep everything beginner-friendly and achievable`,
 
   doubt: `You are a friendly doubt-clearing teacher at Allbee Learn AI for Tamil Nadu students.
@@ -570,7 +587,7 @@ Rules:
 - Answer clearly in simple words
 - Use step-by-step if needed
 - Use real-life examples to explain concepts
-- Use ✅ for main answer, 📌 for steps, 💡 for examples
+- Use plain text headings: Answer, Steps, Examples
 - Keep answers short and to the point — no unnecessary depth
 - If it's a coding doubt, show simple code examples`,
 
@@ -580,7 +597,7 @@ Rules:
 - Give 5 practice sentences related to the topic
 - Show basic conversation examples
 - Correct grammar gently and explain why
-- Use 🗣️ for practice sentences, 💬 for conversations, ✏️ for corrections, 💡 for tips
+- Use plain text headings: Practice Sentences, Conversation Examples, Corrections, Tips
 - Keep it encouraging — build confidence
 - Focus on everyday spoken English, not formal`,
 
@@ -590,7 +607,7 @@ Rules:
 - Explain MS Word features clearly with exact menu steps (e.g., Home → Font → Bold)
 - Use numbered steps for "How to do" questions
 - Cover: formatting, tables, mail merge, page layout, headers/footers, spelling check, etc.
-- Use 📝 for steps, 💡 for tips, ⌨️ for keyboard shortcuts, ✅ for important notes
+- Use plain text headings: Steps, Tips, Keyboard Shortcuts, Important Notes
 - Always give the keyboard shortcut if one exists (e.g., Ctrl+B for Bold)
 - Keep it practical — "இதை எப்படி பண்றது" style answers`,
 
@@ -600,7 +617,7 @@ Rules:
 - Explain formulas with exact syntax and a real example (e.g., =SUM(A1:A10))
 - For "how to" questions, give step-by-step menu paths
 - Cover: formulas (SUM, AVERAGE, IF, VLOOKUP, etc.), charts, sorting, filtering, pivot tables, formatting
-- Use 📊 for formulas/examples, 📌 for steps, ⌨️ for shortcuts, 💡 for tips, ⚠️ for common mistakes
+- Use plain text headings: Formula / Example, Steps, Shortcuts, Tips, Common Mistakes
 - Always show a simple example with dummy data
 - Mention common errors like #DIV/0! or #REF! when relevant`,
 
@@ -609,7 +626,7 @@ Rules:
 - Use simple Tanglish (Tamil + English mix) throughout
 - Give step-by-step instructions with exact menu paths
 - Cover: slide design, transitions, animations, inserting images/charts, themes, slide master, presenting tips
-- Use 🖥️ for design tips, 📌 for steps, ✨ for animation/transition tips, 💡 for presentation tips, ⌨️ for shortcuts
+- Use plain text headings: Design Tips, Steps, Animation & Transition Tips, Presentation Tips, Shortcuts
 - Include "Best practices" for making good slides
 - Keep advice practical — students presenting in college/school context
 - Give content structure tips (how many slides, what to put on each)`,
@@ -628,7 +645,7 @@ Reply in EXACTLY this structure, using simple Tanglish (Tamil+English mix) where
 
 SCORE: <number 0-100>
 
-📝 Overall Feedback:
+Overall Feedback:
 <2-3 lines, encouraging but honest>
 
 Per-question notes:
@@ -636,7 +653,7 @@ Q1 – <one line: what was good / what to improve>
 Q2 – ...
 (cover every question)
 
-💡 Top 3 things to improve:
+Top 3 things to improve:
 1. ...
 2. ...
 3. ...
@@ -649,9 +666,9 @@ Rules:
   resumeEnhance: `You are a resume-writing assistant at Allbee Learn AI for Tamil Nadu freshers.
 You get raw resume details. Rewrite them into strong, ATS-friendly content.
 Return ONLY these three sections, ready to paste:
-🎯 Professional Summary: (2-3 crisp lines)
-🛠️ Skills: (comma-separated, grouped sensibly)
-💼 Experience / Projects: (3-5 bullet points, each starting with a strong action verb + impact)
+Professional Summary: (2-3 crisp lines)
+Skills: (comma-separated, grouped sensibly)
+Experience / Projects: (3-5 bullet points, each starting with a strong action verb + impact)
 Rules:
 - Stay truthful to the input — just sharper and professional.
 - Use plain professional English (this text goes straight into a resume). No Tamil in the resume text.
@@ -661,11 +678,11 @@ Rules:
 You get a resume's content. Evaluate it like an ATS + recruiter would.
 Reply in this structure:
 ATS SCORE: <number 0-100>
-✅ Strengths:
+Strengths:
 - (2-4 bullets)
-⚠️ Fix these:
+Fix these:
 - (3-5 specific, actionable bullets — keywords, action verbs, formatting, missing sections)
-💡 Suggested keywords: <comma separated>
+Suggested keywords: <comma separated>
 Rules:
 - The FIRST line MUST be exactly "ATS SCORE: <n>".
 - Be specific to the content given. Simple Tanglish is fine in the tips.`,
@@ -681,15 +698,15 @@ Rules:
 You receive: the LAB type, the CHALLENGE, and the student's ATTEMPT.
 Evaluate the attempt and reply in EXACTLY this structure, using simple Tanglish (Tamil+English) where it helps:
 
-RESULT: <✅ Correct | ⚠️ Almost | ❌ Not yet>
+RESULT: <Correct |Almost |Not yet>
 
-🔍 What happened:
+What happened:
 <short explanation of whether it solves the challenge; point out any error clearly>
 
-💡 Hint / Fix:
+Hint / Fix:
 <a concrete hint or the corrected version — for code, show the fixed code in a code block>
 
-🌟 Tip:
+Tip:
 <one short tip to remember>
 
 Rules:
@@ -703,9 +720,9 @@ Rules:
   jobFit: `You are a career coach at Allbee Learn AI. Given a candidate's SKILLS and a JOB (title + required skills + description), estimate the fit.
 Reply in this structure:
 FIT: <0-100>%
-✅ You already match: <skills they have that fit>
-📚 To learn: <2-4 skills/topics to close the gap>
-💡 <one line of advice>
+You already match: <skills they have that fit>
+To learn: <2-4 skills/topics to close the gap>
+<one line of advice>
 Rules:
 - The FIRST line MUST start with "FIT:".
 - Keep it short. Tanglish is fine.`,
@@ -865,7 +882,7 @@ const LoginScreen = ({ onLogin }) => {
       const students = await fetchStudents();
       console.log("Fetched students:", students);
       if (!students || students.length === 0) {
-        setError("⚠️ Student database is empty. Check your Google Sheet has data.");
+        setError("Student database is empty. Check your Google Sheet has data.");
         setLoading(false); return;
       }
       // Match by last 10 digits of phone
@@ -875,14 +892,14 @@ const LoginScreen = ({ onLogin }) => {
         return sp === cleaned.slice(-10);
       });
       if (!match) {
-        setError("📋 Phone number not registered yet. Tap \"Register Now\" below to join Allbee — then log in once added.");
+        setError("Phone number not registered yet. Tap \"Register Now\" below to join Allbee — then log in once added.");
         setLoading(false); return;
       }
       setStudent(match);
       setStep("password");
     } catch (e) {
       console.error("fetchStudents error:", e);
-      setError("❌ Something went wrong. Please try again.");
+      setError("Something went wrong. Please try again.");
     }
     setLoading(false);
   };
@@ -938,7 +955,7 @@ const LoginScreen = ({ onLogin }) => {
           <h1 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 24, fontWeight: 800, color: "var(--slate-900)", letterSpacing: "-0.02em" }}>
             Allbee Learn <span style={{ color: "var(--blue-600)" }}>AI</span>
           </h1>
-          <p style={{ color: "var(--slate-500)", fontSize: 13, marginTop: 5 }}>Student Login — Free AI learning 🎓</p>
+          <p style={{ color: "var(--slate-500)", fontSize: 13, marginTop: 5 }}>Student Login — Free AI learning</p>
         </div>
 
         <div style={{ height: 1, background: "var(--slate-100)", margin: "20px 0" }} />
@@ -977,11 +994,11 @@ const LoginScreen = ({ onLogin }) => {
                 autoFocus
               />
               <p style={{ fontSize: 12, color: "var(--slate-400)", marginTop: 8 }}>
-                📋 Use the phone number you registered with Allbee Solutions.
+Use the phone number you registered with Allbee Solutions.
               </p>
             </div>
 
-            {error && <div style={{ background: "var(--red-50)", border: "1px solid #fecaca", borderRadius: "var(--radius-sm)", padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "var(--red-500)", textAlign: "left" }}>⚠️ {error}</div>}
+            {error && <div style={{ background: "var(--red-50)", border: "1px solid #fecaca", borderRadius: "var(--radius-sm)", padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "var(--red-500)", textAlign: "left" }}>{error}</div>}
 
             <button className="btn-primary" style={{ width: "100%", justifyContent: "center" }} onClick={handlePhoneNext} disabled={loading}>
               {loading ? <><span className="spinner" /> Checking...</> : <>Next →</>}
@@ -999,7 +1016,7 @@ const LoginScreen = ({ onLogin }) => {
               </div>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 14, color: "var(--slate-800)" }}>{student.name}</div>
-                <div style={{ fontSize: 12, color: "var(--slate-500)" }}>{student.course} · ✅ Registered</div>
+                <div style={{ fontSize: 12, color: "var(--slate-500)" }}>{student.course} · Registered</div>
               </div>
             </div>
 
@@ -1016,11 +1033,11 @@ const LoginScreen = ({ onLogin }) => {
                   autoFocus
                 />
                 <button onClick={() => setShowPass(p => !p)} style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "var(--slate-400)", fontSize: 18, padding: 0, lineHeight: 1 }}>
-                  {showPass ? "🙈" : "👁️"}
+                  {showPass ? "" : ""}
                 </button>
               </div>
               <p style={{ fontSize: 12, color: "var(--slate-400)", marginTop: 8, lineHeight: 1.6 }}>
-                💡 Password = first 4 letters of name + last 4 digits of phone<br/>
+Password = first 4 letters of name + last 4 digits of phone<br/>
                 <span style={{ color: "var(--slate-300)" }}>
                   Example: <code style={{ background: "var(--slate-100)", padding: "1px 5px", borderRadius: 4, color: "var(--slate-600)" }}>
                     {student.name.replace(/\s+/g,"").toLowerCase().slice(0,4)}{student.phone.replace(/\D/g,"").slice(-4)}
@@ -1029,7 +1046,7 @@ const LoginScreen = ({ onLogin }) => {
               </p>
             </div>
 
-            {error && <div style={{ background: "var(--red-50)", border: "1px solid #fecaca", borderRadius: "var(--radius-sm)", padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "var(--red-500)", textAlign: "left" }}>⚠️ {error}</div>}
+            {error && <div style={{ background: "var(--red-50)", border: "1px solid #fecaca", borderRadius: "var(--radius-sm)", padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "var(--red-500)", textAlign: "left" }}>{error}</div>}
 
             <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
               <button className="btn-secondary" onClick={() => { setStep("phone"); setPassword(""); setError(""); setStudent(null); }} style={{ flex: 1, justifyContent: "center" }}>← Back</button>
@@ -1043,16 +1060,16 @@ const LoginScreen = ({ onLogin }) => {
         {/* New student registration */}
         <div style={{ height: 1, background: "var(--slate-100)", margin: "22px 0 16px" }} />
         <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 10 }}>
-          New to Allbee? Enroll for a course first 👇
+          New to Allbee? Enroll for a course first
         </div>
         <button
           onClick={openRegister}
           style={{ width: "100%", justifyContent: "center", display: "flex", alignItems: "center", gap: 8, background: "white", color: "var(--blue-700)", border: "1.5px solid var(--blue-200)", borderRadius: "var(--radius)", padding: "12px 20px", fontSize: 15, fontWeight: 700 }}
         >
-          📝 Register Now — It's Free
+Register Now — It's Free
         </button>
         <p style={{ fontSize: 11.5, color: "var(--slate-400)", marginTop: 12, lineHeight: 1.6 }}>
-          After you register, Allbee adds you to the student list — then log in with your phone number 🎓
+          After you register, Allbee adds you to the student list — then log in with your phone number
         </p>
 
         <div style={{ height: 1, background: "var(--slate-100)", margin: "18px 0 10px" }} />
@@ -1064,20 +1081,20 @@ const LoginScreen = ({ onLogin }) => {
 
 // ─── FEATURE CARD ─────────────────────────────────────────────────────────────
 const features = [
-  { id: "code", label: "Code Explainer", desc: "Paste code → Get simple explanation", icon: "code", color: "#0d9488", bg: "#eff6ff", emoji: "💻" },
-  { id: "viva", label: "Viva & Exam Prep", desc: "Topic → Important Q&A + revision notes", icon: "book", color: "#7c3aed", bg: "#f5f3ff", emoji: "📚" },
-  { id: "resume", label: "Resume & Projects", desc: "Course → Resume content + project ideas", icon: "file", color: "#059669", bg: "#ecfdf5", emoji: "📄" },
-  { id: "doubt", label: "Doubt Solver", desc: "Ask anything → Clear, simple answer", icon: "help", color: "#d97706", bg: "#fffbeb", emoji: "🤔" },
-  { id: "english", label: "Spoken English", desc: "Practice sentences & grammar tips", icon: "mic", color: "#dc2626", bg: "#fef2f2", emoji: "🗣️" },
-  { id: "msoffice", label: "MS Office Helper", desc: "Word, Excel & PowerPoint guide", icon: "office", color: "#0f4c81", bg: "#e8f0fe", emoji: "🖥️" },
+  { id: "code", label: "Code Explainer", desc: "Paste code → Get simple explanation", icon: "code", color: "#0d9488", bg: "#eff6ff", emoji: "" },
+  { id: "viva", label: "Viva & Exam Prep", desc: "Topic → Important Q&A + revision notes", icon: "book", color: "#7c3aed", bg: "#f5f3ff", emoji: "" },
+  { id: "resume", label: "Resume & Projects", desc: "Course → Resume content + project ideas", icon: "file", color: "#059669", bg: "#ecfdf5", emoji: "" },
+  { id: "doubt", label: "Doubt Solver", desc: "Ask anything → Clear, simple answer", icon: "help", color: "#d97706", bg: "#fffbeb", emoji: "" },
+  { id: "english", label: "Spoken English", desc: "Practice sentences & grammar tips", icon: "mic", color: "#dc2626", bg: "#fef2f2", emoji: "" },
+  { id: "msoffice", label: "MS Office Helper", desc: "Word, Excel & PowerPoint guide", icon: "office", color: "#0f4c81", bg: "#e8f0fe", emoji: "" },
 ];
 
 const officeApps = [
-  { id: "word",  label: "MS Word",       emoji: "📝", color: "#185abd", bg: "#e8f0fe",
+  { id: "word",  label: "MS Word",       emoji: "", color: "#185abd", bg: "#e8f0fe",
     subs: ["Format text / paragraph","Create a table","Mail merge","Insert header & footer","Add page numbers","Track changes","Table of contents","Word count / spell check"] },
-  { id: "excel", label: "MS Excel",      emoji: "📊", color: "#1d6f42", bg: "#e6f4ea",
+  { id: "excel", label: "MS Excel",      emoji: "", color: "#1d6f42", bg: "#e6f4ea",
     subs: ["SUM / AVERAGE formula","IF formula","VLOOKUP formula","Create a chart","Sort & filter data","Conditional formatting","Pivot table basics","Protect a sheet"] },
-  { id: "ppt",   label: "PowerPoint",    emoji: "🖼️", color: "#c43e1c", bg: "#fce8e6",
+  { id: "ppt",   label: "PowerPoint",    emoji: "", color: "#c43e1c", bg: "#fce8e6",
     subs: ["Add slide transitions","Apply animations","Insert images/videos","Use slide master","Create a good layout","Present / slideshow mode","Add speaker notes","Export as PDF"] },
 ];
 
@@ -1086,180 +1103,180 @@ const officeApps = [
 // (tap to read a lesson) and full AI access (ask AI to teach / doubts / study plan).
 const CATEGORIES = [
   {
-    id: "ai", name: "AI & Automation", emoji: "🤖",
+    id: "ai", name: "AI & Automation", emoji: "",
     color: "#0891b2", lightColor: "#06b6d4", bg: "#ecfeff",
     gradient: "linear-gradient(135deg, #155e75 0%, #0891b2 100%)",
     tag: "Future Skill", level: "No coding needed", duration: "2–4 Weeks",
     bestFor: "Students, Professionals & Business Owners", outcome: "Use AI to save time & boost your work",
     courses: [
-      { id: "ai-for-beginners", title: "AI for Beginners", emoji: "🤖", topics: ["What is AI & How It Works", "Everyday AI Tools You Can Use", "Writing Good AI Prompts", "AI for Studies & Work", "AI Safety & Smart Use"] },
-      { id: "chatgpt-mastery", title: "ChatGPT Mastery", emoji: "💬", topics: ["ChatGPT Basics & Setup", "Prompting Like a Pro", "ChatGPT for Writing & Email", "ChatGPT for Study & Coding", "Custom GPTs & Advanced Tricks"] },
-      { id: "prompt-engineering", title: "Prompt Engineering", emoji: "✍️", topics: ["What is a Prompt", "Prompt Structure & Roles", "Few-shot & Examples", "Step-by-Step Reasoning Prompts", "Prompts for Images & Code"] },
-      { id: "ai-tools-for-students", title: "AI Tools for Students", emoji: "🎓", topics: ["AI Note-taking & Summaries", "AI for Assignments (the right way)", "AI Research Helpers", "AI for Exam Prep", "Best Free AI Tools"] },
-      { id: "ai-tools-for-business-owners", title: "AI Tools for Business Owners", emoji: "💼", topics: ["AI for Customer Replies", "AI for Social Media Posts", "AI for Sales & Leads", "AI Data & Reports", "Saving Time with AI"] },
-      { id: "ai-content-creation", title: "AI Content Creation", emoji: "📝", topics: ["AI Blog & Article Writing", "AI Captions & Hashtags", "AI Scripts for Videos", "Repurposing Content with AI", "Editing AI Content Well"] },
-      { id: "ai-image-generation", title: "AI Image Generation", emoji: "🎨", topics: ["Intro to AI Image Tools", "Writing Image Prompts", "Midjourney Basics", "Leonardo AI Basics", "Editing & Upscaling Images"] },
-      { id: "ai-video-creation", title: "AI Video Creation", emoji: "🎬", topics: ["AI Video Tools Overview", "Text-to-Video Basics", "AI Avatars & Talking Heads", "AI Voiceovers for Video", "Editing AI Videos"] },
-      { id: "ai-voice-generation", title: "AI Voice Generation", emoji: "🎙️", topics: ["What is AI Voice", "Text-to-Speech Tools", "Cloning & Custom Voices", "Voiceovers for Reels/YouTube", "Voice in Tamil & English"] },
-      { id: "aitools", title: "AI Automation (No Code)", emoji: "⚙️", tag: "Future Skills", level: "No coding needed", duration: "3–4 Weeks", bestFor: "Entrepreneurs & Professionals", outcome: "Automate tasks & 10x your productivity", topics: ["ChatGPT for Productivity", "AI Tools for Business", "Automation Basics", "Workflow Automation (n8n)"] },
-      { id: "ai-for-digital-marketing", title: "AI for Digital Marketing", emoji: "📣", topics: ["AI for Ad Copy", "AI for SEO Content", "AI Social Media Planning", "AI Image & Creative Ads", "AI Analytics Insights"] },
-      { id: "ai-for-teachers", title: "AI for Teachers", emoji: "👩‍🏫", topics: ["AI Lesson Planning", "AI Question Paper Maker", "AI for Grading Help", "AI Teaching Materials", "Explaining Topics with AI"] },
-      { id: "ai-for-accountants", title: "AI for Accountants", emoji: "🧮", topics: ["AI for Data Entry", "AI Excel Formula Helper", "AI for GST/Tax Queries", "AI Report Writing", "AI Bookkeeping Tools"] },
-      { id: "ai-for-freelancers", title: "AI for Freelancers", emoji: "💻", topics: ["AI for Proposals & Pitches", "AI Client Communication", "AI to Deliver Work Faster", "AI Portfolio & Branding", "Pricing Your AI Skills"] },
+      { id: "ai-for-beginners", title: "AI for Beginners", emoji: "", topics: ["What is AI & How It Works", "Everyday AI Tools You Can Use", "Writing Good AI Prompts", "AI for Studies & Work", "AI Safety & Smart Use"] },
+      { id: "chatgpt-mastery", title: "ChatGPT Mastery", emoji: "", topics: ["ChatGPT Basics & Setup", "Prompting Like a Pro", "ChatGPT for Writing & Email", "ChatGPT for Study & Coding", "Custom GPTs & Advanced Tricks"] },
+      { id: "prompt-engineering", title: "Prompt Engineering", emoji: "", topics: ["What is a Prompt", "Prompt Structure & Roles", "Few-shot & Examples", "Step-by-Step Reasoning Prompts", "Prompts for Images & Code"] },
+      { id: "ai-tools-for-students", title: "AI Tools for Students", emoji: "", topics: ["AI Note-taking & Summaries", "AI for Assignments (the right way)", "AI Research Helpers", "AI for Exam Prep", "Best Free AI Tools"] },
+      { id: "ai-tools-for-business-owners", title: "AI Tools for Business Owners", emoji: "", topics: ["AI for Customer Replies", "AI for Social Media Posts", "AI for Sales & Leads", "AI Data & Reports", "Saving Time with AI"] },
+      { id: "ai-content-creation", title: "AI Content Creation", emoji: "", topics: ["AI Blog & Article Writing", "AI Captions & Hashtags", "AI Scripts for Videos", "Repurposing Content with AI", "Editing AI Content Well"] },
+      { id: "ai-image-generation", title: "AI Image Generation", emoji: "", topics: ["Intro to AI Image Tools", "Writing Image Prompts", "Midjourney Basics", "Leonardo AI Basics", "Editing & Upscaling Images"] },
+      { id: "ai-video-creation", title: "AI Video Creation", emoji: "", topics: ["AI Video Tools Overview", "Text-to-Video Basics", "AI Avatars & Talking Heads", "AI Voiceovers for Video", "Editing AI Videos"] },
+      { id: "ai-voice-generation", title: "AI Voice Generation", emoji: "", topics: ["What is AI Voice", "Text-to-Speech Tools", "Cloning & Custom Voices", "Voiceovers for Reels/YouTube", "Voice in Tamil & English"] },
+      { id: "aitools", title: "AI Automation (No Code)", emoji: "", tag: "Future Skills", level: "No coding needed", duration: "3–4 Weeks", bestFor: "Entrepreneurs & Professionals", outcome: "Automate tasks & 10x your productivity", topics: ["ChatGPT for Productivity", "AI Tools for Business", "Automation Basics", "Workflow Automation (n8n)"] },
+      { id: "ai-for-digital-marketing", title: "AI for Digital Marketing", emoji: "", topics: ["AI for Ad Copy", "AI for SEO Content", "AI Social Media Planning", "AI Image & Creative Ads", "AI Analytics Insights"] },
+      { id: "ai-for-teachers", title: "AI for Teachers", emoji: "", topics: ["AI Lesson Planning", "AI Question Paper Maker", "AI for Grading Help", "AI Teaching Materials", "Explaining Topics with AI"] },
+      { id: "ai-for-accountants", title: "AI for Accountants", emoji: "", topics: ["AI for Data Entry", "AI Excel Formula Helper", "AI for GST/Tax Queries", "AI Report Writing", "AI Bookkeeping Tools"] },
+      { id: "ai-for-freelancers", title: "AI for Freelancers", emoji: "", topics: ["AI for Proposals & Pitches", "AI Client Communication", "AI to Deliver Work Faster", "AI Portfolio & Branding", "Pricing Your AI Skills"] },
     ],
   },
   {
-    id: "computer", name: "Computer Skills", emoji: "💻",
+    id: "computer", name: "Computer Skills", emoji: "",
     color: "#185abd", lightColor: "#2b7de9", bg: "#e8f0fe",
     gradient: "linear-gradient(135deg, #0f3c7a 0%, #185abd 100%)",
     tag: "Essential", level: "Beginner Friendly", duration: "3–5 Weeks",
     bestFor: "Students & Office Staff", outcome: "Confident computer & office skills",
     courses: [
-      { id: "computer-basics", title: "Computer Basics", emoji: "🖥️", topics: ["Parts of a Computer", "Using Windows & Files", "Keyboard & Mouse Skills", "Internet & Browsers", "Staying Safe Online"] },
-      { id: "ms-office-complete", title: "MS Office Complete", emoji: "📑", topics: ["MS Word Essentials", "MS Excel Essentials", "MS PowerPoint Essentials", "Working Between Office Apps", "Printing & Saving as PDF"] },
-      { id: "excel", title: "Advanced Excel", emoji: "📊", tag: "Most Popular", level: "Beginner → Advanced", duration: "4–6 Weeks", bestFor: "Students, Office Staff, Accountants, Data Entry Jobs", outcome: "Job-ready Excel skills for data & office work", topics: ["Excel Basics to Advanced", "Formulas & Functions", "Pivot Tables", "Dashboards", "Data Cleaning", "Excel Automation Tips", "Real-world Business Reports"] },
-      { id: "powerpoint-mastery", title: "PowerPoint Mastery", emoji: "📽️", topics: ["Slide Design Basics", "Themes & Layouts", "Animations & Transitions", "Charts & SmartArt", "Presenting with Confidence"] },
-      { id: "internet-email-skills", title: "Internet & Email Skills", emoji: "🌐", topics: ["Browsing & Searching Well", "Creating & Using Email", "Attachments & Drive", "Online Safety & Passwords", "Video Calls & Meetings"] },
-      { id: "typing-tamil-english", title: "Typing (Tamil & English)", emoji: "⌨️", topics: ["Home Row & Posture", "English Touch Typing", "Tamil Typing Basics", "Speed Building Drills", "Accuracy & Shortcuts"] },
-      { id: "powerbi", title: "Power BI", emoji: "📈", tag: "High Demand", level: "Intermediate", duration: "4–5 Weeks", bestFor: "Data Analysts & Business Reporting", outcome: "Create stunning business dashboards", topics: ["Data Import & Transformation", "Data Modeling", "DAX Basics", "Interactive Dashboards", "Business Reports"] },
+      { id: "computer-basics", title: "Computer Basics", emoji: "", topics: ["Parts of a Computer", "Using Windows & Files", "Keyboard & Mouse Skills", "Internet & Browsers", "Staying Safe Online"] },
+      { id: "ms-office-complete", title: "MS Office Complete", emoji: "", topics: ["MS Word Essentials", "MS Excel Essentials", "MS PowerPoint Essentials", "Working Between Office Apps", "Printing & Saving as PDF"] },
+      { id: "excel", title: "Advanced Excel", emoji: "", tag: "Most Popular", level: "Beginner → Advanced", duration: "4–6 Weeks", bestFor: "Students, Office Staff, Accountants, Data Entry Jobs", outcome: "Job-ready Excel skills for data & office work", topics: ["Excel Basics to Advanced", "Formulas & Functions", "Pivot Tables", "Dashboards", "Data Cleaning", "Excel Automation Tips", "Real-world Business Reports"] },
+      { id: "powerpoint-mastery", title: "PowerPoint Mastery", emoji: "", topics: ["Slide Design Basics", "Themes & Layouts", "Animations & Transitions", "Charts & SmartArt", "Presenting with Confidence"] },
+      { id: "internet-email-skills", title: "Internet & Email Skills", emoji: "", topics: ["Browsing & Searching Well", "Creating & Using Email", "Attachments & Drive", "Online Safety & Passwords", "Video Calls & Meetings"] },
+      { id: "typing-tamil-english", title: "Typing (Tamil & English)", emoji: "", topics: ["Home Row & Posture", "English Touch Typing", "Tamil Typing Basics", "Speed Building Drills", "Accuracy & Shortcuts"] },
+      { id: "powerbi", title: "Power BI", emoji: "", tag: "High Demand", level: "Intermediate", duration: "4–5 Weeks", bestFor: "Data Analysts & Business Reporting", outcome: "Create stunning business dashboards", topics: ["Data Import & Transformation", "Data Modeling", "DAX Basics", "Interactive Dashboards", "Business Reports"] },
     ],
   },
   {
-    id: "accounting", name: "Accounting & Finance", emoji: "📊",
+    id: "accounting", name: "Accounting & Finance", emoji: "",
     color: "#1d6f42", lightColor: "#34a853", bg: "#e6f4ea",
     gradient: "linear-gradient(135deg, #114a2c 0%, #1d6f42 100%)",
     tag: "Job Oriented", level: "Beginner → Job Ready", duration: "4–6 Weeks",
     bestFor: "Commerce Students & Accountants", outcome: "Job-ready accounting skills",
     courses: [
-      { id: "tally-prime", title: "Tally Prime", emoji: "📒", topics: ["Tally Setup & Company Creation", "Ledgers & Groups", "Voucher Entry", "GST in Tally", "Reports & Balance Sheet"] },
-      { id: "gst-filing", title: "GST Filing", emoji: "🧾", topics: ["GST Basics & Types", "GST Registration", "Invoices & Returns", "GSTR-1 & GSTR-3B Filing", "Input Tax Credit"] },
-      { id: "income-tax-basics", title: "Income Tax Basics", emoji: "💸", topics: ["Income Tax Overview", "Tax Slabs & Heads of Income", "Deductions (80C etc.)", "Filing ITR Online", "Form 16 & TDS"] },
-      { id: "payroll-management", title: "Payroll Management", emoji: "👥", topics: ["Salary Components", "PF, ESI & Deductions", "Payslip Preparation", "Payroll in Excel/Tally", "Compliance Basics"] },
-      { id: "accounting-fundamentals", title: "Accounting Fundamentals", emoji: "📘", topics: ["What is Accounting", "Debit & Credit Rules", "Journal & Ledger", "Trial Balance", "Final Accounts"] },
-      { id: "business-accounting", title: "Business Accounting", emoji: "🏦", topics: ["Recording Business Transactions", "Cash vs Bank Book", "Profit & Loss Account", "Balance Sheet Basics", "Day-to-day Bookkeeping"] },
+      { id: "tally-prime", title: "Tally Prime", emoji: "", topics: ["Tally Setup & Company Creation", "Ledgers & Groups", "Voucher Entry", "GST in Tally", "Reports & Balance Sheet"] },
+      { id: "gst-filing", title: "GST Filing", emoji: "", topics: ["GST Basics & Types", "GST Registration", "Invoices & Returns", "GSTR-1 & GSTR-3B Filing", "Input Tax Credit"] },
+      { id: "income-tax-basics", title: "Income Tax Basics", emoji: "", topics: ["Income Tax Overview", "Tax Slabs & Heads of Income", "Deductions (80C etc.)", "Filing ITR Online", "Form 16 & TDS"] },
+      { id: "payroll-management", title: "Payroll Management", emoji: "", topics: ["Salary Components", "PF, ESI & Deductions", "Payslip Preparation", "Payroll in Excel/Tally", "Compliance Basics"] },
+      { id: "accounting-fundamentals", title: "Accounting Fundamentals", emoji: "", topics: ["What is Accounting", "Debit & Credit Rules", "Journal & Ledger", "Trial Balance", "Final Accounts"] },
+      { id: "business-accounting", title: "Business Accounting", emoji: "", topics: ["Recording Business Transactions", "Cash vs Bank Book", "Profit & Loss Account", "Balance Sheet Basics", "Day-to-day Bookkeeping"] },
     ],
   },
   {
-    id: "programming", name: "Programming", emoji: "👨‍💻",
+    id: "programming", name: "Programming", emoji: "",
     color: "#4f46e5", lightColor: "#6366f1", bg: "#eef2ff",
     gradient: "linear-gradient(135deg, #312e81 0%, #4f46e5 100%)",
     tag: "In Demand", level: "Beginner Friendly", duration: "6–8 Weeks",
     bestFor: "Aspiring Developers & Students", outcome: "Build real projects from scratch",
     courses: [
-      { id: "python", title: "Python", emoji: "🐍", tag: "Beginner Friendly", level: "Complete Beginner", duration: "6–8 Weeks", bestFor: "Beginners who want to enter programming or automation", outcome: "Build real automation scripts & small projects", topics: ["Python Basics", "Variables, Loops, Functions", "File Handling", "Error Handling", "Working with APIs & JSON", "Basic Automation Projects"] },
-      { id: "java", title: "Java", emoji: "☕", topics: ["Java Setup & First Program", "Variables & Data Types", "Loops & Conditions", "Methods & OOP Basics", "Classes & Objects"] },
-      { id: "javascript", title: "JavaScript", emoji: "🟨", topics: ["JS Basics & Syntax", "Variables & Functions", "DOM & Events", "Arrays & Objects", "Async & Fetch"] },
-      { id: "c-programming", title: "C Programming", emoji: "🔵", topics: ["C Setup & First Program", "Variables & Operators", "Loops & Conditions", "Functions & Arrays", "Pointers Basics"] },
-      { id: "c", title: "C++", emoji: "➕", topics: ["C++ Basics", "Loops & Functions", "OOP: Classes & Objects", "Inheritance & Polymorphism", "STL Basics"] },
-      { id: "webdev", title: "Web Development", emoji: "🌐", tag: "Freelance Ready", level: "Beginner", duration: "6–8 Weeks", bestFor: "Students who want to start in tech or freelance", outcome: "Launch your own website & start freelancing", topics: ["HTML Basics", "CSS & Styling", "Basic JavaScript", "Build Portfolio Website", "GitHub Hosting"] },
-      { id: "full-stack-development", title: "Full Stack Development", emoji: "🧱", topics: ["Frontend vs Backend", "HTML, CSS, JS Refresher", "Node.js & Express Basics", "Databases Basics", "Connecting Front & Back"] },
-      { id: "react-js", title: "React JS", emoji: "⚛️", topics: ["React Setup & JSX", "Components & Props", "State & Hooks", "Handling Events & Forms", "Fetching Data & Routing"] },
-      { id: "firebase-development", title: "Firebase Development", emoji: "🔥", topics: ["What is Firebase", "Authentication", "Firestore Database", "Hosting Your App", "Realtime Data & Rules"] },
+      { id: "python", title: "Python", emoji: "", tag: "Beginner Friendly", level: "Complete Beginner", duration: "6–8 Weeks", bestFor: "Beginners who want to enter programming or automation", outcome: "Build real automation scripts & small projects", topics: ["Python Basics", "Variables, Loops, Functions", "File Handling", "Error Handling", "Working with APIs & JSON", "Basic Automation Projects"] },
+      { id: "java", title: "Java", emoji: "", topics: ["Java Setup & First Program", "Variables & Data Types", "Loops & Conditions", "Methods & OOP Basics", "Classes & Objects"] },
+      { id: "javascript", title: "JavaScript", emoji: "", topics: ["JS Basics & Syntax", "Variables & Functions", "DOM & Events", "Arrays & Objects", "Async & Fetch"] },
+      { id: "c-programming", title: "C Programming", emoji: "", topics: ["C Setup & First Program", "Variables & Operators", "Loops & Conditions", "Functions & Arrays", "Pointers Basics"] },
+      { id: "c", title: "C++", emoji: "", topics: ["C++ Basics", "Loops & Functions", "OOP: Classes & Objects", "Inheritance & Polymorphism", "STL Basics"] },
+      { id: "webdev", title: "Web Development", emoji: "", tag: "Freelance Ready", level: "Beginner", duration: "6–8 Weeks", bestFor: "Students who want to start in tech or freelance", outcome: "Launch your own website & start freelancing", topics: ["HTML Basics", "CSS & Styling", "Basic JavaScript", "Build Portfolio Website", "GitHub Hosting"] },
+      { id: "full-stack-development", title: "Full Stack Development", emoji: "", topics: ["Frontend vs Backend", "HTML, CSS, JS Refresher", "Node.js & Express Basics", "Databases Basics", "Connecting Front & Back"] },
+      { id: "react-js", title: "React JS", emoji: "", topics: ["React Setup & JSX", "Components & Props", "State & Hooks", "Handling Events & Forms", "Fetching Data & Routing"] },
+      { id: "firebase-development", title: "Firebase Development", emoji: "", topics: ["What is Firebase", "Authentication", "Firestore Database", "Hosting Your App", "Realtime Data & Rules"] },
     ],
   },
   {
-    id: "webapp", name: "Web & App Development", emoji: "🌐",
+    id: "webapp", name: "Web & App Development", emoji: "",
     color: "#7c3aed", lightColor: "#8b5cf6", bg: "#f5f3ff",
     gradient: "linear-gradient(135deg, #5b21b6 0%, #7c3aed 100%)",
     tag: "Freelance Ready", level: "Beginner → Intermediate", duration: "5–8 Weeks",
     bestFor: "Future Web/App Developers", outcome: "Build & launch real websites/apps",
     courses: [
-      { id: "website-design", title: "Website Design", emoji: "🎨", topics: ["Design Principles", "Layout & Spacing", "Colors & Typography", "Responsive Design", "Design Tools (Figma)"] },
-      { id: "wordpress-development", title: "WordPress Development", emoji: "🪧", topics: ["WordPress Setup", "Themes & Customizing", "Pages, Posts & Menus", "Plugins You Need", "Going Live"] },
-      { id: "e-commerce-website", title: "E-Commerce Website", emoji: "🛒", topics: ["Plan Your Online Store", "Products & Categories", "Cart & Checkout", "Payment Gateways", "Launch & Promote"] },
-      { id: "progressive-web-apps", title: "Progressive Web Apps", emoji: "📲", topics: ["What is a PWA", "Manifest & Icons", "Service Workers", "Offline Support", "Installable Apps"] },
-      { id: "mobile-app-development", title: "Mobile App Development", emoji: "📱", topics: ["App Basics & Tools", "UI Screens & Navigation", "Buttons, Inputs & Lists", "Storing Data", "Publishing Your App"] },
-      { id: "saas-development", title: "SaaS Development", emoji: "☁️", topics: ["What is SaaS", "Planning Your SaaS", "User Accounts & Plans", "Subscriptions & Payments", "Launching to Users"] },
+      { id: "website-design", title: "Website Design", emoji: "", topics: ["Design Principles", "Layout & Spacing", "Colors & Typography", "Responsive Design", "Design Tools (Figma)"] },
+      { id: "wordpress-development", title: "WordPress Development", emoji: "", topics: ["WordPress Setup", "Themes & Customizing", "Pages, Posts & Menus", "Plugins You Need", "Going Live"] },
+      { id: "e-commerce-website", title: "E-Commerce Website", emoji: "", topics: ["Plan Your Online Store", "Products & Categories", "Cart & Checkout", "Payment Gateways", "Launch & Promote"] },
+      { id: "progressive-web-apps", title: "Progressive Web Apps", emoji: "", topics: ["What is a PWA", "Manifest & Icons", "Service Workers", "Offline Support", "Installable Apps"] },
+      { id: "mobile-app-development", title: "Mobile App Development", emoji: "", topics: ["App Basics & Tools", "UI Screens & Navigation", "Buttons, Inputs & Lists", "Storing Data", "Publishing Your App"] },
+      { id: "saas-development", title: "SaaS Development", emoji: "", topics: ["What is SaaS", "Planning Your SaaS", "User Accounts & Plans", "Subscriptions & Payments", "Launching to Users"] },
     ],
   },
   {
-    id: "design", name: "Design & Creativity", emoji: "🎨",
+    id: "design", name: "Design & Creativity", emoji: "",
     color: "#db2777", lightColor: "#ec4899", bg: "#fdf2f8",
     gradient: "linear-gradient(135deg, #9d174d 0%, #db2777 100%)",
     tag: "Creative", level: "Beginner Friendly", duration: "3–5 Weeks",
     bestFor: "Creative Students & Freelancers", outcome: "Create stunning designs that sell",
     courses: [
-      { id: "canva-design-mastery", title: "Canva Design Mastery", emoji: "🖌️", topics: ["Canva Basics", "Posters & Social Posts", "Templates & Brand Kit", "Logos & Thumbnails", "Presentations & Videos"] },
-      { id: "graphic-design", title: "Graphic Design", emoji: "🎨", topics: ["Design Principles", "Color Theory", "Typography Basics", "Composition & Layout", "Building a Portfolio"] },
-      { id: "photoshop", title: "Photoshop", emoji: "🖼️", topics: ["Photoshop Interface", "Layers & Selections", "Photo Editing & Retouch", "Text & Effects", "Exporting for Web/Print"] },
-      { id: "illustrator", title: "Illustrator", emoji: "✒️", topics: ["Illustrator Basics", "Shapes & Pen Tool", "Working with Color", "Logos & Icons", "Vector Illustrations"] },
-      { id: "ui-ux-design", title: "UI/UX Design", emoji: "📐", topics: ["UX vs UI", "User Research Basics", "Wireframing", "UI Design in Figma", "Prototyping & Testing"] },
-      { id: "logo-design", title: "Logo Design", emoji: "🔷", topics: ["Logo Types & Ideas", "Sketching Concepts", "Color & Font Choices", "Designing in Canva/Illustrator", "Delivering to Clients"] },
+      { id: "canva-design-mastery", title: "Canva Design Mastery", emoji: "", topics: ["Canva Basics", "Posters & Social Posts", "Templates & Brand Kit", "Logos & Thumbnails", "Presentations & Videos"] },
+      { id: "graphic-design", title: "Graphic Design", emoji: "", topics: ["Design Principles", "Color Theory", "Typography Basics", "Composition & Layout", "Building a Portfolio"] },
+      { id: "photoshop", title: "Photoshop", emoji: "", topics: ["Photoshop Interface", "Layers & Selections", "Photo Editing & Retouch", "Text & Effects", "Exporting for Web/Print"] },
+      { id: "illustrator", title: "Illustrator", emoji: "", topics: ["Illustrator Basics", "Shapes & Pen Tool", "Working with Color", "Logos & Icons", "Vector Illustrations"] },
+      { id: "ui-ux-design", title: "UI/UX Design", emoji: "", topics: ["UX vs UI", "User Research Basics", "Wireframing", "UI Design in Figma", "Prototyping & Testing"] },
+      { id: "logo-design", title: "Logo Design", emoji: "", topics: ["Logo Types & Ideas", "Sketching Concepts", "Color & Font Choices", "Designing in Canva/Illustrator", "Delivering to Clients"] },
     ],
   },
   {
-    id: "marketing", name: "Digital Marketing", emoji: "📈",
+    id: "marketing", name: "Digital Marketing", emoji: "",
     color: "#ea580c", lightColor: "#f97316", bg: "#fff7ed",
     gradient: "linear-gradient(135deg, #9a3412 0%, #ea580c 100%)",
     tag: "High Demand", level: "Beginner → Pro", duration: "3–5 Weeks",
     bestFor: "Marketers & Business Owners", outcome: "Run campaigns that get results",
     courses: [
-      { id: "seo", title: "SEO", emoji: "🔍", topics: ["What is SEO", "Keyword Research", "On-Page SEO", "Backlinks & Off-Page", "Tracking with Analytics"] },
-      { id: "social-media-marketing", title: "Social Media Marketing", emoji: "📱", topics: ["Choosing the Right Platforms", "Content Planning", "Growing Followers", "Engagement Strategy", "Measuring Results"] },
-      { id: "facebook-ads", title: "Facebook Ads", emoji: "📘", topics: ["Ads Manager Basics", "Audience Targeting", "Creating an Ad", "Budget & Bidding", "Reading Ad Results"] },
-      { id: "google-ads", title: "Google Ads", emoji: "🔎", topics: ["Google Ads Overview", "Keywords & Match Types", "Writing Search Ads", "Budget & Bidding", "Conversion Tracking"] },
-      { id: "content-marketing", title: "Content Marketing", emoji: "📝", topics: ["Content Strategy", "Blogging & SEO", "Email Marketing", "Lead Magnets", "Measuring Content ROI"] },
-      { id: "affiliate-marketing", title: "Affiliate Marketing", emoji: "🔗", topics: ["What is Affiliate Marketing", "Choosing Products & Niches", "Building a Platform", "Driving Traffic", "Tracking Commissions"] },
+      { id: "seo", title: "SEO", emoji: "", topics: ["What is SEO", "Keyword Research", "On-Page SEO", "Backlinks & Off-Page", "Tracking with Analytics"] },
+      { id: "social-media-marketing", title: "Social Media Marketing", emoji: "", topics: ["Choosing the Right Platforms", "Content Planning", "Growing Followers", "Engagement Strategy", "Measuring Results"] },
+      { id: "facebook-ads", title: "Facebook Ads", emoji: "", topics: ["Ads Manager Basics", "Audience Targeting", "Creating an Ad", "Budget & Bidding", "Reading Ad Results"] },
+      { id: "google-ads", title: "Google Ads", emoji: "", topics: ["Google Ads Overview", "Keywords & Match Types", "Writing Search Ads", "Budget & Bidding", "Conversion Tracking"] },
+      { id: "content-marketing", title: "Content Marketing", emoji: "", topics: ["Content Strategy", "Blogging & SEO", "Email Marketing", "Lead Magnets", "Measuring Content ROI"] },
+      { id: "affiliate-marketing", title: "Affiliate Marketing", emoji: "", topics: ["What is Affiliate Marketing", "Choosing Products & Niches", "Building a Platform", "Driving Traffic", "Tracking Commissions"] },
     ],
   },
   {
-    id: "content", name: "Content Creation", emoji: "🎥",
+    id: "content", name: "Content Creation", emoji: "",
     color: "#dc2626", lightColor: "#ef4444", bg: "#fef2f2",
     gradient: "linear-gradient(135deg, #991b1b 0%, #dc2626 100%)",
     tag: "Trending", level: "Beginner Friendly", duration: "3–5 Weeks",
     bestFor: "Creators & Influencers", outcome: "Grow your audience & brand",
     courses: [
-      { id: "youtube-growth", title: "YouTube Growth", emoji: "▶️", topics: ["Starting a Channel", "Finding Your Niche", "Video Ideas & Scripts", "Thumbnails & Titles", "Growing & Monetizing"] },
-      { id: "video-recording", title: "Video Recording", emoji: "🎥", topics: ["Camera & Phone Setup", "Lighting Basics", "Recording Clear Audio", "Framing & Composition", "Recording B-Roll & Screen"] },
-      { id: "video-editing", title: "Video Editing", emoji: "🎞️", topics: ["Editing Basics", "Cuts & Transitions", "Adding Text & Music", "Color & Audio Fixes", "Exporting for Platforms"] },
-      { id: "thumbnail-design", title: "Thumbnail Design", emoji: "🖼️", topics: ["Why Thumbnails Matter", "Design in Canva", "Text & Contrast", "Faces & Emotions", "A/B Testing Ideas"] },
-      { id: "podcast-creation", title: "Podcast Creation", emoji: "🎧", topics: ["Planning Your Podcast", "Recording Gear & Apps", "Recording & Editing", "Publishing to Platforms", "Growing Your Audience"] },
-      { id: "personal-branding", title: "Personal Branding", emoji: "⭐", topics: ["What is a Personal Brand", "Finding Your Niche", "Profile & Bio Setup", "Content That Builds Trust", "Growing Your Audience"] },
+      { id: "youtube-growth", title: "YouTube Growth", emoji: "▶", topics: ["Starting a Channel", "Finding Your Niche", "Video Ideas & Scripts", "Thumbnails & Titles", "Growing & Monetizing"] },
+      { id: "video-recording", title: "Video Recording", emoji: "", topics: ["Camera & Phone Setup", "Lighting Basics", "Recording Clear Audio", "Framing & Composition", "Recording B-Roll & Screen"] },
+      { id: "video-editing", title: "Video Editing", emoji: "", topics: ["Editing Basics", "Cuts & Transitions", "Adding Text & Music", "Color & Audio Fixes", "Exporting for Platforms"] },
+      { id: "thumbnail-design", title: "Thumbnail Design", emoji: "", topics: ["Why Thumbnails Matter", "Design in Canva", "Text & Contrast", "Faces & Emotions", "A/B Testing Ideas"] },
+      { id: "podcast-creation", title: "Podcast Creation", emoji: "", topics: ["Planning Your Podcast", "Recording Gear & Apps", "Recording & Editing", "Publishing to Platforms", "Growing Your Audience"] },
+      { id: "personal-branding", title: "Personal Branding", emoji: "", topics: ["What is a Personal Brand", "Finding Your Niche", "Profile & Bio Setup", "Content That Builds Trust", "Growing Your Audience"] },
     ],
   },
   {
-    id: "career", name: "Career Development", emoji: "💼",
+    id: "career", name: "Career Development", emoji: "",
     color: "#0d9488", lightColor: "#14b8a6", bg: "#f0fdfa",
     gradient: "linear-gradient(135deg, #115e59 0%, #0d9488 100%)",
     tag: "Job Focused", level: "All Levels", duration: "2–3 Weeks",
     bestFor: "Students & Job Seekers", outcome: "Get hired faster",
     courses: [
-      { id: "resume-building", title: "Resume Building", emoji: "📄", topics: ["Resume Structure", "Writing a Strong Objective", "Skills & Projects Section", "Formatting & ATS Tips", "Common Mistakes"] },
-      { id: "interview-preparation", title: "Interview Preparation", emoji: "🎤", topics: ["Before the Interview", "Common HR Questions", "Technical Round Tips", "Body Language & Confidence", "Follow-up & Thank You"] },
-      { id: "linkedin-optimization", title: "LinkedIn Optimization", emoji: "🔗", topics: ["Profile Photo & Headline", "About & Experience", "Skills & Endorsements", "Networking & Posts", "Finding Jobs on LinkedIn"] },
-      { id: "freelancing-mastery", title: "Freelancing Mastery", emoji: "💻", topics: ["Choosing Your Skill", "Profiles on Upwork/Fiverr", "Winning Proposals", "Pricing & Payments", "Getting 5-Star Reviews"] },
-      { id: "remote-job-skills", title: "Remote Job Skills", emoji: "🏠", topics: ["Finding Remote Jobs", "Tools for Remote Work", "Communication & Time Zones", "Productivity at Home", "Standing Out Remotely"] },
-      { id: "business-communication", title: "Business Communication", emoji: "✉️", topics: ["Professional Emails", "Meeting Etiquette", "Clear Speaking & Listening", "Reports & Presentations", "Workplace Confidence"] },
-      { id: "portfolio", title: "Portfolio & Career Setup", emoji: "🚀", tag: "Job Focused", level: "All Levels", duration: "2–3 Weeks", bestFor: "Students looking for IT jobs / Remote jobs", outcome: "Land your first IT job or remote opportunity", topics: ["Build Personal Portfolio Website", "GitHub Setup", "Resume Building", "Job Application Guidance"] },
+      { id: "resume-building", title: "Resume Building", emoji: "", topics: ["Resume Structure", "Writing a Strong Objective", "Skills & Projects Section", "Formatting & ATS Tips", "Common Mistakes"] },
+      { id: "interview-preparation", title: "Interview Preparation", emoji: "", topics: ["Before the Interview", "Common HR Questions", "Technical Round Tips", "Body Language & Confidence", "Follow-up & Thank You"] },
+      { id: "linkedin-optimization", title: "LinkedIn Optimization", emoji: "", topics: ["Profile Photo & Headline", "About & Experience", "Skills & Endorsements", "Networking & Posts", "Finding Jobs on LinkedIn"] },
+      { id: "freelancing-mastery", title: "Freelancing Mastery", emoji: "", topics: ["Choosing Your Skill", "Profiles on Upwork/Fiverr", "Winning Proposals", "Pricing & Payments", "Getting 5-Star Reviews"] },
+      { id: "remote-job-skills", title: "Remote Job Skills", emoji: "", topics: ["Finding Remote Jobs", "Tools for Remote Work", "Communication & Time Zones", "Productivity at Home", "Standing Out Remotely"] },
+      { id: "business-communication", title: "Business Communication", emoji: "", topics: ["Professional Emails", "Meeting Etiquette", "Clear Speaking & Listening", "Reports & Presentations", "Workplace Confidence"] },
+      { id: "portfolio", title: "Portfolio & Career Setup", emoji: "", tag: "Job Focused", level: "All Levels", duration: "2–3 Weeks", bestFor: "Students looking for IT jobs / Remote jobs", outcome: "Land your first IT job or remote opportunity", topics: ["Build Personal Portfolio Website", "GitHub Setup", "Resume Building", "Job Application Guidance"] },
     ],
   },
   {
-    id: "business", name: "Business & Entrepreneurship", emoji: "🏢",
+    id: "business", name: "Business & Entrepreneurship", emoji: "",
     color: "#d97706", lightColor: "#f59e0b", bg: "#fffbeb",
     gradient: "linear-gradient(135deg, #92400e 0%, #d97706 100%)",
     tag: "Growth", level: "Beginner → Pro", duration: "3–5 Weeks",
     bestFor: "Entrepreneurs & Owners", outcome: "Start & grow your business",
     courses: [
-      { id: "entrepreneurship", title: "Entrepreneurship", emoji: "🚀", topics: ["Idea to Business", "Validating Your Idea", "Business Model Basics", "Funding & Costs", "Launching Your Startup"] },
-      { id: "small-business-management", title: "Small Business Management", emoji: "🏪", topics: ["Setting Up a Business", "Managing Money", "Hiring & Team", "Operations & Systems", "Growth Planning"] },
-      { id: "sales-marketing", title: "Sales & Marketing", emoji: "📈", topics: ["Understanding Customers", "Sales Funnel Basics", "Pitching & Closing", "Marketing Channels", "Retaining Customers"] },
-      { id: "customer-service", title: "Customer Service", emoji: "🤝", topics: ["Customer Service Basics", "Handling Complaints", "Communication Skills", "Building Loyalty", "Service via Phone/Chat"] },
-      { id: "crm-management", title: "CRM Management", emoji: "🗂️", topics: ["What is a CRM", "Managing Contacts & Leads", "Sales Pipeline", "Follow-ups & Automation", "Reports & Insights"] },
+      { id: "entrepreneurship", title: "Entrepreneurship", emoji: "", topics: ["Idea to Business", "Validating Your Idea", "Business Model Basics", "Funding & Costs", "Launching Your Startup"] },
+      { id: "small-business-management", title: "Small Business Management", emoji: "", topics: ["Setting Up a Business", "Managing Money", "Hiring & Team", "Operations & Systems", "Growth Planning"] },
+      { id: "sales-marketing", title: "Sales & Marketing", emoji: "", topics: ["Understanding Customers", "Sales Funnel Basics", "Pitching & Closing", "Marketing Channels", "Retaining Customers"] },
+      { id: "customer-service", title: "Customer Service", emoji: "", topics: ["Customer Service Basics", "Handling Complaints", "Communication Skills", "Building Loyalty", "Service via Phone/Chat"] },
+      { id: "crm-management", title: "CRM Management", emoji: "", topics: ["What is a CRM", "Managing Contacts & Leads", "Sales Pipeline", "Follow-ups & Automation", "Reports & Insights"] },
     ],
   },
   {
-    id: "special", name: "Special AllBee Programs", emoji: "🎓",
+    id: "special", name: "Special AllBee Programs", emoji: "",
     color: "#0f766e", lightColor: "#14b8a6", bg: "#ecfeff",
     gradient: "linear-gradient(135deg, #0f172a 0%, #0f766e 100%)",
     tag: "AllBee Special", level: "Beginner → Job Ready", duration: "6–8 Weeks",
     bestFor: "Ambitious Students & Pros", outcome: "Master a skill + AI together — fully job-ready",
     courses: [
-      { id: "ai-excel-expert", title: "AI + Excel Expert", emoji: "📊", topics: ["Excel Foundations", "AI Formula Assistant", "Automating Reports with AI", "AI Data Analysis", "Job-Ready Excel + AI"] },
-      { id: "ai-tally-professional", title: "AI + Tally Professional", emoji: "📒", topics: ["Tally Foundations", "AI for Accounting Queries", "GST & Tax with AI Help", "AI Report Insights", "Accountant + AI Workflow"] },
-      { id: "ai-digital-marketing", title: "AI + Digital Marketing", emoji: "📣", topics: ["Marketing Foundations", "AI Content & Ads", "AI SEO Strategy", "AI Social Media Planning", "Full AI Marketing Workflow"] },
-      { id: "ai-web-development", title: "AI + Web Development", emoji: "🌐", topics: ["Web Dev Foundations", "AI Coding Assistants", "Building Sites Faster with AI", "AI for Design & Content", "Deploy & Launch"] },
-      { id: "ai-business-automation", title: "AI + Business Automation", emoji: "⚙️", topics: ["Business Process Basics", "No-Code Automation", "AI Chatbots & Replies", "Connecting Your Tools", "Scaling with Automation"] },
-      { id: "ai-entrepreneur-program", title: "AI Entrepreneur Program", emoji: "🚀", topics: ["AI Business Ideas", "Building an AI Product/Service", "AI Tools to Run a Business", "Marketing with AI", "Launch & Grow"] },
+      { id: "ai-excel-expert", title: "AI + Excel Expert", emoji: "", topics: ["Excel Foundations", "AI Formula Assistant", "Automating Reports with AI", "AI Data Analysis", "Job-Ready Excel + AI"] },
+      { id: "ai-tally-professional", title: "AI + Tally Professional", emoji: "", topics: ["Tally Foundations", "AI for Accounting Queries", "GST & Tax with AI Help", "AI Report Insights", "Accountant + AI Workflow"] },
+      { id: "ai-digital-marketing", title: "AI + Digital Marketing", emoji: "", topics: ["Marketing Foundations", "AI Content & Ads", "AI SEO Strategy", "AI Social Media Planning", "Full AI Marketing Workflow"] },
+      { id: "ai-web-development", title: "AI + Web Development", emoji: "", topics: ["Web Dev Foundations", "AI Coding Assistants", "Building Sites Faster with AI", "AI for Design & Content", "Deploy & Launch"] },
+      { id: "ai-business-automation", title: "AI + Business Automation", emoji: "", topics: ["Business Process Basics", "No-Code Automation", "AI Chatbots & Replies", "Connecting Your Tools", "Scaling with Automation"] },
+      { id: "ai-entrepreneur-program", title: "AI Entrepreneur Program", emoji: "", topics: ["AI Business Ideas", "Building an AI Product/Service", "AI Tools to Run a Business", "Marketing with AI", "Launch & Grow"] },
     ],
   },
 ];
@@ -1288,7 +1305,7 @@ const COURSES = CATEGORIES.flatMap((cat) =>
 const COURSE_COUNT = COURSES.length;
 const CATEGORY_COUNT = CATEGORIES.length;
 
-// ⭐ Important / most-popular courses — shown FIRST on the Courses page and used
+// Important / most-popular courses — shown FIRST on the Courses page and used
 // as "start these" suggestions on the dashboard. Edit this list to feature the
 // courses you actually teach. The remaining courses still appear below by category.
 const FEATURED_IDS = [
@@ -1301,1031 +1318,1031 @@ const FEATURED_COURSES = FEATURED_IDS.map(id => COURSES.find(c => c.id === id)).
 // Keyed by course id -> topic title -> lesson text.
 const LESSONS = {
   "video-recording": {
-    "Camera & Phone Setup": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Choosing resolution and frame rate.\n\u2022 Locking focus and exposure.\n\u2022 Keeping the shot steady.\n\n\ud83d\udca1 WHY IT MATTERS\nA good recording starts before you hit record. Correct settings avoid blurry, shaky, dark videos.\n\n\ud83e\ude9c STEP BY STEP\n1. Set your phone/camera to 1080p (or 4K) at 30fps.\n2. Clean the lens and lock focus on the subject.\n3. Tap and hold to lock exposure so brightness stays steady.\n4. Use a tripod or steady surface to avoid shaky footage.\n\n\u2705 QUICK SUMMARY\nSet 1080p/30fps, clean the lens, lock focus/exposure and stabilise before recording.\n\n\u270f\ufe0f TRY THIS\nRecord a 20-second steady clip of yourself with locked focus and exposure.",
-    "Lighting Basics": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Using natural window light.\n\u2022 Avoiding backlight and harsh shadows.\n\u2022 The simple 3-point lighting idea.\n\n\ud83d\udca1 WHY IT MATTERS\nLighting makes the biggest difference in how professional a video looks \u2014 even on a phone.\n\n\ud83e\ude9c STEP BY STEP\n1. Face a window so soft light hits your face.\n2. Never sit with a bright window behind you (backlight).\n3. Add a ring light or lamp for an even, bright look.\n4. Use a soft cloth over a lamp to reduce harsh shadows.\n\n\u2705 QUICK SUMMARY\nLight your face from the front with soft light and avoid backlight for a clean look.\n\n\u270f\ufe0f TRY THIS\nRecord the same clip facing a window, then with your back to it \u2014 compare the difference.",
-    "Recording Clear Audio": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Why audio matters more than video.\n\u2022 Reducing echo and background noise.\n\u2022 Using a mic vs the built-in one.\n\n\ud83d\udca1 WHY IT MATTERS\nViewers forgive average video but not bad audio. Clear sound keeps people watching.\n\n\ud83e\ude9c STEP BY STEP\n1. Record in a small, quiet room (less echo).\n2. Turn off fans, AC and noisy devices while recording.\n3. Keep the mic close \u2014 20-30 cm from your mouth.\n4. Use a cheap lav/collar mic or earphones with a mic for clarity.\n\n\u2705 QUICK SUMMARY\nRecord in a quiet room, kill background noise and keep a mic close for clear audio.\n\n\u270f\ufe0f TRY THIS\nRecord one line with the built-in mic, then with earphones \u2014 hear the difference.",
-    "Framing & Composition": "\ud83d\udccc WHAT YOU LEARN\n\u2022 The rule of thirds.\n\u2022 Eye level, headroom and background.\n\u2022 Choosing good angles.\n\n\ud83d\udca1 WHY IT MATTERS\nGood framing makes your video look intentional and professional instead of random.\n\n\ud83e\ude9c STEP BY STEP\n1. Turn on the camera grid and place eyes on the top line.\n2. Keep the camera at eye level, not looking up your nose.\n3. Leave a little space above your head (headroom).\n4. Pick a clean, tidy background with some depth behind you.\n\n\u2705 QUICK SUMMARY\nUse the rule of thirds, shoot at eye level with headroom and a clean background.\n\n\u270f\ufe0f TRY THIS\nFrame yourself using the grid with eyes on the top third line and a tidy background.",
-    "Recording B-Roll & Screen": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What B-roll is and why it helps.\n\u2022 Recording cutaways and extra shots.\n\u2022 Screen recording for tutorials.\n\n\ud83d\udca1 WHY IT MATTERS\nB-roll and screen recordings make videos richer and hide cuts \u2014 the secret of engaging content.\n\n\ud83e\ude9c STEP BY STEP\n1. Record extra shots of your topic (hands, objects, place).\n2. Get 5-10 seconds of each B-roll clip to cut to later.\n3. For tutorials, use your phone/PC screen recorder.\n4. Always record 2-3 takes so you have choices when editing.\n\n\u2705 QUICK SUMMARY\nCapture B-roll cutaways and screen recordings, with a few takes, to make richer videos.\n\n\u270f\ufe0f TRY THIS\nRecord one main clip plus two 10-second B-roll shots you could cut to.",
+    "Camera & Phone Setup": "WHAT YOU LEARN\n\u2022 Choosing resolution and frame rate.\n\u2022 Locking focus and exposure.\n\u2022 Keeping the shot steady.\n\nWHY IT MATTERS\nA good recording starts before you hit record. Correct settings avoid blurry, shaky, dark videos.\n\nSTEP BY STEP\n1. Set your phone/camera to 1080p (or 4K) at 30fps.\n2. Clean the lens and lock focus on the subject.\n3. Tap and hold to lock exposure so brightness stays steady.\n4. Use a tripod or steady surface to avoid shaky footage.\n\nQUICK SUMMARY\nSet 1080p/30fps, clean the lens, lock focus/exposure and stabilise before recording.\n\nTRY THIS\nRecord a 20-second steady clip of yourself with locked focus and exposure.",
+    "Lighting Basics": "WHAT YOU LEARN\n\u2022 Using natural window light.\n\u2022 Avoiding backlight and harsh shadows.\n\u2022 The simple 3-point lighting idea.\n\nWHY IT MATTERS\nLighting makes the biggest difference in how professional a video looks \u2014 even on a phone.\n\nSTEP BY STEP\n1. Face a window so soft light hits your face.\n2. Never sit with a bright window behind you (backlight).\n3. Add a ring light or lamp for an even, bright look.\n4. Use a soft cloth over a lamp to reduce harsh shadows.\n\nQUICK SUMMARY\nLight your face from the front with soft light and avoid backlight for a clean look.\n\nTRY THIS\nRecord the same clip facing a window, then with your back to it \u2014 compare the difference.",
+    "Recording Clear Audio": "WHAT YOU LEARN\n\u2022 Why audio matters more than video.\n\u2022 Reducing echo and background noise.\n\u2022 Using a mic vs the built-in one.\n\nWHY IT MATTERS\nViewers forgive average video but not bad audio. Clear sound keeps people watching.\n\nSTEP BY STEP\n1. Record in a small, quiet room (less echo).\n2. Turn off fans, AC and noisy devices while recording.\n3. Keep the mic close \u2014 20-30 cm from your mouth.\n4. Use a cheap lav/collar mic or earphones with a mic for clarity.\n\nQUICK SUMMARY\nRecord in a quiet room, kill background noise and keep a mic close for clear audio.\n\nTRY THIS\nRecord one line with the built-in mic, then with earphones \u2014 hear the difference.",
+    "Framing & Composition": "WHAT YOU LEARN\n\u2022 The rule of thirds.\n\u2022 Eye level, headroom and background.\n\u2022 Choosing good angles.\n\nWHY IT MATTERS\nGood framing makes your video look intentional and professional instead of random.\n\nSTEP BY STEP\n1. Turn on the camera grid and place eyes on the top line.\n2. Keep the camera at eye level, not looking up your nose.\n3. Leave a little space above your head (headroom).\n4. Pick a clean, tidy background with some depth behind you.\n\nQUICK SUMMARY\nUse the rule of thirds, shoot at eye level with headroom and a clean background.\n\nTRY THIS\nFrame yourself using the grid with eyes on the top third line and a tidy background.",
+    "Recording B-Roll & Screen": "WHAT YOU LEARN\n\u2022 What B-roll is and why it helps.\n\u2022 Recording cutaways and extra shots.\n\u2022 Screen recording for tutorials.\n\nWHY IT MATTERS\nB-roll and screen recordings make videos richer and hide cuts \u2014 the secret of engaging content.\n\nSTEP BY STEP\n1. Record extra shots of your topic (hands, objects, place).\n2. Get 5-10 seconds of each B-roll clip to cut to later.\n3. For tutorials, use your phone/PC screen recorder.\n4. Always record 2-3 takes so you have choices when editing.\n\nQUICK SUMMARY\nCapture B-roll cutaways and screen recordings, with a few takes, to make richer videos.\n\nTRY THIS\nRecord one main clip plus two 10-second B-roll shots you could cut to.",
   },
   "excel": {
-    "Excel Basics to Advanced": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Cells, rows, columns and sheets.\n\u2022 Typing data and using AutoFill.\n\u2022 Basic formatting for clean sheets.\n\n\ud83d\udca1 WHY IT MATTERS\nExcel is the #1 office skill for data, accounts and reports. Strong basics make everything else easy.\n\n\ud83e\ude9c STEP BY STEP\n1. Open a workbook and note cell names like A1, B2.\n2. Type data and drag the small square to AutoFill a series.\n3. Select cells and use Bold, borders and number format.\n4. Save as .xlsx and try Freeze Panes for big sheets.\n\n\u2705 QUICK SUMMARY\nLearn the grid, enter data neatly and format it \u2014 the base for all Excel work.\n\n\u270f\ufe0f TRY THIS\nMake a table of 5 students with Name and Marks, then bold the header row.",
-    "Formulas & Functions": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Writing formulas that start with =.\n\u2022 Core functions: SUM, AVERAGE, IF, VLOOKUP.\n\u2022 Cell references and the $ for absolute.\n\n\ud83d\udca1 WHY IT MATTERS\nFormulas turn a plain sheet into a calculator that updates automatically \u2014 the heart of Excel.\n\n\ud83e\ude9c STEP BY STEP\n1. In a total cell type =SUM(B2:B6) and press Enter.\n2. Try =AVERAGE(B2:B6) and =IF(B2>=35,'Pass','Fail').\n3. Use =VLOOKUP(F2,A2:C50,3,FALSE) to look up a value.\n4. Lock a cell with $ like =B2*$D$1 before copying down.\n\n\u2705 QUICK SUMMARY\nUse =SUM, =AVERAGE, =IF and =VLOOKUP with correct references to auto-calculate.\n\n\u270f\ufe0f TRY THIS\nAdd a Total row with =SUM and a Result column using =IF for pass/fail.",
-    "Pivot Tables": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What a PivotTable does.\n\u2022 Dragging fields into Rows, Columns and Values.\n\u2022 Grouping and summarising instantly.\n\n\ud83d\udca1 WHY IT MATTERS\nPivotTables summarise thousands of rows in seconds \u2014 no formulas needed. Huge time-saver for reports.\n\n\ud83e\ude9c STEP BY STEP\n1. Select your data and go Insert > PivotTable.\n2. Drag a category (e.g., City) to Rows.\n3. Drag a number (e.g., Sales) to Values.\n4. Change Values to Sum/Count/Average and add a filter.\n\n\u2705 QUICK SUMMARY\nInsert a PivotTable, drag fields, and get instant grouped summaries of your data.\n\n\u270f\ufe0f TRY THIS\nFrom a sales list, build a pivot showing total sales by city.",
-    "Dashboards": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Turning data into charts.\n\u2022 Using slicers to filter visually.\n\u2022 Arranging a clean one-screen dashboard.\n\n\ud83d\udca1 WHY IT MATTERS\nA dashboard shows the key numbers at a glance \u2014 exactly what managers and clients want to see.\n\n\ud83e\ude9c STEP BY STEP\n1. Create a PivotTable, then Insert a PivotChart.\n2. Add a Slicer to filter by month or category.\n3. Place charts and KPIs together on one sheet.\n4. Keep colours simple and label everything clearly.\n\n\u2705 QUICK SUMMARY\nCombine charts, KPIs and slicers on one sheet for an at-a-glance business view.\n\n\u270f\ufe0f TRY THIS\nBuild a mini dashboard with one chart and one slicer for monthly sales.",
-    "Data Cleaning": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Removing duplicates and blanks.\n\u2022 TRIM, UPPER/PROPER and Text to Columns.\n\u2022 Find & Replace for quick fixes.\n\n\ud83d\udca1 WHY IT MATTERS\nReal data is messy. Clean data = correct reports. This skill is demanded in every data-entry job.\n\n\ud83e\ude9c STEP BY STEP\n1. Select data and use Data > Remove Duplicates.\n2. Use =TRIM(A2) to delete extra spaces.\n3. Split full names with Data > Text to Columns.\n4. Fix typos fast with Ctrl+H (Find & Replace).\n\n\u2705 QUICK SUMMARY\nClean messy sheets with Remove Duplicates, TRIM and Text to Columns before analysing.\n\n\u270f\ufe0f TRY THIS\nTake a messy name list and clean spaces + duplicates in under 5 minutes.",
-    "Excel Automation Tips": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Named ranges and Excel Tables.\n\u2022 Speed shortcuts every pro uses.\n\u2022 The idea of macros for repeat tasks.\n\n\ud83d\udca1 WHY IT MATTERS\nSmall automation tricks save hours each week and make your sheets look professional.\n\n\ud83e\ude9c STEP BY STEP\n1. Turn data into a Table with Ctrl+T for auto-formatting.\n2. Name a range (e.g., 'Sales') and use it in formulas.\n3. Learn shortcuts: Ctrl+Arrow, Ctrl+;, Alt+=.\n4. Record a simple Macro to repeat a task with one click.\n\n\u2705 QUICK SUMMARY\nUse Tables, named ranges, shortcuts and a basic macro to work faster.\n\n\u270f\ufe0f TRY THIS\nConvert a range to a Table and record a macro that formats it.",
-    "Real-world Business Reports": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Building a monthly sales report.\n\u2022 Combining formulas, a pivot and a chart.\n\u2022 Making it clean and print-ready.\n\n\ud83d\udca1 WHY IT MATTERS\nThis is what employers actually pay for \u2014 a clear report that answers business questions.\n\n\ud83e\ude9c STEP BY STEP\n1. Set up columns: Date, Product, Region, Amount.\n2. Add totals with SUM and growth with a simple formula.\n3. Summarise with a PivotTable by product/region.\n4. Add a chart, a title and print settings for a neat report.\n\n\u2705 QUICK SUMMARY\nTurn raw sales data into a clean monthly report with totals, a pivot and a chart.\n\n\u270f\ufe0f TRY THIS\nCreate a one-page monthly sales report for 3 products across 2 regions.",
+    "Excel Basics to Advanced": "WHAT YOU LEARN\n\u2022 Cells, rows, columns and sheets.\n\u2022 Typing data and using AutoFill.\n\u2022 Basic formatting for clean sheets.\n\nWHY IT MATTERS\nExcel is the #1 office skill for data, accounts and reports. Strong basics make everything else easy.\n\nSTEP BY STEP\n1. Open a workbook and note cell names like A1, B2.\n2. Type data and drag the small square to AutoFill a series.\n3. Select cells and use Bold, borders and number format.\n4. Save as .xlsx and try Freeze Panes for big sheets.\n\nQUICK SUMMARY\nLearn the grid, enter data neatly and format it \u2014 the base for all Excel work.\n\nTRY THIS\nMake a table of 5 students with Name and Marks, then bold the header row.",
+    "Formulas & Functions": "WHAT YOU LEARN\n\u2022 Writing formulas that start with =.\n\u2022 Core functions: SUM, AVERAGE, IF, VLOOKUP.\n\u2022 Cell references and the $ for absolute.\n\nWHY IT MATTERS\nFormulas turn a plain sheet into a calculator that updates automatically \u2014 the heart of Excel.\n\nSTEP BY STEP\n1. In a total cell type =SUM(B2:B6) and press Enter.\n2. Try =AVERAGE(B2:B6) and =IF(B2>=35,'Pass','Fail').\n3. Use =VLOOKUP(F2,A2:C50,3,FALSE) to look up a value.\n4. Lock a cell with $ like =B2*$D$1 before copying down.\n\nQUICK SUMMARY\nUse =SUM, =AVERAGE, =IF and =VLOOKUP with correct references to auto-calculate.\n\nTRY THIS\nAdd a Total row with =SUM and a Result column using =IF for pass/fail.",
+    "Pivot Tables": "WHAT YOU LEARN\n\u2022 What a PivotTable does.\n\u2022 Dragging fields into Rows, Columns and Values.\n\u2022 Grouping and summarising instantly.\n\nWHY IT MATTERS\nPivotTables summarise thousands of rows in seconds \u2014 no formulas needed. Huge time-saver for reports.\n\nSTEP BY STEP\n1. Select your data and go Insert > PivotTable.\n2. Drag a category (e.g., City) to Rows.\n3. Drag a number (e.g., Sales) to Values.\n4. Change Values to Sum/Count/Average and add a filter.\n\nQUICK SUMMARY\nInsert a PivotTable, drag fields, and get instant grouped summaries of your data.\n\nTRY THIS\nFrom a sales list, build a pivot showing total sales by city.",
+    "Dashboards": "WHAT YOU LEARN\n\u2022 Turning data into charts.\n\u2022 Using slicers to filter visually.\n\u2022 Arranging a clean one-screen dashboard.\n\nWHY IT MATTERS\nA dashboard shows the key numbers at a glance \u2014 exactly what managers and clients want to see.\n\nSTEP BY STEP\n1. Create a PivotTable, then Insert a PivotChart.\n2. Add a Slicer to filter by month or category.\n3. Place charts and KPIs together on one sheet.\n4. Keep colours simple and label everything clearly.\n\nQUICK SUMMARY\nCombine charts, KPIs and slicers on one sheet for an at-a-glance business view.\n\nTRY THIS\nBuild a mini dashboard with one chart and one slicer for monthly sales.",
+    "Data Cleaning": "WHAT YOU LEARN\n\u2022 Removing duplicates and blanks.\n\u2022 TRIM, UPPER/PROPER and Text to Columns.\n\u2022 Find & Replace for quick fixes.\n\nWHY IT MATTERS\nReal data is messy. Clean data = correct reports. This skill is demanded in every data-entry job.\n\nSTEP BY STEP\n1. Select data and use Data > Remove Duplicates.\n2. Use =TRIM(A2) to delete extra spaces.\n3. Split full names with Data > Text to Columns.\n4. Fix typos fast with Ctrl+H (Find & Replace).\n\nQUICK SUMMARY\nClean messy sheets with Remove Duplicates, TRIM and Text to Columns before analysing.\n\nTRY THIS\nTake a messy name list and clean spaces + duplicates in under 5 minutes.",
+    "Excel Automation Tips": "WHAT YOU LEARN\n\u2022 Named ranges and Excel Tables.\n\u2022 Speed shortcuts every pro uses.\n\u2022 The idea of macros for repeat tasks.\n\nWHY IT MATTERS\nSmall automation tricks save hours each week and make your sheets look professional.\n\nSTEP BY STEP\n1. Turn data into a Table with Ctrl+T for auto-formatting.\n2. Name a range (e.g., 'Sales') and use it in formulas.\n3. Learn shortcuts: Ctrl+Arrow, Ctrl+;, Alt+=.\n4. Record a simple Macro to repeat a task with one click.\n\nQUICK SUMMARY\nUse Tables, named ranges, shortcuts and a basic macro to work faster.\n\nTRY THIS\nConvert a range to a Table and record a macro that formats it.",
+    "Real-world Business Reports": "WHAT YOU LEARN\n\u2022 Building a monthly sales report.\n\u2022 Combining formulas, a pivot and a chart.\n\u2022 Making it clean and print-ready.\n\nWHY IT MATTERS\nThis is what employers actually pay for \u2014 a clear report that answers business questions.\n\nSTEP BY STEP\n1. Set up columns: Date, Product, Region, Amount.\n2. Add totals with SUM and growth with a simple formula.\n3. Summarise with a PivotTable by product/region.\n4. Add a chart, a title and print settings for a neat report.\n\nQUICK SUMMARY\nTurn raw sales data into a clean monthly report with totals, a pivot and a chart.\n\nTRY THIS\nCreate a one-page monthly sales report for 3 products across 2 regions.",
   },
   "python": {
-    "Python Basics": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Running Python and using print().\n\u2022 Comments and simple input().\n\u2022 Numbers and text (strings).\n\n\ud83d\udca1 WHY IT MATTERS\nPython is the easiest first language and powers automation, data and AI \u2014 perfect for beginners.\n\n\ud83e\ude9c STEP BY STEP\n1. Install Python or use an online editor.\n2. Type print('Hello, Allbee!') and run it.\n3. Read input with name = input('Your name: ').\n4. Print a greeting using the name variable.\n\n\u2705 QUICK SUMMARY\nWrite and run your first Python program using print() and input().\n\n\u270f\ufe0f TRY THIS\nAsk the user's name and print 'Hi, <name>! Welcome.'",
-    "Variables, Loops, Functions": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Variables to store data.\n\u2022 for and while loops to repeat.\n\u2022 Functions with def to reuse code.\n\n\ud83d\udca1 WHY IT MATTERS\nThese three ideas are the core of every program \u2014 master them and you can build almost anything.\n\n\ud83e\ude9c STEP BY STEP\n1. Store data: age = 18 and city = 'Trichy'.\n2. Repeat with: for i in range(5): print(i).\n3. Loop while a condition is true using while.\n4. Make a function: def greet(n): return 'Hi ' + n.\n\n\u2705 QUICK SUMMARY\nUse variables to store, loops to repeat and functions (def) to reuse logic.\n\n\u270f\ufe0f TRY THIS\nWrite a function that prints 1 to 10 using a for loop.",
-    "File Handling": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Opening files with open().\n\u2022 Reading and writing text.\n\u2022 Using with for safe file handling.\n\n\ud83d\udca1 WHY IT MATTERS\nReal programs read and save data. File handling lets your scripts remember and produce results.\n\n\ud83e\ude9c STEP BY STEP\n1. Open safely: with open('data.txt','w') as f:.\n2. Write a line: f.write('Marks: 90').\n3. Read a file: with open('data.txt') as f: print(f.read()).\n4. Loop over lines to process each row.\n\n\u2705 QUICK SUMMARY\nRead and write files safely using with open(...) to store and load data.\n\n\u270f\ufe0f TRY THIS\nWrite 3 names to a file, then read the file and print them.",
-    "Error Handling": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What errors (exceptions) are.\n\u2022 try / except to catch them.\n\u2022 Keeping programs from crashing.\n\n\ud83d\udca1 WHY IT MATTERS\nGood programs don't crash on bad input. Error handling makes your scripts reliable and professional.\n\n\ud83e\ude9c STEP BY STEP\n1. Wrap risky code in a try: block.\n2. Catch problems with except: to show a friendly message.\n3. Try converting input: int('abc') to see an error.\n4. Handle it so the program continues instead of crashing.\n\n\u2705 QUICK SUMMARY\nUse try/except to catch errors and keep your program running smoothly.\n\n\u270f\ufe0f TRY THIS\nAsk for a number and use try/except to handle it if the user types text.",
-    "Working with APIs & JSON": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What an API and JSON are.\n\u2022 Using the requests library.\n\u2022 Reading data fields from a response.\n\n\ud83d\udca1 WHY IT MATTERS\nAPIs let your code pull live data (weather, prices, etc.). This is a key real-world Python skill.\n\n\ud83e\ude9c STEP BY STEP\n1. Install requests: pip install requests.\n2. Call an API: r = requests.get(url).\n3. Convert the reply: data = r.json().\n4. Read a field like data['name'] and use it.\n\n\u2705 QUICK SUMMARY\nUse requests.get() and .json() to fetch and read live data from an API.\n\n\u270f\ufe0f TRY THIS\nDescribe the 4 steps to fetch data from any public API in Python.",
-    "Basic Automation Projects": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Turning boring tasks into scripts.\n\u2022 Ideas: rename files, make reports.\n\u2022 Combining what you learned.\n\n\ud83d\udca1 WHY IT MATTERS\nAutomation is Python's superpower \u2014 save hours by letting a script do repetitive work.\n\n\ud83e\ude9c STEP BY STEP\n1. Pick a repeat task you do by hand.\n2. Use os to rename or organise files in a folder.\n3. Use file handling to build a daily report.\n4. Add a loop so it handles many items at once.\n\n\u2705 QUICK SUMMARY\nCombine variables, loops and files to automate a real repetitive task.\n\n\u270f\ufe0f TRY THIS\nPlan a script that renames all photos in a folder to 'photo1, photo2, ...'.",
+    "Python Basics": "WHAT YOU LEARN\n\u2022 Running Python and using print().\n\u2022 Comments and simple input().\n\u2022 Numbers and text (strings).\n\nWHY IT MATTERS\nPython is the easiest first language and powers automation, data and AI \u2014 perfect for beginners.\n\nSTEP BY STEP\n1. Install Python or use an online editor.\n2. Type print('Hello, Allbee!') and run it.\n3. Read input with name = input('Your name: ').\n4. Print a greeting using the name variable.\n\nQUICK SUMMARY\nWrite and run your first Python program using print() and input().\n\nTRY THIS\nAsk the user's name and print 'Hi, <name>! Welcome.'",
+    "Variables, Loops, Functions": "WHAT YOU LEARN\n\u2022 Variables to store data.\n\u2022 for and while loops to repeat.\n\u2022 Functions with def to reuse code.\n\nWHY IT MATTERS\nThese three ideas are the core of every program \u2014 master them and you can build almost anything.\n\nSTEP BY STEP\n1. Store data: age = 18 and city = 'Trichy'.\n2. Repeat with: for i in range(5): print(i).\n3. Loop while a condition is true using while.\n4. Make a function: def greet(n): return 'Hi ' + n.\n\nQUICK SUMMARY\nUse variables to store, loops to repeat and functions (def) to reuse logic.\n\nTRY THIS\nWrite a function that prints 1 to 10 using a for loop.",
+    "File Handling": "WHAT YOU LEARN\n\u2022 Opening files with open().\n\u2022 Reading and writing text.\n\u2022 Using with for safe file handling.\n\nWHY IT MATTERS\nReal programs read and save data. File handling lets your scripts remember and produce results.\n\nSTEP BY STEP\n1. Open safely: with open('data.txt','w') as f:.\n2. Write a line: f.write('Marks: 90').\n3. Read a file: with open('data.txt') as f: print(f.read()).\n4. Loop over lines to process each row.\n\nQUICK SUMMARY\nRead and write files safely using with open(...) to store and load data.\n\nTRY THIS\nWrite 3 names to a file, then read the file and print them.",
+    "Error Handling": "WHAT YOU LEARN\n\u2022 What errors (exceptions) are.\n\u2022 try / except to catch them.\n\u2022 Keeping programs from crashing.\n\nWHY IT MATTERS\nGood programs don't crash on bad input. Error handling makes your scripts reliable and professional.\n\nSTEP BY STEP\n1. Wrap risky code in a try: block.\n2. Catch problems with except: to show a friendly message.\n3. Try converting input: int('abc') to see an error.\n4. Handle it so the program continues instead of crashing.\n\nQUICK SUMMARY\nUse try/except to catch errors and keep your program running smoothly.\n\nTRY THIS\nAsk for a number and use try/except to handle it if the user types text.",
+    "Working with APIs & JSON": "WHAT YOU LEARN\n\u2022 What an API and JSON are.\n\u2022 Using the requests library.\n\u2022 Reading data fields from a response.\n\nWHY IT MATTERS\nAPIs let your code pull live data (weather, prices, etc.). This is a key real-world Python skill.\n\nSTEP BY STEP\n1. Install requests: pip install requests.\n2. Call an API: r = requests.get(url).\n3. Convert the reply: data = r.json().\n4. Read a field like data['name'] and use it.\n\nQUICK SUMMARY\nUse requests.get() and .json() to fetch and read live data from an API.\n\nTRY THIS\nDescribe the 4 steps to fetch data from any public API in Python.",
+    "Basic Automation Projects": "WHAT YOU LEARN\n\u2022 Turning boring tasks into scripts.\n\u2022 Ideas: rename files, make reports.\n\u2022 Combining what you learned.\n\nWHY IT MATTERS\nAutomation is Python's superpower \u2014 save hours by letting a script do repetitive work.\n\nSTEP BY STEP\n1. Pick a repeat task you do by hand.\n2. Use os to rename or organise files in a folder.\n3. Use file handling to build a daily report.\n4. Add a loop so it handles many items at once.\n\nQUICK SUMMARY\nCombine variables, loops and files to automate a real repetitive task.\n\nTRY THIS\nPlan a script that renames all photos in a folder to 'photo1, photo2, ...'.",
   },
   "powerbi": {
-    "Data Import & Transformation": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Getting data from Excel/CSV.\n\u2022 Cleaning it in Power Query.\n\u2022 Shaping columns and types.\n\n\ud83d\udca1 WHY IT MATTERS\nClean, well-shaped data is the foundation of every good Power BI report.\n\n\ud83e\ude9c STEP BY STEP\n1. Use Get Data to load Excel or CSV.\n2. Open Power Query Editor to preview it.\n3. Remove blanks, fix data types and split columns.\n4. Click Close & Apply to load the clean data.\n\n\u2705 QUICK SUMMARY\nImport data and clean it in Power Query before building visuals.\n\n\u270f\ufe0f TRY THIS\nLoad an Excel sheet and remove empty rows in Power Query.",
-    "Data Modeling": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What a data model is.\n\u2022 Relationships between tables.\n\u2022 Why one big table isn't enough.\n\n\ud83d\udca1 WHY IT MATTERS\nA good model connects your tables correctly so totals and filters work across the whole report.\n\n\ud83e\ude9c STEP BY STEP\n1. Load two related tables (e.g., Sales and Products).\n2. Open Model view to see the tables.\n3. Drag a common field to create a relationship.\n4. Check the join type (usually one-to-many).\n\n\u2705 QUICK SUMMARY\nConnect tables with relationships so filters and totals flow correctly.\n\n\u270f\ufe0f TRY THIS\nLink a Sales table to a Products table using ProductID.",
-    "DAX Basics": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What DAX formulas are.\n\u2022 Measures vs calculated columns.\n\u2022 Core functions: SUM, CALCULATE.\n\n\ud83d\udca1 WHY IT MATTERS\nDAX creates the smart calculations (totals, % growth, running totals) that make dashboards powerful.\n\n\ud83e\ude9c STEP BY STEP\n1. Create a measure: Total Sales = SUM(Sales[Amount]).\n2. Drag the measure onto a card visual.\n3. Try CALCULATE to filter a total by a condition.\n4. Use it in charts to compare groups.\n\n\u2705 QUICK SUMMARY\nWrite measures with SUM and CALCULATE to build smart, filterable numbers.\n\n\u270f\ufe0f TRY THIS\nCreate a Total Sales measure and show it on a card.",
-    "Interactive Dashboards": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Adding visuals (bar, line, card).\n\u2022 Slicers for user filtering.\n\u2022 Making visuals talk to each other.\n\n\ud83d\udca1 WHY IT MATTERS\nInteractivity is what makes Power BI special \u2014 users explore the data themselves.\n\n\ud83e\ude9c STEP BY STEP\n1. Drag fields onto the canvas to make a chart.\n2. Add a card for a key number (KPI).\n3. Insert a Slicer for month or region.\n4. Click a bar and watch other visuals filter.\n\n\u2705 QUICK SUMMARY\nCombine charts, KPIs and slicers into one interactive, self-service dashboard.\n\n\u270f\ufe0f TRY THIS\nBuild a dashboard with a bar chart, a KPI card and a month slicer.",
-    "Business Reports": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Designing a clean report page.\n\u2022 Publishing to Power BI Service.\n\u2022 Sharing with your team.\n\n\ud83d\udca1 WHY IT MATTERS\nThe final step: a polished report you can publish and share so decisions get made from real data.\n\n\ud83e\ude9c STEP BY STEP\n1. Arrange visuals neatly with titles and spacing.\n2. Use consistent colours and clear labels.\n3. Click Publish to send it to Power BI Service.\n4. Share the link or workspace with your team.\n\n\u2705 QUICK SUMMARY\nDesign, publish and share a clean business report from your dashboard.\n\n\u270f\ufe0f TRY THIS\nOutline a one-page sales report layout, then describe how you'd publish it.",
+    "Data Import & Transformation": "WHAT YOU LEARN\n\u2022 Getting data from Excel/CSV.\n\u2022 Cleaning it in Power Query.\n\u2022 Shaping columns and types.\n\nWHY IT MATTERS\nClean, well-shaped data is the foundation of every good Power BI report.\n\nSTEP BY STEP\n1. Use Get Data to load Excel or CSV.\n2. Open Power Query Editor to preview it.\n3. Remove blanks, fix data types and split columns.\n4. Click Close & Apply to load the clean data.\n\nQUICK SUMMARY\nImport data and clean it in Power Query before building visuals.\n\nTRY THIS\nLoad an Excel sheet and remove empty rows in Power Query.",
+    "Data Modeling": "WHAT YOU LEARN\n\u2022 What a data model is.\n\u2022 Relationships between tables.\n\u2022 Why one big table isn't enough.\n\nWHY IT MATTERS\nA good model connects your tables correctly so totals and filters work across the whole report.\n\nSTEP BY STEP\n1. Load two related tables (e.g., Sales and Products).\n2. Open Model view to see the tables.\n3. Drag a common field to create a relationship.\n4. Check the join type (usually one-to-many).\n\nQUICK SUMMARY\nConnect tables with relationships so filters and totals flow correctly.\n\nTRY THIS\nLink a Sales table to a Products table using ProductID.",
+    "DAX Basics": "WHAT YOU LEARN\n\u2022 What DAX formulas are.\n\u2022 Measures vs calculated columns.\n\u2022 Core functions: SUM, CALCULATE.\n\nWHY IT MATTERS\nDAX creates the smart calculations (totals, % growth, running totals) that make dashboards powerful.\n\nSTEP BY STEP\n1. Create a measure: Total Sales = SUM(Sales[Amount]).\n2. Drag the measure onto a card visual.\n3. Try CALCULATE to filter a total by a condition.\n4. Use it in charts to compare groups.\n\nQUICK SUMMARY\nWrite measures with SUM and CALCULATE to build smart, filterable numbers.\n\nTRY THIS\nCreate a Total Sales measure and show it on a card.",
+    "Interactive Dashboards": "WHAT YOU LEARN\n\u2022 Adding visuals (bar, line, card).\n\u2022 Slicers for user filtering.\n\u2022 Making visuals talk to each other.\n\nWHY IT MATTERS\nInteractivity is what makes Power BI special \u2014 users explore the data themselves.\n\nSTEP BY STEP\n1. Drag fields onto the canvas to make a chart.\n2. Add a card for a key number (KPI).\n3. Insert a Slicer for month or region.\n4. Click a bar and watch other visuals filter.\n\nQUICK SUMMARY\nCombine charts, KPIs and slicers into one interactive, self-service dashboard.\n\nTRY THIS\nBuild a dashboard with a bar chart, a KPI card and a month slicer.",
+    "Business Reports": "WHAT YOU LEARN\n\u2022 Designing a clean report page.\n\u2022 Publishing to Power BI Service.\n\u2022 Sharing with your team.\n\nWHY IT MATTERS\nThe final step: a polished report you can publish and share so decisions get made from real data.\n\nSTEP BY STEP\n1. Arrange visuals neatly with titles and spacing.\n2. Use consistent colours and clear labels.\n3. Click Publish to send it to Power BI Service.\n4. Share the link or workspace with your team.\n\nQUICK SUMMARY\nDesign, publish and share a clean business report from your dashboard.\n\nTRY THIS\nOutline a one-page sales report layout, then describe how you'd publish it.",
   },
   "webdev": {
-    "HTML Basics": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What HTML tags are.\n\u2022 Page structure: headings, text, links, images.\n\u2022 Building a simple page.\n\n\ud83d\udca1 WHY IT MATTERS\nHTML is the skeleton of every website. It's the first thing to learn to build for the web.\n\n\ud83e\ude9c STEP BY STEP\n1. Create index.html with <html>, <head>, <body>.\n2. Add a heading <h1> and a paragraph <p>.\n3. Insert a link <a href='...'> and image <img src='...'>.\n4. Open the file in a browser to see it.\n\n\u2705 QUICK SUMMARY\nUse HTML tags to structure a page with headings, text, links and images.\n\n\u270f\ufe0f TRY THIS\nBuild a page with your name in <h1> and a short intro paragraph.",
-    "CSS & Styling": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Selectors and properties.\n\u2022 Colours, fonts and spacing.\n\u2022 The box model and simple layout.\n\n\ud83d\udca1 WHY IT MATTERS\nCSS makes pages look good. Styling turns plain HTML into a professional-looking website.\n\n\ud83e\ude9c STEP BY STEP\n1. Link a style.css to your HTML.\n2. Style text: h1 { color: teal; }.\n3. Add spacing with margin and padding.\n4. Use Flexbox (display: flex) to arrange items in a row.\n\n\u2705 QUICK SUMMARY\nUse CSS selectors, colours, spacing and Flexbox to style and lay out a page.\n\n\u270f\ufe0f TRY THIS\nGive your page a background colour and centre the heading.",
-    "Basic JavaScript": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Adding interactivity with JS.\n\u2022 Selecting elements and events.\n\u2022 Reacting to a button click.\n\n\ud83d\udca1 WHY IT MATTERS\nJavaScript makes pages interactive \u2014 buttons, forms and live updates all use JS.\n\n\ud83e\ude9c STEP BY STEP\n1. Link a script.js at the end of <body>.\n2. Select an element with document.querySelector.\n3. Change text: element.textContent = 'Hi!'.\n4. Add a click: element.addEventListener('click', ...).\n\n\u2705 QUICK SUMMARY\nUse JavaScript to select elements and respond to clicks and events.\n\n\u270f\ufe0f TRY THIS\nMake a button that changes a heading's text when clicked.",
-    "Build Portfolio Website": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Planning portfolio sections.\n\u2022 Showcasing projects and skills.\n\u2022 Adding a contact section.\n\n\ud83d\udca1 WHY IT MATTERS\nA portfolio site is your online proof of skills \u2014 the best way to get freelance work or jobs.\n\n\ud83e\ude9c STEP BY STEP\n1. Plan sections: About, Skills, Projects, Contact.\n2. Build each section with HTML and style with CSS.\n3. Add 2-3 projects with a short description each.\n4. Make it responsive so it looks good on mobile.\n\n\u2705 QUICK SUMMARY\nCombine HTML, CSS and JS into a clean, mobile-friendly portfolio website.\n\n\u270f\ufe0f TRY THIS\nSketch the sections of your portfolio and build the About section.",
-    "GitHub Hosting": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What GitHub and Pages are.\n\u2022 Putting your site online for free.\n\u2022 Sharing a live link.\n\n\ud83d\udca1 WHY IT MATTERS\nGitHub Pages hosts your website free with a public link you can put on your resume.\n\n\ud83e\ude9c STEP BY STEP\n1. Create a free GitHub account and a new repo.\n2. Upload your HTML/CSS/JS files.\n3. Enable GitHub Pages in repo Settings.\n4. Open your live yourname.github.io link and share it.\n\n\u2705 QUICK SUMMARY\nUpload your site to GitHub and turn on Pages to get a free live link.\n\n\u270f\ufe0f TRY THIS\nList the steps to publish a folder of web files on GitHub Pages.",
+    "HTML Basics": "WHAT YOU LEARN\n\u2022 What HTML tags are.\n\u2022 Page structure: headings, text, links, images.\n\u2022 Building a simple page.\n\nWHY IT MATTERS\nHTML is the skeleton of every website. It's the first thing to learn to build for the web.\n\nSTEP BY STEP\n1. Create index.html with <html>, <head>, <body>.\n2. Add a heading <h1> and a paragraph <p>.\n3. Insert a link <a href='...'> and image <img src='...'>.\n4. Open the file in a browser to see it.\n\nQUICK SUMMARY\nUse HTML tags to structure a page with headings, text, links and images.\n\nTRY THIS\nBuild a page with your name in <h1> and a short intro paragraph.",
+    "CSS & Styling": "WHAT YOU LEARN\n\u2022 Selectors and properties.\n\u2022 Colours, fonts and spacing.\n\u2022 The box model and simple layout.\n\nWHY IT MATTERS\nCSS makes pages look good. Styling turns plain HTML into a professional-looking website.\n\nSTEP BY STEP\n1. Link a style.css to your HTML.\n2. Style text: h1 { color: teal; }.\n3. Add spacing with margin and padding.\n4. Use Flexbox (display: flex) to arrange items in a row.\n\nQUICK SUMMARY\nUse CSS selectors, colours, spacing and Flexbox to style and lay out a page.\n\nTRY THIS\nGive your page a background colour and centre the heading.",
+    "Basic JavaScript": "WHAT YOU LEARN\n\u2022 Adding interactivity with JS.\n\u2022 Selecting elements and events.\n\u2022 Reacting to a button click.\n\nWHY IT MATTERS\nJavaScript makes pages interactive \u2014 buttons, forms and live updates all use JS.\n\nSTEP BY STEP\n1. Link a script.js at the end of <body>.\n2. Select an element with document.querySelector.\n3. Change text: element.textContent = 'Hi!'.\n4. Add a click: element.addEventListener('click', ...).\n\nQUICK SUMMARY\nUse JavaScript to select elements and respond to clicks and events.\n\nTRY THIS\nMake a button that changes a heading's text when clicked.",
+    "Build Portfolio Website": "WHAT YOU LEARN\n\u2022 Planning portfolio sections.\n\u2022 Showcasing projects and skills.\n\u2022 Adding a contact section.\n\nWHY IT MATTERS\nA portfolio site is your online proof of skills \u2014 the best way to get freelance work or jobs.\n\nSTEP BY STEP\n1. Plan sections: About, Skills, Projects, Contact.\n2. Build each section with HTML and style with CSS.\n3. Add 2-3 projects with a short description each.\n4. Make it responsive so it looks good on mobile.\n\nQUICK SUMMARY\nCombine HTML, CSS and JS into a clean, mobile-friendly portfolio website.\n\nTRY THIS\nSketch the sections of your portfolio and build the About section.",
+    "GitHub Hosting": "WHAT YOU LEARN\n\u2022 What GitHub and Pages are.\n\u2022 Putting your site online for free.\n\u2022 Sharing a live link.\n\nWHY IT MATTERS\nGitHub Pages hosts your website free with a public link you can put on your resume.\n\nSTEP BY STEP\n1. Create a free GitHub account and a new repo.\n2. Upload your HTML/CSS/JS files.\n3. Enable GitHub Pages in repo Settings.\n4. Open your live yourname.github.io link and share it.\n\nQUICK SUMMARY\nUpload your site to GitHub and turn on Pages to get a free live link.\n\nTRY THIS\nList the steps to publish a folder of web files on GitHub Pages.",
   },
   "aitools": {
-    "ChatGPT for Productivity": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Writing clear prompts.\n\u2022 Drafting, summarising and rewriting.\n\u2022 Saving time on daily tasks.\n\n\ud83d\udca1 WHY IT MATTERS\nChatGPT can do hours of writing and thinking work in minutes \u2014 if you prompt it well.\n\n\ud83e\ude9c STEP BY STEP\n1. Give a role + task: 'Act as an editor. Fix this email.'\n2. Paste your text and ask for a rewrite.\n3. Ask it to summarise long notes into 5 points.\n4. Refine by replying 'shorter' or 'more formal'.\n\n\u2705 QUICK SUMMARY\nUse role-based prompts to draft, summarise and rewrite faster with ChatGPT.\n\n\u270f\ufe0f TRY THIS\nWrite a prompt that turns rough notes into a polished 5-point summary.",
-    "AI Tools for Business": "\ud83d\udccc WHAT YOU LEARN\n\u2022 AI for replies and social posts.\n\u2022 AI for content and captions.\n\u2022 Picking the right tool for a task.\n\n\ud83d\udca1 WHY IT MATTERS\nSmall businesses use AI to handle customer replies, marketing and content with a tiny team.\n\n\ud83e\ude9c STEP BY STEP\n1. Draft customer replies with a friendly-tone prompt.\n2. Generate 5 social captions for a product.\n3. Create a week of post ideas in one prompt.\n4. Always review and edit before publishing.\n\n\u2705 QUICK SUMMARY\nApply AI to customer replies, captions and content ideas for a business.\n\n\u270f\ufe0f TRY THIS\nGenerate 5 Instagram captions for a local bakery using one prompt.",
-    "Automation Basics": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What automation means.\n\u2022 Triggers and actions ('if this, then that').\n\u2022 Where no-code tools fit.\n\n\ud83d\udca1 WHY IT MATTERS\nAutomation connects your apps so tasks happen by themselves \u2014 no coding needed.\n\n\ud83e\ude9c STEP BY STEP\n1. Think of a repeat task (e.g., save email files).\n2. Identify the Trigger (new email arrives).\n3. Identify the Action (save attachment to Drive).\n4. Connect them in a no-code tool to run automatically.\n\n\u2705 QUICK SUMMARY\nTurn repetitive tasks into automatic Trigger \u2192 Action workflows without code.\n\n\u270f\ufe0f TRY THIS\nWrite one trigger-and-action idea that would save you time each week.",
-    "Workflow Automation (n8n)": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What n8n is (a no-code automation tool).\n\u2022 Nodes that connect apps.\n\u2022 Building a simple workflow.\n\n\ud83d\udca1 WHY IT MATTERS\nn8n links apps like Gmail, Sheets and Telegram into automatic workflows you design visually.\n\n\ud83e\ude9c STEP BY STEP\n1. Open n8n and start a new workflow.\n2. Add a Trigger node (e.g., new form entry).\n3. Add an Action node (e.g., add a row to Sheets).\n4. Connect the nodes and run a test.\n\n\u2705 QUICK SUMMARY\nUse n8n nodes to connect a trigger and an action into a working automation.\n\n\u270f\ufe0f TRY THIS\nPlan an n8n flow: new form response \u2192 add a row in Google Sheets.",
+    "ChatGPT for Productivity": "WHAT YOU LEARN\n\u2022 Writing clear prompts.\n\u2022 Drafting, summarising and rewriting.\n\u2022 Saving time on daily tasks.\n\nWHY IT MATTERS\nChatGPT can do hours of writing and thinking work in minutes \u2014 if you prompt it well.\n\nSTEP BY STEP\n1. Give a role + task: 'Act as an editor. Fix this email.'\n2. Paste your text and ask for a rewrite.\n3. Ask it to summarise long notes into 5 points.\n4. Refine by replying 'shorter' or 'more formal'.\n\nQUICK SUMMARY\nUse role-based prompts to draft, summarise and rewrite faster with ChatGPT.\n\nTRY THIS\nWrite a prompt that turns rough notes into a polished 5-point summary.",
+    "AI Tools for Business": "WHAT YOU LEARN\n\u2022 AI for replies and social posts.\n\u2022 AI for content and captions.\n\u2022 Picking the right tool for a task.\n\nWHY IT MATTERS\nSmall businesses use AI to handle customer replies, marketing and content with a tiny team.\n\nSTEP BY STEP\n1. Draft customer replies with a friendly-tone prompt.\n2. Generate 5 social captions for a product.\n3. Create a week of post ideas in one prompt.\n4. Always review and edit before publishing.\n\nQUICK SUMMARY\nApply AI to customer replies, captions and content ideas for a business.\n\nTRY THIS\nGenerate 5 Instagram captions for a local bakery using one prompt.",
+    "Automation Basics": "WHAT YOU LEARN\n\u2022 What automation means.\n\u2022 Triggers and actions ('if this, then that').\n\u2022 Where no-code tools fit.\n\nWHY IT MATTERS\nAutomation connects your apps so tasks happen by themselves \u2014 no coding needed.\n\nSTEP BY STEP\n1. Think of a repeat task (e.g., save email files).\n2. Identify the Trigger (new email arrives).\n3. Identify the Action (save attachment to Drive).\n4. Connect them in a no-code tool to run automatically.\n\nQUICK SUMMARY\nTurn repetitive tasks into automatic Trigger \u2192 Action workflows without code.\n\nTRY THIS\nWrite one trigger-and-action idea that would save you time each week.",
+    "Workflow Automation (n8n)": "WHAT YOU LEARN\n\u2022 What n8n is (a no-code automation tool).\n\u2022 Nodes that connect apps.\n\u2022 Building a simple workflow.\n\nWHY IT MATTERS\nn8n links apps like Gmail, Sheets and Telegram into automatic workflows you design visually.\n\nSTEP BY STEP\n1. Open n8n and start a new workflow.\n2. Add a Trigger node (e.g., new form entry).\n3. Add an Action node (e.g., add a row to Sheets).\n4. Connect the nodes and run a test.\n\nQUICK SUMMARY\nUse n8n nodes to connect a trigger and an action into a working automation.\n\nTRY THIS\nPlan an n8n flow: new form response \u2192 add a row in Google Sheets.",
   },
   "portfolio": {
-    "Build Personal Portfolio Website": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Why a portfolio helps you get hired.\n\u2022 Key sections to include.\n\u2022 Showing projects clearly.\n\n\ud83d\udca1 WHY IT MATTERS\nA portfolio is your proof of skills. It often matters more than a certificate to employers and clients.\n\n\ud83e\ude9c STEP BY STEP\n1. Plan: About, Skills, Projects, Contact.\n2. Add 2-3 projects with a line on what you did.\n3. Keep the design clean and easy to read.\n4. Add your email and a link to your resume.\n\n\u2705 QUICK SUMMARY\nCreate a simple site showing who you are, your skills and your best projects.\n\n\u270f\ufe0f TRY THIS\nList 3 projects you could show and write one line about each.",
-    "GitHub Setup": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Creating a GitHub account.\n\u2022 Making a repository.\n\u2022 Writing a README that explains your work.\n\n\ud83d\udca1 WHY IT MATTERS\nGitHub shows employers your code and projects \u2014 a must-have for tech and freelance careers.\n\n\ud83e\ude9c STEP BY STEP\n1. Sign up for a free GitHub account.\n2. Create a new repository for a project.\n3. Upload your files or code.\n4. Write a README with what the project does and how to run it.\n\n\u2705 QUICK SUMMARY\nSet up GitHub, create a repo and add a clear README for each project.\n\n\u270f\ufe0f TRY THIS\nCreate your GitHub account and write a README for one project.",
-    "Resume Building": "\ud83d\udccc WHAT YOU LEARN\n\u2022 What makes a strong one-page resume.\n\u2022 ATS-friendly formatting.\n\u2022 Action words and real impact.\n\n\ud83d\udca1 WHY IT MATTERS\nA sharp resume gets you the interview. Most are rejected by software (ATS) before a human sees them.\n\n\ud83e\ude9c STEP BY STEP\n1. Keep it to one clean page with clear sections.\n2. Start bullets with action verbs (Built, Managed).\n3. Add skills that match the job keywords.\n4. Use the app's Resume Builder to check your ATS score.\n\n\u2705 QUICK SUMMARY\nWrite a one-page, ATS-friendly resume with action-verb bullets and matching keywords.\n\n\u270f\ufe0f TRY THIS\nOpen the Resume Builder in this app and create your first resume draft.",
-    "Job Application Guidance": "\ud83d\udccc WHAT YOU LEARN\n\u2022 Where to find good fresher jobs.\n\u2022 Tailoring each application.\n\u2022 Following up the right way.\n\n\ud83d\udca1 WHY IT MATTERS\nApplying smart (not just a lot) gets far better results. A little effort per application stands out.\n\n\ud83e\ude9c STEP BY STEP\n1. Search portals and the app's Job Portal for fresher roles.\n2. Match your resume skills to each job.\n3. Write a short, specific cover letter.\n4. Follow up politely after a week if there's no reply.\n\n\u2705 QUICK SUMMARY\nApply strategically: target roles, tailor your resume and follow up professionally.\n\n\u270f\ufe0f TRY THIS\nPick 3 roles in the Job Portal and note one skill to highlight for each.",
+    "Build Personal Portfolio Website": "WHAT YOU LEARN\n\u2022 Why a portfolio helps you get hired.\n\u2022 Key sections to include.\n\u2022 Showing projects clearly.\n\nWHY IT MATTERS\nA portfolio is your proof of skills. It often matters more than a certificate to employers and clients.\n\nSTEP BY STEP\n1. Plan: About, Skills, Projects, Contact.\n2. Add 2-3 projects with a line on what you did.\n3. Keep the design clean and easy to read.\n4. Add your email and a link to your resume.\n\nQUICK SUMMARY\nCreate a simple site showing who you are, your skills and your best projects.\n\nTRY THIS\nList 3 projects you could show and write one line about each.",
+    "GitHub Setup": "WHAT YOU LEARN\n\u2022 Creating a GitHub account.\n\u2022 Making a repository.\n\u2022 Writing a README that explains your work.\n\nWHY IT MATTERS\nGitHub shows employers your code and projects \u2014 a must-have for tech and freelance careers.\n\nSTEP BY STEP\n1. Sign up for a free GitHub account.\n2. Create a new repository for a project.\n3. Upload your files or code.\n4. Write a README with what the project does and how to run it.\n\nQUICK SUMMARY\nSet up GitHub, create a repo and add a clear README for each project.\n\nTRY THIS\nCreate your GitHub account and write a README for one project.",
+    "Resume Building": "WHAT YOU LEARN\n\u2022 What makes a strong one-page resume.\n\u2022 ATS-friendly formatting.\n\u2022 Action words and real impact.\n\nWHY IT MATTERS\nA sharp resume gets you the interview. Most are rejected by software (ATS) before a human sees them.\n\nSTEP BY STEP\n1. Keep it to one clean page with clear sections.\n2. Start bullets with action verbs (Built, Managed).\n3. Add skills that match the job keywords.\n4. Use the app's Resume Builder to check your ATS score.\n\nQUICK SUMMARY\nWrite a one-page, ATS-friendly resume with action-verb bullets and matching keywords.\n\nTRY THIS\nOpen the Resume Builder in this app and create your first resume draft.",
+    "Job Application Guidance": "WHAT YOU LEARN\n\u2022 Where to find good fresher jobs.\n\u2022 Tailoring each application.\n\u2022 Following up the right way.\n\nWHY IT MATTERS\nApplying smart (not just a lot) gets far better results. A little effort per application stands out.\n\nSTEP BY STEP\n1. Search portals and the app's Job Portal for fresher roles.\n2. Match your resume skills to each job.\n3. Write a short, specific cover letter.\n4. Follow up politely after a week if there's no reply.\n\nQUICK SUMMARY\nApply strategically: target roles, tailor your resume and follow up professionally.\n\nTRY THIS\nPick 3 roles in the Job Portal and note one skill to highlight for each.",
   },
   "youtube-growth": {
-    "Starting a Channel": "📌 WHAT YOU LEARN\n• Creating and setting up a YouTube channel.\n• Channel name, banner and about section.\n• Basic upload settings.\n\n💡 WHY IT MATTERS\nA clean setup makes a strong first impression on new viewers.\n\n🪜 STEP BY STEP\n1. Create a channel with a clear name.\n2. Add a banner and profile photo.\n3. Write a helpful about section.\n4. Upload a short intro video.\n\n✅ QUICK SUMMARY\nSet up your channel with clear branding and an intro video.\n\n✏️ TRY THIS\nWrite a channel name and one-line description.",
-    "Finding Your Niche": "📌 WHAT YOU LEARN\n• Choosing a focused topic.\n• Matching passion with demand.\n• Why niches grow faster.\n\n💡 WHY IT MATTERS\nA clear niche attracts loyal, targeted viewers.\n\n🪜 STEP BY STEP\n1. List topics you enjoy and know.\n2. Check what people search/watch.\n3. Pick one focused niche.\n4. Plan content around it.\n\n✅ QUICK SUMMARY\nPick one niche blending your interest with real demand.\n\n✏️ TRY THIS\nChoose a niche and 3 video topics for it.",
-    "Video Ideas & Scripts": "📌 WHAT YOU LEARN\n• Generating endless video ideas.\n• Writing a simple script with a hook.\n• Structuring for retention.\n\n💡 WHY IT MATTERS\nGood ideas and scripts keep viewers watching.\n\n🪜 STEP BY STEP\n1. Brainstorm 10 ideas from viewer questions.\n2. Write a hook for the first 10 seconds.\n3. Outline the main points.\n4. End with a clear next step.\n\n✅ QUICK SUMMARY\nPlan ideas from viewer needs and script with a strong hook.\n\n✏️ TRY THIS\nWrite a 10-second hook for a video idea.",
-    "Thumbnails & Titles": "📌 WHAT YOU LEARN\n• Designing click-worthy thumbnails.\n• Writing curiosity-driven titles.\n• Matching title and thumbnail.\n\n💡 WHY IT MATTERS\nThumbnails and titles decide whether people click.\n\n🪜 STEP BY STEP\n1. Use a bold, simple thumbnail.\n2. Add 3–4 readable words.\n3. Write a clear, curious title.\n4. Keep title and thumbnail aligned.\n\n✅ QUICK SUMMARY\nPair a bold thumbnail with a curious, honest title to win clicks.\n\n✏️ TRY THIS\nWrite a title and thumbnail text for one video.",
-    "Growing & Monetizing": "📌 WHAT YOU LEARN\n• Consistency and analytics for growth.\n• Monetization options.\n• Building a loyal audience.\n\n💡 WHY IT MATTERS\nGrowth plus monetization turns a channel into income.\n\n🪜 STEP BY STEP\n1. Post consistently.\n2. Study watch time and CTR.\n3. Improve weak videos.\n4. Explore ads, sponsors and products.\n\n✅ QUICK SUMMARY\nGrow with consistency and analytics, then monetize multiple ways.\n\n✏️ TRY THIS\nList 3 ways a channel can earn money.",
+    "Starting a Channel": "WHAT YOU LEARN\n• Creating and setting up a YouTube channel.\n• Channel name, banner and about section.\n• Basic upload settings.\n\nWHY IT MATTERS\nA clean setup makes a strong first impression on new viewers.\n\nSTEP BY STEP\n1. Create a channel with a clear name.\n2. Add a banner and profile photo.\n3. Write a helpful about section.\n4. Upload a short intro video.\n\nQUICK SUMMARY\nSet up your channel with clear branding and an intro video.\n\nTRY THIS\nWrite a channel name and one-line description.",
+    "Finding Your Niche": "WHAT YOU LEARN\n• Choosing a focused topic.\n• Matching passion with demand.\n• Why niches grow faster.\n\nWHY IT MATTERS\nA clear niche attracts loyal, targeted viewers.\n\nSTEP BY STEP\n1. List topics you enjoy and know.\n2. Check what people search/watch.\n3. Pick one focused niche.\n4. Plan content around it.\n\nQUICK SUMMARY\nPick one niche blending your interest with real demand.\n\nTRY THIS\nChoose a niche and 3 video topics for it.",
+    "Video Ideas & Scripts": "WHAT YOU LEARN\n• Generating endless video ideas.\n• Writing a simple script with a hook.\n• Structuring for retention.\n\nWHY IT MATTERS\nGood ideas and scripts keep viewers watching.\n\nSTEP BY STEP\n1. Brainstorm 10 ideas from viewer questions.\n2. Write a hook for the first 10 seconds.\n3. Outline the main points.\n4. End with a clear next step.\n\nQUICK SUMMARY\nPlan ideas from viewer needs and script with a strong hook.\n\nTRY THIS\nWrite a 10-second hook for a video idea.",
+    "Thumbnails & Titles": "WHAT YOU LEARN\n• Designing click-worthy thumbnails.\n• Writing curiosity-driven titles.\n• Matching title and thumbnail.\n\nWHY IT MATTERS\nThumbnails and titles decide whether people click.\n\nSTEP BY STEP\n1. Use a bold, simple thumbnail.\n2. Add 3–4 readable words.\n3. Write a clear, curious title.\n4. Keep title and thumbnail aligned.\n\nQUICK SUMMARY\nPair a bold thumbnail with a curious, honest title to win clicks.\n\nTRY THIS\nWrite a title and thumbnail text for one video.",
+    "Growing & Monetizing": "WHAT YOU LEARN\n• Consistency and analytics for growth.\n• Monetization options.\n• Building a loyal audience.\n\nWHY IT MATTERS\nGrowth plus monetization turns a channel into income.\n\nSTEP BY STEP\n1. Post consistently.\n2. Study watch time and CTR.\n3. Improve weak videos.\n4. Explore ads, sponsors and products.\n\nQUICK SUMMARY\nGrow with consistency and analytics, then monetize multiple ways.\n\nTRY THIS\nList 3 ways a channel can earn money.",
   },
   "video-editing": {
-    "Editing Basics": "📌 WHAT YOU LEARN\n• Importing clips into an editor.\n• The timeline and tracks.\n• Trimming footage.\n\n💡 WHY IT MATTERS\nEditing basics let you turn raw clips into watchable videos.\n\n🪜 STEP BY STEP\n1. Import your clips.\n2. Place them on the timeline.\n3. Trim unwanted parts.\n4. Preview the rough cut.\n\n✅ QUICK SUMMARY\nImport, arrange and trim clips on a timeline for a first cut.\n\n✏️ TRY THIS\nDescribe the steps to trim a 2-minute clip to 30 seconds.",
-    "Cuts & Transitions": "📌 WHAT YOU LEARN\n• Cutting on the beat/action.\n• Using simple transitions.\n• Keeping pace tight.\n\n💡 WHY IT MATTERS\nSmart cuts keep viewers engaged.\n\n🪜 STEP BY STEP\n1. Remove dead space.\n2. Cut on action or speech.\n3. Add a simple transition where needed.\n4. Keep the pace quick.\n\n✅ QUICK SUMMARY\nUse tight cuts and minimal transitions to maintain pace.\n\n✏️ TRY THIS\nExplain when to use a cut vs a transition.",
-    "Adding Text & Music": "📌 WHAT YOU LEARN\n• Adding captions and titles.\n• Choosing background music.\n• Balancing audio levels.\n\n💡 WHY IT MATTERS\nText and music boost clarity and mood.\n\n🪜 STEP BY STEP\n1. Add captions for key points.\n2. Pick royalty-free music.\n3. Lower music under speech.\n4. Check the overall feel.\n\n✅ QUICK SUMMARY\nAdd clear text and fitting music, keeping speech audible.\n\n✏️ TRY THIS\nPlan where captions and music go in a short video.",
-    "Color & Audio Fixes": "📌 WHAT YOU LEARN\n• Basic colour correction.\n• Cleaning up audio.\n• Consistent look and sound.\n\n💡 WHY IT MATTERS\nClean colour and audio make videos feel professional.\n\n🪜 STEP BY STEP\n1. Adjust brightness and colour.\n2. Reduce background noise.\n3. Normalise volume.\n4. Keep clips consistent.\n\n✅ QUICK SUMMARY\nCorrect colour and clean audio for a polished, consistent video.\n\n✏️ TRY THIS\nList two quick fixes for noisy audio.",
-    "Exporting for Platforms": "📌 WHAT YOU LEARN\n• Correct sizes for YouTube, Reels, Shorts.\n• Export settings and formats.\n• Quality vs file size.\n\n💡 WHY IT MATTERS\nThe right export keeps videos sharp on each platform.\n\n🪜 STEP BY STEP\n1. Choose the platform's aspect ratio.\n2. Set resolution (e.g., 1080p).\n3. Export as MP4.\n4. Check it before posting.\n\n✅ QUICK SUMMARY\nExport in the right ratio and format for each platform.\n\n✏️ TRY THIS\nState the aspect ratio for a Reel vs a YouTube video.",
+    "Editing Basics": "WHAT YOU LEARN\n• Importing clips into an editor.\n• The timeline and tracks.\n• Trimming footage.\n\nWHY IT MATTERS\nEditing basics let you turn raw clips into watchable videos.\n\nSTEP BY STEP\n1. Import your clips.\n2. Place them on the timeline.\n3. Trim unwanted parts.\n4. Preview the rough cut.\n\nQUICK SUMMARY\nImport, arrange and trim clips on a timeline for a first cut.\n\nTRY THIS\nDescribe the steps to trim a 2-minute clip to 30 seconds.",
+    "Cuts & Transitions": "WHAT YOU LEARN\n• Cutting on the beat/action.\n• Using simple transitions.\n• Keeping pace tight.\n\nWHY IT MATTERS\nSmart cuts keep viewers engaged.\n\nSTEP BY STEP\n1. Remove dead space.\n2. Cut on action or speech.\n3. Add a simple transition where needed.\n4. Keep the pace quick.\n\nQUICK SUMMARY\nUse tight cuts and minimal transitions to maintain pace.\n\nTRY THIS\nExplain when to use a cut vs a transition.",
+    "Adding Text & Music": "WHAT YOU LEARN\n• Adding captions and titles.\n• Choosing background music.\n• Balancing audio levels.\n\nWHY IT MATTERS\nText and music boost clarity and mood.\n\nSTEP BY STEP\n1. Add captions for key points.\n2. Pick royalty-free music.\n3. Lower music under speech.\n4. Check the overall feel.\n\nQUICK SUMMARY\nAdd clear text and fitting music, keeping speech audible.\n\nTRY THIS\nPlan where captions and music go in a short video.",
+    "Color & Audio Fixes": "WHAT YOU LEARN\n• Basic colour correction.\n• Cleaning up audio.\n• Consistent look and sound.\n\nWHY IT MATTERS\nClean colour and audio make videos feel professional.\n\nSTEP BY STEP\n1. Adjust brightness and colour.\n2. Reduce background noise.\n3. Normalise volume.\n4. Keep clips consistent.\n\nQUICK SUMMARY\nCorrect colour and clean audio for a polished, consistent video.\n\nTRY THIS\nList two quick fixes for noisy audio.",
+    "Exporting for Platforms": "WHAT YOU LEARN\n• Correct sizes for YouTube, Reels, Shorts.\n• Export settings and formats.\n• Quality vs file size.\n\nWHY IT MATTERS\nThe right export keeps videos sharp on each platform.\n\nSTEP BY STEP\n1. Choose the platform's aspect ratio.\n2. Set resolution (e.g., 1080p).\n3. Export as MP4.\n4. Check it before posting.\n\nQUICK SUMMARY\nExport in the right ratio and format for each platform.\n\nTRY THIS\nState the aspect ratio for a Reel vs a YouTube video.",
   },
   "thumbnail-design": {
-    "Why Thumbnails Matter": "📌 WHAT YOU LEARN\n• Thumbnails drive click-through rate.\n• First impressions in a feed.\n• Standing out.\n\n💡 WHY IT MATTERS\nA great thumbnail can double clicks on the same video.\n\n🪜 STEP BY STEP\n1. Notice how you choose videos to click.\n2. See what strong thumbnails share.\n3. Avoid clutter.\n4. Aim to stand out in the feed.\n\n✅ QUICK SUMMARY\nThumbnails decide clicks — bold and clear beats busy.\n\n✏️ TRY THIS\nCompare two thumbnails and say which wins and why.",
-    "Design in Canva": "📌 WHAT YOU LEARN\n• Building thumbnails in Canva.\n• Using the right size.\n• Backgrounds and elements.\n\n💡 WHY IT MATTERS\nCanva makes pro thumbnails quickly and free.\n\n🪜 STEP BY STEP\n1. Open a YouTube thumbnail template.\n2. Add a strong background image.\n3. Place bold text.\n4. Export at high quality.\n\n✅ QUICK SUMMARY\nUse Canva templates to build bold, correctly sized thumbnails.\n\n✏️ TRY THIS\nMake a thumbnail with one image and 3 words.",
-    "Text & Contrast": "📌 WHAT YOU LEARN\n• Big, readable text.\n• High contrast for visibility.\n• Keeping words minimal.\n\n💡 WHY IT MATTERS\nText must be readable even on a small phone screen.\n\n🪜 STEP BY STEP\n1. Use 3–4 words max.\n2. Make text large and bold.\n3. Add contrast (outline/shadow).\n4. Check readability when tiny.\n\n✅ QUICK SUMMARY\nUse minimal, bold, high-contrast text that reads at small sizes.\n\n✏️ TRY THIS\nWrite 3-word thumbnail text and a contrast idea.",
-    "Faces & Emotions": "📌 WHAT YOU LEARN\n• Using expressive faces.\n• Emotions that attract clicks.\n• Positioning subjects.\n\n💡 WHY IT MATTERS\nHuman faces and clear emotions catch attention fast.\n\n🪜 STEP BY STEP\n1. Use a clear, expressive face.\n2. Match emotion to the topic.\n3. Keep the face large enough.\n4. Avoid clutter around it.\n\n✅ QUICK SUMMARY\nExpressive faces and clear emotion increase clicks.\n\n✏️ TRY THIS\nPick an emotion that fits a 'how I failed' video.",
-    "A/B Testing Ideas": "📌 WHAT YOU LEARN\n• Testing two thumbnails.\n• Learning what your audience prefers.\n• Improving over time.\n\n💡 WHY IT MATTERS\nTesting finds what truly gets more clicks.\n\n🪜 STEP BY STEP\n1. Create two thumbnail versions.\n2. Test or swap them.\n3. Compare click-through rates.\n4. Keep the winner's style.\n\n✅ QUICK SUMMARY\nA/B test thumbnails and repeat what gets more clicks.\n\n✏️ TRY THIS\nDescribe two thumbnail variations to test.",
+    "Why Thumbnails Matter": "WHAT YOU LEARN\n• Thumbnails drive click-through rate.\n• First impressions in a feed.\n• Standing out.\n\nWHY IT MATTERS\nA great thumbnail can double clicks on the same video.\n\nSTEP BY STEP\n1. Notice how you choose videos to click.\n2. See what strong thumbnails share.\n3. Avoid clutter.\n4. Aim to stand out in the feed.\n\nQUICK SUMMARY\nThumbnails decide clicks — bold and clear beats busy.\n\nTRY THIS\nCompare two thumbnails and say which wins and why.",
+    "Design in Canva": "WHAT YOU LEARN\n• Building thumbnails in Canva.\n• Using the right size.\n• Backgrounds and elements.\n\nWHY IT MATTERS\nCanva makes pro thumbnails quickly and free.\n\nSTEP BY STEP\n1. Open a YouTube thumbnail template.\n2. Add a strong background image.\n3. Place bold text.\n4. Export at high quality.\n\nQUICK SUMMARY\nUse Canva templates to build bold, correctly sized thumbnails.\n\nTRY THIS\nMake a thumbnail with one image and 3 words.",
+    "Text & Contrast": "WHAT YOU LEARN\n• Big, readable text.\n• High contrast for visibility.\n• Keeping words minimal.\n\nWHY IT MATTERS\nText must be readable even on a small phone screen.\n\nSTEP BY STEP\n1. Use 3–4 words max.\n2. Make text large and bold.\n3. Add contrast (outline/shadow).\n4. Check readability when tiny.\n\nQUICK SUMMARY\nUse minimal, bold, high-contrast text that reads at small sizes.\n\nTRY THIS\nWrite 3-word thumbnail text and a contrast idea.",
+    "Faces & Emotions": "WHAT YOU LEARN\n• Using expressive faces.\n• Emotions that attract clicks.\n• Positioning subjects.\n\nWHY IT MATTERS\nHuman faces and clear emotions catch attention fast.\n\nSTEP BY STEP\n1. Use a clear, expressive face.\n2. Match emotion to the topic.\n3. Keep the face large enough.\n4. Avoid clutter around it.\n\nQUICK SUMMARY\nExpressive faces and clear emotion increase clicks.\n\nTRY THIS\nPick an emotion that fits a 'how I failed' video.",
+    "A/B Testing Ideas": "WHAT YOU LEARN\n• Testing two thumbnails.\n• Learning what your audience prefers.\n• Improving over time.\n\nWHY IT MATTERS\nTesting finds what truly gets more clicks.\n\nSTEP BY STEP\n1. Create two thumbnail versions.\n2. Test or swap them.\n3. Compare click-through rates.\n4. Keep the winner's style.\n\nQUICK SUMMARY\nA/B test thumbnails and repeat what gets more clicks.\n\nTRY THIS\nDescribe two thumbnail variations to test.",
   },
   "podcast-creation": {
-    "Planning Your Podcast": "📌 WHAT YOU LEARN\n• Choosing a topic and format.\n• Naming and episode length.\n• Knowing your listener.\n\n💡 WHY IT MATTERS\nA clear plan keeps a podcast focused and consistent.\n\n🪜 STEP BY STEP\n1. Pick a niche and format (solo/interview).\n2. Choose a memorable name.\n3. Decide episode length.\n4. List your first 5 topics.\n\n✅ QUICK SUMMARY\nPlan topic, format, name and length before recording.\n\n✏️ TRY THIS\nWrite a podcast name and 5 episode ideas.",
-    "Recording Gear & Apps": "📌 WHAT YOU LEARN\n• Affordable mics and apps.\n• Recording on phone or laptop.\n• Quiet recording space.\n\n💡 WHY IT MATTERS\nDecent audio matters more than fancy gear.\n\n🪜 STEP BY STEP\n1. Use a basic USB or phone mic.\n2. Pick a recording app.\n3. Find a quiet, soft room.\n4. Do a test recording.\n\n✅ QUICK SUMMARY\nStart with a simple mic, an app and a quiet room.\n\n✏️ TRY THIS\nList a budget setup to start podcasting.",
-    "Recording & Editing": "📌 WHAT YOU LEARN\n• Recording clean episodes.\n• Removing mistakes and gaps.\n• Adding intro/outro.\n\n💡 WHY IT MATTERS\nLight editing makes episodes pleasant to hear.\n\n🪜 STEP BY STEP\n1. Record in a quiet space.\n2. Cut mistakes and long pauses.\n3. Add a short intro and outro.\n4. Balance the volume.\n\n✅ QUICK SUMMARY\nRecord cleanly, trim errors, and add intro/outro.\n\n✏️ TRY THIS\nPlan a 15-second intro for your podcast.",
-    "Publishing to Platforms": "📌 WHAT YOU LEARN\n• Using a podcast host.\n• Getting on Spotify/Apple.\n• Episode titles and descriptions.\n\n💡 WHY IT MATTERS\nHosting distributes your show to all major apps.\n\n🪜 STEP BY STEP\n1. Choose a podcast host.\n2. Upload your episode.\n3. Submit to Spotify/Apple.\n4. Write a clear title and notes.\n\n✅ QUICK SUMMARY\nHost once and distribute to major platforms with good titles.\n\n✏️ TRY THIS\nWrite an episode title and 2-line description.",
-    "Growing Your Audience": "📌 WHAT YOU LEARN\n• Promoting episodes.\n• Using clips and social.\n• Encouraging reviews.\n\n💡 WHY IT MATTERS\nPromotion turns a few listeners into a real audience.\n\n🪜 STEP BY STEP\n1. Share audiogram clips.\n2. Post on social each episode.\n3. Ask listeners to follow/review.\n4. Collaborate with guests.\n\n✅ QUICK SUMMARY\nPromote with clips and social, and ask for reviews to grow.\n\n✏️ TRY THIS\nList two ways to promote a new episode.",
+    "Planning Your Podcast": "WHAT YOU LEARN\n• Choosing a topic and format.\n• Naming and episode length.\n• Knowing your listener.\n\nWHY IT MATTERS\nA clear plan keeps a podcast focused and consistent.\n\nSTEP BY STEP\n1. Pick a niche and format (solo/interview).\n2. Choose a memorable name.\n3. Decide episode length.\n4. List your first 5 topics.\n\nQUICK SUMMARY\nPlan topic, format, name and length before recording.\n\nTRY THIS\nWrite a podcast name and 5 episode ideas.",
+    "Recording Gear & Apps": "WHAT YOU LEARN\n• Affordable mics and apps.\n• Recording on phone or laptop.\n• Quiet recording space.\n\nWHY IT MATTERS\nDecent audio matters more than fancy gear.\n\nSTEP BY STEP\n1. Use a basic USB or phone mic.\n2. Pick a recording app.\n3. Find a quiet, soft room.\n4. Do a test recording.\n\nQUICK SUMMARY\nStart with a simple mic, an app and a quiet room.\n\nTRY THIS\nList a budget setup to start podcasting.",
+    "Recording & Editing": "WHAT YOU LEARN\n• Recording clean episodes.\n• Removing mistakes and gaps.\n• Adding intro/outro.\n\nWHY IT MATTERS\nLight editing makes episodes pleasant to hear.\n\nSTEP BY STEP\n1. Record in a quiet space.\n2. Cut mistakes and long pauses.\n3. Add a short intro and outro.\n4. Balance the volume.\n\nQUICK SUMMARY\nRecord cleanly, trim errors, and add intro/outro.\n\nTRY THIS\nPlan a 15-second intro for your podcast.",
+    "Publishing to Platforms": "WHAT YOU LEARN\n• Using a podcast host.\n• Getting on Spotify/Apple.\n• Episode titles and descriptions.\n\nWHY IT MATTERS\nHosting distributes your show to all major apps.\n\nSTEP BY STEP\n1. Choose a podcast host.\n2. Upload your episode.\n3. Submit to Spotify/Apple.\n4. Write a clear title and notes.\n\nQUICK SUMMARY\nHost once and distribute to major platforms with good titles.\n\nTRY THIS\nWrite an episode title and 2-line description.",
+    "Growing Your Audience": "WHAT YOU LEARN\n• Promoting episodes.\n• Using clips and social.\n• Encouraging reviews.\n\nWHY IT MATTERS\nPromotion turns a few listeners into a real audience.\n\nSTEP BY STEP\n1. Share audiogram clips.\n2. Post on social each episode.\n3. Ask listeners to follow/review.\n4. Collaborate with guests.\n\nQUICK SUMMARY\nPromote with clips and social, and ask for reviews to grow.\n\nTRY THIS\nList two ways to promote a new episode.",
   },
   "personal-branding": {
-    "What is a Personal Brand": "📌 WHAT YOU LEARN\n• Personal brand = how others see you.\n• Why it opens opportunities.\n• Authenticity matters.\n\n💡 WHY IT MATTERS\nA strong personal brand brings jobs, clients and trust.\n\n🪜 STEP BY STEP\n1. Define what you want to be known for.\n2. Pick 2–3 core themes.\n3. Be consistent and genuine.\n4. Show up regularly.\n\n✅ QUICK SUMMARY\nYour brand is your reputation — define it and show up authentically.\n\n✏️ TRY THIS\nWrite one line on what you want to be known for.",
-    "Finding Your Niche": "📌 WHAT YOU LEARN\n• Choosing a focus area.\n• Mixing skills and passion.\n• Standing out.\n\n💡 WHY IT MATTERS\nA niche makes your brand memorable and clear.\n\n🪜 STEP BY STEP\n1. List your strengths and interests.\n2. Find an audience that needs them.\n3. Pick a clear niche.\n4. Tailor content to it.\n\n✅ QUICK SUMMARY\nChoose a niche where your skills meet an audience's needs.\n\n✏️ TRY THIS\nPick a niche and your unique angle in it.",
-    "Profile & Bio Setup": "📌 WHAT YOU LEARN\n• Writing a clear bio.\n• Consistent photo and handle.\n• A strong first impression.\n\n💡 WHY IT MATTERS\nYour profile is often the first thing people judge.\n\n🪜 STEP BY STEP\n1. Use a clear, friendly photo.\n2. Write a bio: who you help and how.\n3. Keep handles consistent.\n4. Add a link/CTA.\n\n✅ QUICK SUMMARY\nSet a clear photo, focused bio and consistent handles everywhere.\n\n✏️ TRY THIS\nWrite a 2-line bio for your main platform.",
-    "Content That Builds Trust": "📌 WHAT YOU LEARN\n• Sharing value, stories and proof.\n• Consistency over perfection.\n• Engaging your audience.\n\n💡 WHY IT MATTERS\nTrust-building content turns followers into supporters.\n\n🪜 STEP BY STEP\n1. Share helpful tips regularly.\n2. Tell honest stories.\n3. Show results/proof.\n4. Reply to your audience.\n\n✅ QUICK SUMMARY\nPost value, stories and proof consistently to build trust.\n\n✏️ TRY THIS\nPlan 3 trust-building post ideas.",
-    "Growing Your Audience": "📌 WHAT YOU LEARN\n• Consistency and engagement.\n• Collaboration and networking.\n• Using analytics.\n\n💡 WHY IT MATTERS\nA growing audience multiplies your opportunities.\n\n🪜 STEP BY STEP\n1. Post consistently in your niche.\n2. Engage and reply daily.\n3. Collaborate with others.\n4. Track what works and repeat.\n\n✅ QUICK SUMMARY\nGrow through consistency, engagement, collaboration and analytics.\n\n✏️ TRY THIS\nList two creators you could collaborate with.",
+    "What is a Personal Brand": "WHAT YOU LEARN\n• Personal brand = how others see you.\n• Why it opens opportunities.\n• Authenticity matters.\n\nWHY IT MATTERS\nA strong personal brand brings jobs, clients and trust.\n\nSTEP BY STEP\n1. Define what you want to be known for.\n2. Pick 2–3 core themes.\n3. Be consistent and genuine.\n4. Show up regularly.\n\nQUICK SUMMARY\nYour brand is your reputation — define it and show up authentically.\n\nTRY THIS\nWrite one line on what you want to be known for.",
+    "Finding Your Niche": "WHAT YOU LEARN\n• Choosing a focus area.\n• Mixing skills and passion.\n• Standing out.\n\nWHY IT MATTERS\nA niche makes your brand memorable and clear.\n\nSTEP BY STEP\n1. List your strengths and interests.\n2. Find an audience that needs them.\n3. Pick a clear niche.\n4. Tailor content to it.\n\nQUICK SUMMARY\nChoose a niche where your skills meet an audience's needs.\n\nTRY THIS\nPick a niche and your unique angle in it.",
+    "Profile & Bio Setup": "WHAT YOU LEARN\n• Writing a clear bio.\n• Consistent photo and handle.\n• A strong first impression.\n\nWHY IT MATTERS\nYour profile is often the first thing people judge.\n\nSTEP BY STEP\n1. Use a clear, friendly photo.\n2. Write a bio: who you help and how.\n3. Keep handles consistent.\n4. Add a link/CTA.\n\nQUICK SUMMARY\nSet a clear photo, focused bio and consistent handles everywhere.\n\nTRY THIS\nWrite a 2-line bio for your main platform.",
+    "Content That Builds Trust": "WHAT YOU LEARN\n• Sharing value, stories and proof.\n• Consistency over perfection.\n• Engaging your audience.\n\nWHY IT MATTERS\nTrust-building content turns followers into supporters.\n\nSTEP BY STEP\n1. Share helpful tips regularly.\n2. Tell honest stories.\n3. Show results/proof.\n4. Reply to your audience.\n\nQUICK SUMMARY\nPost value, stories and proof consistently to build trust.\n\nTRY THIS\nPlan 3 trust-building post ideas.",
+    "Growing Your Audience": "WHAT YOU LEARN\n• Consistency and engagement.\n• Collaboration and networking.\n• Using analytics.\n\nWHY IT MATTERS\nA growing audience multiplies your opportunities.\n\nSTEP BY STEP\n1. Post consistently in your niche.\n2. Engage and reply daily.\n3. Collaborate with others.\n4. Track what works and repeat.\n\nQUICK SUMMARY\nGrow through consistency, engagement, collaboration and analytics.\n\nTRY THIS\nList two creators you could collaborate with.",
   },
   "resume-building": {
-    "Resume Structure": "📌 WHAT YOU LEARN\n• Standard resume sections and order.\n• What to include and skip.\n• Keeping it one page (freshers).\n\n💡 WHY IT MATTERS\nA clear structure helps recruiters scan quickly.\n\n🪜 STEP BY STEP\n1. Add header with contact details.\n2. Order: summary, skills, education, projects, experience.\n3. Keep it to one page.\n4. Use clean formatting.\n\n✅ QUICK SUMMARY\nUse a clear, one-page structure recruiters can scan fast.\n\n✏️ TRY THIS\nList the sections of a fresher resume in order.",
-    "Writing a Strong Objective": "📌 WHAT YOU LEARN\n• Writing a punchy summary/objective.\n• Focusing on value to the employer.\n• Avoiding clichés.\n\n💡 WHY IT MATTERS\nThe top lines decide if a recruiter reads on.\n\n🪜 STEP BY STEP\n1. State your role and key strength.\n2. Mention what you offer.\n3. Keep it 2–3 lines.\n4. Tailor to the job.\n\n✅ QUICK SUMMARY\nWrite a tight, value-focused summary tailored to the role.\n\n✏️ TRY THIS\nWrite a 3-line objective for a job you want.",
-    "Skills & Projects Section": "📌 WHAT YOU LEARN\n• Listing relevant skills.\n• Showing projects with results.\n• Using action words.\n\n💡 WHY IT MATTERS\nSkills and projects prove you can do the job.\n\n🪜 STEP BY STEP\n1. List skills matching the job.\n2. Add 2–3 projects.\n3. Describe each with action + result.\n4. Quantify where possible.\n\n✅ QUICK SUMMARY\nShow relevant skills and result-focused projects with action words.\n\n✏️ TRY THIS\nWrite one project bullet using action + result.",
-    "Formatting & ATS Tips": "📌 WHAT YOU LEARN\n• Clean, ATS-friendly formatting.\n• Using keywords from the job.\n• Avoiding graphics that break parsing.\n\n💡 WHY IT MATTERS\nMany resumes are first read by software (ATS).\n\n🪜 STEP BY STEP\n1. Use simple fonts and headings.\n2. Add keywords from the job post.\n3. Avoid tables/images for key info.\n4. Save as PDF.\n\n✅ QUICK SUMMARY\nKeep formatting simple and keyword-rich so ATS can read it.\n\n✏️ TRY THIS\nList 3 keywords to add for a target job.",
-    "Common Mistakes": "📌 WHAT YOU LEARN\n• Frequent resume errors.\n• Fixing typos and vagueness.\n• Tailoring instead of generic.\n\n💡 WHY IT MATTERS\nSmall mistakes can cost you interviews.\n\n🪜 STEP BY STEP\n1. Remove typos and odd formatting.\n2. Replace vague lines with specifics.\n3. Cut irrelevant content.\n4. Tailor to each job.\n\n✅ QUICK SUMMARY\nAvoid typos, vagueness and generic resumes — tailor and proofread.\n\n✏️ TRY THIS\nList 3 common resume mistakes to avoid.",
+    "Resume Structure": "WHAT YOU LEARN\n• Standard resume sections and order.\n• What to include and skip.\n• Keeping it one page (freshers).\n\nWHY IT MATTERS\nA clear structure helps recruiters scan quickly.\n\nSTEP BY STEP\n1. Add header with contact details.\n2. Order: summary, skills, education, projects, experience.\n3. Keep it to one page.\n4. Use clean formatting.\n\nQUICK SUMMARY\nUse a clear, one-page structure recruiters can scan fast.\n\nTRY THIS\nList the sections of a fresher resume in order.",
+    "Writing a Strong Objective": "WHAT YOU LEARN\n• Writing a punchy summary/objective.\n• Focusing on value to the employer.\n• Avoiding clichés.\n\nWHY IT MATTERS\nThe top lines decide if a recruiter reads on.\n\nSTEP BY STEP\n1. State your role and key strength.\n2. Mention what you offer.\n3. Keep it 2–3 lines.\n4. Tailor to the job.\n\nQUICK SUMMARY\nWrite a tight, value-focused summary tailored to the role.\n\nTRY THIS\nWrite a 3-line objective for a job you want.",
+    "Skills & Projects Section": "WHAT YOU LEARN\n• Listing relevant skills.\n• Showing projects with results.\n• Using action words.\n\nWHY IT MATTERS\nSkills and projects prove you can do the job.\n\nSTEP BY STEP\n1. List skills matching the job.\n2. Add 2–3 projects.\n3. Describe each with action + result.\n4. Quantify where possible.\n\nQUICK SUMMARY\nShow relevant skills and result-focused projects with action words.\n\nTRY THIS\nWrite one project bullet using action + result.",
+    "Formatting & ATS Tips": "WHAT YOU LEARN\n• Clean, ATS-friendly formatting.\n• Using keywords from the job.\n• Avoiding graphics that break parsing.\n\nWHY IT MATTERS\nMany resumes are first read by software (ATS).\n\nSTEP BY STEP\n1. Use simple fonts and headings.\n2. Add keywords from the job post.\n3. Avoid tables/images for key info.\n4. Save as PDF.\n\nQUICK SUMMARY\nKeep formatting simple and keyword-rich so ATS can read it.\n\nTRY THIS\nList 3 keywords to add for a target job.",
+    "Common Mistakes": "WHAT YOU LEARN\n• Frequent resume errors.\n• Fixing typos and vagueness.\n• Tailoring instead of generic.\n\nWHY IT MATTERS\nSmall mistakes can cost you interviews.\n\nSTEP BY STEP\n1. Remove typos and odd formatting.\n2. Replace vague lines with specifics.\n3. Cut irrelevant content.\n4. Tailor to each job.\n\nQUICK SUMMARY\nAvoid typos, vagueness and generic resumes — tailor and proofread.\n\nTRY THIS\nList 3 common resume mistakes to avoid.",
   },
   "interview-preparation": {
-    "Before the Interview": "📌 WHAT YOU LEARN\n• Researching the company and role.\n• Preparing your stories.\n• Practical prep (documents, route).\n\n💡 WHY IT MATTERS\nPreparation builds confidence and impresses interviewers.\n\n🪜 STEP BY STEP\n1. Research the company and job.\n2. Prepare answers to likely questions.\n3. Ready your documents.\n4. Plan timing and attire.\n\n✅ QUICK SUMMARY\nResearch, rehearse answers and handle logistics before the day.\n\n✏️ TRY THIS\nList 3 things to research about a company.",
-    "Common HR Questions": "📌 WHAT YOU LEARN\n• Typical HR questions.\n• Structuring strong answers.\n• Showing fit and attitude.\n\n💡 WHY IT MATTERS\nMost interviews start with predictable HR questions.\n\n🪜 STEP BY STEP\n1. Prepare 'tell me about yourself'.\n2. Have strengths/weaknesses ready.\n3. Use simple structure (situation–action–result).\n4. Practise out loud.\n\n✅ QUICK SUMMARY\nPrepare structured answers to common HR questions and rehearse.\n\n✏️ TRY THIS\nDraft a 60-second 'tell me about yourself'.",
-    "Technical Round Tips": "📌 WHAT YOU LEARN\n• Revising core concepts.\n• Explaining your thinking.\n• Handling unknown questions.\n\n💡 WHY IT MATTERS\nTechnical rounds test skills and problem-solving.\n\n🪜 STEP BY STEP\n1. Revise key topics for the role.\n2. Practise explaining out loud.\n3. Think step by step on problems.\n4. Stay calm if unsure; reason aloud.\n\n✅ QUICK SUMMARY\nRevise basics and explain your reasoning clearly, step by step.\n\n✏️ TRY THIS\nExplain one core concept from your field simply.",
-    "Body Language & Confidence": "📌 WHAT YOU LEARN\n• Posture, eye contact and tone.\n• Managing nerves.\n• Positive first impression.\n\n💡 WHY IT MATTERS\nConfidence and body language shape how answers land.\n\n🪜 STEP BY STEP\n1. Sit straight and smile.\n2. Make steady eye contact.\n3. Breathe and speak slowly.\n4. Listen fully before answering.\n\n✅ QUICK SUMMARY\nUse calm, confident body language and clear speech.\n\n✏️ TRY THIS\nPractise answering one question with good posture.",
-    "Follow-up & Thank You": "📌 WHAT YOU LEARN\n• Sending a thank-you note.\n• Polite follow-up timing.\n• Leaving a good final impression.\n\n💡 WHY IT MATTERS\nA thoughtful follow-up keeps you memorable.\n\n🪜 STEP BY STEP\n1. Send a short thank-you email same day.\n2. Mention something specific discussed.\n3. Reaffirm your interest.\n4. Follow up politely if no reply.\n\n✅ QUICK SUMMARY\nSend a specific thank-you and follow up politely to stand out.\n\n✏️ TRY THIS\nWrite a 4-line post-interview thank-you email.",
+    "Before the Interview": "WHAT YOU LEARN\n• Researching the company and role.\n• Preparing your stories.\n• Practical prep (documents, route).\n\nWHY IT MATTERS\nPreparation builds confidence and impresses interviewers.\n\nSTEP BY STEP\n1. Research the company and job.\n2. Prepare answers to likely questions.\n3. Ready your documents.\n4. Plan timing and attire.\n\nQUICK SUMMARY\nResearch, rehearse answers and handle logistics before the day.\n\nTRY THIS\nList 3 things to research about a company.",
+    "Common HR Questions": "WHAT YOU LEARN\n• Typical HR questions.\n• Structuring strong answers.\n• Showing fit and attitude.\n\nWHY IT MATTERS\nMost interviews start with predictable HR questions.\n\nSTEP BY STEP\n1. Prepare 'tell me about yourself'.\n2. Have strengths/weaknesses ready.\n3. Use simple structure (situation–action–result).\n4. Practise out loud.\n\nQUICK SUMMARY\nPrepare structured answers to common HR questions and rehearse.\n\nTRY THIS\nDraft a 60-second 'tell me about yourself'.",
+    "Technical Round Tips": "WHAT YOU LEARN\n• Revising core concepts.\n• Explaining your thinking.\n• Handling unknown questions.\n\nWHY IT MATTERS\nTechnical rounds test skills and problem-solving.\n\nSTEP BY STEP\n1. Revise key topics for the role.\n2. Practise explaining out loud.\n3. Think step by step on problems.\n4. Stay calm if unsure; reason aloud.\n\nQUICK SUMMARY\nRevise basics and explain your reasoning clearly, step by step.\n\nTRY THIS\nExplain one core concept from your field simply.",
+    "Body Language & Confidence": "WHAT YOU LEARN\n• Posture, eye contact and tone.\n• Managing nerves.\n• Positive first impression.\n\nWHY IT MATTERS\nConfidence and body language shape how answers land.\n\nSTEP BY STEP\n1. Sit straight and smile.\n2. Make steady eye contact.\n3. Breathe and speak slowly.\n4. Listen fully before answering.\n\nQUICK SUMMARY\nUse calm, confident body language and clear speech.\n\nTRY THIS\nPractise answering one question with good posture.",
+    "Follow-up & Thank You": "WHAT YOU LEARN\n• Sending a thank-you note.\n• Polite follow-up timing.\n• Leaving a good final impression.\n\nWHY IT MATTERS\nA thoughtful follow-up keeps you memorable.\n\nSTEP BY STEP\n1. Send a short thank-you email same day.\n2. Mention something specific discussed.\n3. Reaffirm your interest.\n4. Follow up politely if no reply.\n\nQUICK SUMMARY\nSend a specific thank-you and follow up politely to stand out.\n\nTRY THIS\nWrite a 4-line post-interview thank-you email.",
   },
   "linkedin-optimization": {
-    "Profile Photo & Headline": "📌 WHAT YOU LEARN\n• A professional photo.\n• A keyword-rich headline.\n• Strong first impression.\n\n💡 WHY IT MATTERS\nPhoto and headline appear everywhere on LinkedIn.\n\n🪜 STEP BY STEP\n1. Use a clear, friendly headshot.\n2. Write a headline: role + value/keywords.\n3. Avoid just 'Student'.\n4. Keep it specific.\n\n✅ QUICK SUMMARY\nUse a clean photo and a specific, keyword-rich headline.\n\n✏️ TRY THIS\nWrite a headline beyond just your job title.",
-    "About & Experience": "📌 WHAT YOU LEARN\n• Writing a compelling About section.\n• Describing experience with results.\n• Telling your story.\n\n💡 WHY IT MATTERS\nThese sections convince recruiters you're a fit.\n\n🪜 STEP BY STEP\n1. Write About: who you are, what you do, goals.\n2. Add experience with achievements.\n3. Use simple, confident language.\n4. Add keywords.\n\n✅ QUICK SUMMARY\nWrite a story-driven About and result-focused experience.\n\n✏️ TRY THIS\nDraft a 3-line About summary.",
-    "Skills & Endorsements": "📌 WHAT YOU LEARN\n• Adding relevant skills.\n• Getting endorsements.\n• Prioritising key skills.\n\n💡 WHY IT MATTERS\nSkills help you appear in recruiter searches.\n\n🪜 STEP BY STEP\n1. Add skills matching your target roles.\n2. Pin the top 3.\n3. Ask peers to endorse.\n4. Endorse others too.\n\n✅ QUICK SUMMARY\nList and prioritise relevant skills and gather endorsements.\n\n✏️ TRY THIS\nList your top 5 skills for a target role.",
-    "Networking & Posts": "📌 WHAT YOU LEARN\n• Connecting with the right people.\n• Posting useful content.\n• Engaging professionally.\n\n💡 WHY IT MATTERS\nNetworking and visibility create opportunities.\n\n🪜 STEP BY STEP\n1. Connect with a friendly note.\n2. Share useful posts in your field.\n3. Comment thoughtfully on others.\n4. Stay consistent.\n\n✅ QUICK SUMMARY\nGrow your network and post value to stay visible.\n\n✏️ TRY THIS\nWrite a short connection request message.",
-    "Finding Jobs on LinkedIn": "📌 WHAT YOU LEARN\n• Using LinkedIn job search.\n• Setting alerts.\n• Applying and reaching out.\n\n💡 WHY IT MATTERS\nLinkedIn is a top source of jobs and referrals.\n\n🪜 STEP BY STEP\n1. Search roles and set alerts.\n2. Use 'Open to Work' if suitable.\n3. Apply and tailor your profile.\n4. Message recruiters politely.\n\n✅ QUICK SUMMARY\nSearch jobs, set alerts, apply, and reach out to recruiters.\n\n✏️ TRY THIS\nSet up a job alert idea for your target role.",
+    "Profile Photo & Headline": "WHAT YOU LEARN\n• A professional photo.\n• A keyword-rich headline.\n• Strong first impression.\n\nWHY IT MATTERS\nPhoto and headline appear everywhere on LinkedIn.\n\nSTEP BY STEP\n1. Use a clear, friendly headshot.\n2. Write a headline: role + value/keywords.\n3. Avoid just 'Student'.\n4. Keep it specific.\n\nQUICK SUMMARY\nUse a clean photo and a specific, keyword-rich headline.\n\nTRY THIS\nWrite a headline beyond just your job title.",
+    "About & Experience": "WHAT YOU LEARN\n• Writing a compelling About section.\n• Describing experience with results.\n• Telling your story.\n\nWHY IT MATTERS\nThese sections convince recruiters you're a fit.\n\nSTEP BY STEP\n1. Write About: who you are, what you do, goals.\n2. Add experience with achievements.\n3. Use simple, confident language.\n4. Add keywords.\n\nQUICK SUMMARY\nWrite a story-driven About and result-focused experience.\n\nTRY THIS\nDraft a 3-line About summary.",
+    "Skills & Endorsements": "WHAT YOU LEARN\n• Adding relevant skills.\n• Getting endorsements.\n• Prioritising key skills.\n\nWHY IT MATTERS\nSkills help you appear in recruiter searches.\n\nSTEP BY STEP\n1. Add skills matching your target roles.\n2. Pin the top 3.\n3. Ask peers to endorse.\n4. Endorse others too.\n\nQUICK SUMMARY\nList and prioritise relevant skills and gather endorsements.\n\nTRY THIS\nList your top 5 skills for a target role.",
+    "Networking & Posts": "WHAT YOU LEARN\n• Connecting with the right people.\n• Posting useful content.\n• Engaging professionally.\n\nWHY IT MATTERS\nNetworking and visibility create opportunities.\n\nSTEP BY STEP\n1. Connect with a friendly note.\n2. Share useful posts in your field.\n3. Comment thoughtfully on others.\n4. Stay consistent.\n\nQUICK SUMMARY\nGrow your network and post value to stay visible.\n\nTRY THIS\nWrite a short connection request message.",
+    "Finding Jobs on LinkedIn": "WHAT YOU LEARN\n• Using LinkedIn job search.\n• Setting alerts.\n• Applying and reaching out.\n\nWHY IT MATTERS\nLinkedIn is a top source of jobs and referrals.\n\nSTEP BY STEP\n1. Search roles and set alerts.\n2. Use 'Open to Work' if suitable.\n3. Apply and tailor your profile.\n4. Message recruiters politely.\n\nQUICK SUMMARY\nSearch jobs, set alerts, apply, and reach out to recruiters.\n\nTRY THIS\nSet up a job alert idea for your target role.",
   },
   "freelancing-mastery": {
-    "Choosing Your Skill": "📌 WHAT YOU LEARN\n• Picking a marketable freelance skill.\n• Matching skill to demand.\n• Starting focused.\n\n💡 WHY IT MATTERS\nA clear, in-demand skill makes finding work easier.\n\n🪜 STEP BY STEP\n1. List skills you have or can learn.\n2. Check demand on freelance sites.\n3. Pick one to start.\n4. Build a small sample.\n\n✅ QUICK SUMMARY\nChoose one in-demand skill and create a sample to start.\n\n✏️ TRY THIS\nPick a freelance skill and one sample you could make.",
-    "Profiles on Upwork/Fiverr": "📌 WHAT YOU LEARN\n• Creating a strong freelance profile.\n• Writing gigs/proposals that sell.\n• Showcasing samples.\n\n💡 WHY IT MATTERS\nYour profile is your storefront for clients.\n\n🪜 STEP BY STEP\n1. Write a clear, benefit-led bio.\n2. Create a focused gig/offer.\n3. Add 2–3 samples.\n4. Use a friendly photo.\n\n✅ QUICK SUMMARY\nBuild a focused profile with a clear offer and samples.\n\n✏️ TRY THIS\nWrite a one-line freelance gig title.",
-    "Winning Proposals": "📌 WHAT YOU LEARN\n• Reading the client's need.\n• Writing tailored proposals.\n• Standing out from competitors.\n\n💡 WHY IT MATTERS\nProposals decide who gets hired.\n\n🪜 STEP BY STEP\n1. Address their specific problem first.\n2. Show a relevant sample.\n3. Be clear about deliverables.\n4. Keep it short and confident.\n\n✅ QUICK SUMMARY\nTailor each proposal to the client's need with proof and clarity.\n\n✏️ TRY THIS\nWrite the opening line of a winning proposal.",
-    "Pricing & Payments": "📌 WHAT YOU LEARN\n• Setting fair rates.\n• Hourly vs fixed pricing.\n• Safe payment practices.\n\n💡 WHY IT MATTERS\nRight pricing and safe payments protect your income.\n\n🪜 STEP BY STEP\n1. Research typical rates.\n2. Start fair, raise with reviews.\n3. Use the platform's payment protection.\n4. Agree scope before starting.\n\n✅ QUICK SUMMARY\nPrice fairly, use protected payments, and define scope upfront.\n\n✏️ TRY THIS\nDecide a starting rate for your chosen skill.",
-    "Getting 5-Star Reviews": "📌 WHAT YOU LEARN\n• Delivering great work.\n• Communicating clearly.\n• Earning repeat clients.\n\n💡 WHY IT MATTERS\nReviews build trust and bring more clients.\n\n🪜 STEP BY STEP\n1. Clarify expectations early.\n2. Deliver on time, slightly over-deliver.\n3. Communicate proactively.\n4. Politely ask for a review.\n\n✅ QUICK SUMMARY\nCommunicate well and over-deliver to earn 5-star reviews.\n\n✏️ TRY THIS\nList 3 ways to delight a first client.",
+    "Choosing Your Skill": "WHAT YOU LEARN\n• Picking a marketable freelance skill.\n• Matching skill to demand.\n• Starting focused.\n\nWHY IT MATTERS\nA clear, in-demand skill makes finding work easier.\n\nSTEP BY STEP\n1. List skills you have or can learn.\n2. Check demand on freelance sites.\n3. Pick one to start.\n4. Build a small sample.\n\nQUICK SUMMARY\nChoose one in-demand skill and create a sample to start.\n\nTRY THIS\nPick a freelance skill and one sample you could make.",
+    "Profiles on Upwork/Fiverr": "WHAT YOU LEARN\n• Creating a strong freelance profile.\n• Writing gigs/proposals that sell.\n• Showcasing samples.\n\nWHY IT MATTERS\nYour profile is your storefront for clients.\n\nSTEP BY STEP\n1. Write a clear, benefit-led bio.\n2. Create a focused gig/offer.\n3. Add 2–3 samples.\n4. Use a friendly photo.\n\nQUICK SUMMARY\nBuild a focused profile with a clear offer and samples.\n\nTRY THIS\nWrite a one-line freelance gig title.",
+    "Winning Proposals": "WHAT YOU LEARN\n• Reading the client's need.\n• Writing tailored proposals.\n• Standing out from competitors.\n\nWHY IT MATTERS\nProposals decide who gets hired.\n\nSTEP BY STEP\n1. Address their specific problem first.\n2. Show a relevant sample.\n3. Be clear about deliverables.\n4. Keep it short and confident.\n\nQUICK SUMMARY\nTailor each proposal to the client's need with proof and clarity.\n\nTRY THIS\nWrite the opening line of a winning proposal.",
+    "Pricing & Payments": "WHAT YOU LEARN\n• Setting fair rates.\n• Hourly vs fixed pricing.\n• Safe payment practices.\n\nWHY IT MATTERS\nRight pricing and safe payments protect your income.\n\nSTEP BY STEP\n1. Research typical rates.\n2. Start fair, raise with reviews.\n3. Use the platform's payment protection.\n4. Agree scope before starting.\n\nQUICK SUMMARY\nPrice fairly, use protected payments, and define scope upfront.\n\nTRY THIS\nDecide a starting rate for your chosen skill.",
+    "Getting 5-Star Reviews": "WHAT YOU LEARN\n• Delivering great work.\n• Communicating clearly.\n• Earning repeat clients.\n\nWHY IT MATTERS\nReviews build trust and bring more clients.\n\nSTEP BY STEP\n1. Clarify expectations early.\n2. Deliver on time, slightly over-deliver.\n3. Communicate proactively.\n4. Politely ask for a review.\n\nQUICK SUMMARY\nCommunicate well and over-deliver to earn 5-star reviews.\n\nTRY THIS\nList 3 ways to delight a first client.",
   },
   "remote-job-skills": {
-    "Finding Remote Jobs": "📌 WHAT YOU LEARN\n• Where to find remote roles.\n• Filtering legit opportunities.\n• Tailoring applications.\n\n💡 WHY IT MATTERS\nRemote jobs open opportunities beyond your city.\n\n🪜 STEP BY STEP\n1. Use remote job boards and LinkedIn.\n2. Filter by your skills.\n3. Avoid scams (no fees to apply).\n4. Tailor each application.\n\n✅ QUICK SUMMARY\nSearch legit remote boards and tailor applications to each role.\n\n✏️ TRY THIS\nList two trustworthy places to find remote jobs.",
-    "Tools for Remote Work": "📌 WHAT YOU LEARN\n• Common tools (Slack, Zoom, Trello).\n• Staying organised online.\n• Setting up your workspace.\n\n💡 WHY IT MATTERS\nKnowing key tools makes you job-ready and efficient.\n\n🪜 STEP BY STEP\n1. Learn chat (Slack), calls (Zoom).\n2. Use a task tool (Trello/Asana).\n3. Keep files in the cloud.\n4. Set up a tidy workspace.\n\n✅ QUICK SUMMARY\nMaster core remote tools and a tidy, organised setup.\n\n✏️ TRY THIS\nList one tool each for chat, calls and tasks.",
-    "Communication & Time Zones": "📌 WHAT YOU LEARN\n• Clear written communication.\n• Working across time zones.\n• Async updates.\n\n💡 WHY IT MATTERS\nRemote work depends on clear, timely communication.\n\n🪜 STEP BY STEP\n1. Write clear, concise messages.\n2. Confirm time zones for meetings.\n3. Share async progress updates.\n4. Respond reliably.\n\n✅ QUICK SUMMARY\nCommunicate clearly, mind time zones, and give async updates.\n\n✏️ TRY THIS\nRewrite a vague update into a clear one.",
-    "Productivity at Home": "📌 WHAT YOU LEARN\n• Routines and focus blocks.\n• Avoiding distractions.\n• Work-life balance.\n\n💡 WHY IT MATTERS\nProductivity at home proves you can be trusted remotely.\n\n🪜 STEP BY STEP\n1. Set a daily routine.\n2. Use focus blocks (e.g., 25 min).\n3. Remove distractions.\n4. Take real breaks.\n\n✅ QUICK SUMMARY\nUse routines and focus blocks to stay productive at home.\n\n✏️ TRY THIS\nPlan a simple daily work routine.",
-    "Standing Out Remotely": "📌 WHAT YOU LEARN\n• Being proactive and visible.\n• Delivering reliably.\n• Building trust online.\n\n💡 WHY IT MATTERS\nStanding out leads to growth and security in remote roles.\n\n🪜 STEP BY STEP\n1. Communicate progress proactively.\n2. Meet deadlines consistently.\n3. Offer help and ideas.\n4. Keep your manager updated.\n\n✅ QUICK SUMMARY\nBe proactive, reliable and visible to stand out remotely.\n\n✏️ TRY THIS\nList two ways to be more visible to a remote team.",
+    "Finding Remote Jobs": "WHAT YOU LEARN\n• Where to find remote roles.\n• Filtering legit opportunities.\n• Tailoring applications.\n\nWHY IT MATTERS\nRemote jobs open opportunities beyond your city.\n\nSTEP BY STEP\n1. Use remote job boards and LinkedIn.\n2. Filter by your skills.\n3. Avoid scams (no fees to apply).\n4. Tailor each application.\n\nQUICK SUMMARY\nSearch legit remote boards and tailor applications to each role.\n\nTRY THIS\nList two trustworthy places to find remote jobs.",
+    "Tools for Remote Work": "WHAT YOU LEARN\n• Common tools (Slack, Zoom, Trello).\n• Staying organised online.\n• Setting up your workspace.\n\nWHY IT MATTERS\nKnowing key tools makes you job-ready and efficient.\n\nSTEP BY STEP\n1. Learn chat (Slack), calls (Zoom).\n2. Use a task tool (Trello/Asana).\n3. Keep files in the cloud.\n4. Set up a tidy workspace.\n\nQUICK SUMMARY\nMaster core remote tools and a tidy, organised setup.\n\nTRY THIS\nList one tool each for chat, calls and tasks.",
+    "Communication & Time Zones": "WHAT YOU LEARN\n• Clear written communication.\n• Working across time zones.\n• Async updates.\n\nWHY IT MATTERS\nRemote work depends on clear, timely communication.\n\nSTEP BY STEP\n1. Write clear, concise messages.\n2. Confirm time zones for meetings.\n3. Share async progress updates.\n4. Respond reliably.\n\nQUICK SUMMARY\nCommunicate clearly, mind time zones, and give async updates.\n\nTRY THIS\nRewrite a vague update into a clear one.",
+    "Productivity at Home": "WHAT YOU LEARN\n• Routines and focus blocks.\n• Avoiding distractions.\n• Work-life balance.\n\nWHY IT MATTERS\nProductivity at home proves you can be trusted remotely.\n\nSTEP BY STEP\n1. Set a daily routine.\n2. Use focus blocks (e.g., 25 min).\n3. Remove distractions.\n4. Take real breaks.\n\nQUICK SUMMARY\nUse routines and focus blocks to stay productive at home.\n\nTRY THIS\nPlan a simple daily work routine.",
+    "Standing Out Remotely": "WHAT YOU LEARN\n• Being proactive and visible.\n• Delivering reliably.\n• Building trust online.\n\nWHY IT MATTERS\nStanding out leads to growth and security in remote roles.\n\nSTEP BY STEP\n1. Communicate progress proactively.\n2. Meet deadlines consistently.\n3. Offer help and ideas.\n4. Keep your manager updated.\n\nQUICK SUMMARY\nBe proactive, reliable and visible to stand out remotely.\n\nTRY THIS\nList two ways to be more visible to a remote team.",
   },
   "business-communication": {
-    "Professional Emails": "📌 WHAT YOU LEARN\n• Clear subject and structure.\n• Polite, concise tone.\n• Strong call to action.\n\n💡 WHY IT MATTERS\nGood emails build a professional image and get replies.\n\n🪜 STEP BY STEP\n1. Write a specific subject.\n2. Greet and state purpose.\n3. Keep it short and clear.\n4. End with a clear ask.\n\n✅ QUICK SUMMARY\nWrite clear, concise emails with a specific subject and ask.\n\n✏️ TRY THIS\nDraft a 5-line professional email.",
-    "Meeting Etiquette": "📌 WHAT YOU LEARN\n• Preparing for meetings.\n• Speaking and listening well.\n• Following up.\n\n💡 WHY IT MATTERS\nGood meeting habits show professionalism.\n\n🪜 STEP BY STEP\n1. Come prepared with notes.\n2. Be on time.\n3. Listen and contribute clearly.\n4. Send a short follow-up.\n\n✅ QUICK SUMMARY\nPrepare, participate respectfully, and follow up after meetings.\n\n✏️ TRY THIS\nList 3 things to do before a meeting.",
-    "Clear Speaking & Listening": "📌 WHAT YOU LEARN\n• Speaking simply and confidently.\n• Active listening.\n• Avoiding misunderstandings.\n\n💡 WHY IT MATTERS\nClear two-way communication prevents costly errors.\n\n🪜 STEP BY STEP\n1. Speak slowly and clearly.\n2. Listen without interrupting.\n3. Summarise to confirm.\n4. Ask if unclear.\n\n✅ QUICK SUMMARY\nSpeak clearly and listen actively, confirming understanding.\n\n✏️ TRY THIS\nPractise summarising what someone says.",
-    "Reports & Presentations": "📌 WHAT YOU LEARN\n• Structuring clear reports.\n• Simple, focused slides.\n• Presenting confidently.\n\n💡 WHY IT MATTERS\nClear reports and decks influence decisions.\n\n🪜 STEP BY STEP\n1. Start with the key message.\n2. Support with simple data.\n3. Use clean slides.\n4. Practise delivery.\n\n✅ QUICK SUMMARY\nLead with the main point and support it clearly in reports and decks.\n\n✏️ TRY THIS\nWrite the one-line main message of a report.",
-    "Workplace Confidence": "📌 WHAT YOU LEARN\n• Speaking up appropriately.\n• Handling feedback well.\n• Building professional presence.\n\n💡 WHY IT MATTERS\nConfidence helps your ideas and value be seen.\n\n🪜 STEP BY STEP\n1. Share ideas clearly and politely.\n2. Accept feedback gracefully.\n3. Prepare before speaking up.\n4. Stay calm under pressure.\n\n✅ QUICK SUMMARY\nBuild confidence by preparing, speaking up and handling feedback well.\n\n✏️ TRY THIS\nPlan how you'd respond calmly to tough feedback.",
+    "Professional Emails": "WHAT YOU LEARN\n• Clear subject and structure.\n• Polite, concise tone.\n• Strong call to action.\n\nWHY IT MATTERS\nGood emails build a professional image and get replies.\n\nSTEP BY STEP\n1. Write a specific subject.\n2. Greet and state purpose.\n3. Keep it short and clear.\n4. End with a clear ask.\n\nQUICK SUMMARY\nWrite clear, concise emails with a specific subject and ask.\n\nTRY THIS\nDraft a 5-line professional email.",
+    "Meeting Etiquette": "WHAT YOU LEARN\n• Preparing for meetings.\n• Speaking and listening well.\n• Following up.\n\nWHY IT MATTERS\nGood meeting habits show professionalism.\n\nSTEP BY STEP\n1. Come prepared with notes.\n2. Be on time.\n3. Listen and contribute clearly.\n4. Send a short follow-up.\n\nQUICK SUMMARY\nPrepare, participate respectfully, and follow up after meetings.\n\nTRY THIS\nList 3 things to do before a meeting.",
+    "Clear Speaking & Listening": "WHAT YOU LEARN\n• Speaking simply and confidently.\n• Active listening.\n• Avoiding misunderstandings.\n\nWHY IT MATTERS\nClear two-way communication prevents costly errors.\n\nSTEP BY STEP\n1. Speak slowly and clearly.\n2. Listen without interrupting.\n3. Summarise to confirm.\n4. Ask if unclear.\n\nQUICK SUMMARY\nSpeak clearly and listen actively, confirming understanding.\n\nTRY THIS\nPractise summarising what someone says.",
+    "Reports & Presentations": "WHAT YOU LEARN\n• Structuring clear reports.\n• Simple, focused slides.\n• Presenting confidently.\n\nWHY IT MATTERS\nClear reports and decks influence decisions.\n\nSTEP BY STEP\n1. Start with the key message.\n2. Support with simple data.\n3. Use clean slides.\n4. Practise delivery.\n\nQUICK SUMMARY\nLead with the main point and support it clearly in reports and decks.\n\nTRY THIS\nWrite the one-line main message of a report.",
+    "Workplace Confidence": "WHAT YOU LEARN\n• Speaking up appropriately.\n• Handling feedback well.\n• Building professional presence.\n\nWHY IT MATTERS\nConfidence helps your ideas and value be seen.\n\nSTEP BY STEP\n1. Share ideas clearly and politely.\n2. Accept feedback gracefully.\n3. Prepare before speaking up.\n4. Stay calm under pressure.\n\nQUICK SUMMARY\nBuild confidence by preparing, speaking up and handling feedback well.\n\nTRY THIS\nPlan how you'd respond calmly to tough feedback.",
   },
   "entrepreneurship": {
-    "Idea to Business": "📌 WHAT YOU LEARN\n• Turning an idea into a plan.\n• Spotting real problems to solve.\n• First steps to start.\n\n💡 WHY IT MATTERS\nIdeas become businesses only with action and a plan.\n\n🪜 STEP BY STEP\n1. Identify a real problem.\n2. Describe your solution simply.\n3. Note who would pay.\n4. Plan a small first step.\n\n✅ QUICK SUMMARY\nTurn a problem into a simple, payable solution and act small.\n\n✏️ TRY THIS\nWrite your idea as 'I help X do Y'.",
-    "Validating Your Idea": "📌 WHAT YOU LEARN\n• Testing if people want it.\n• Talking to potential customers.\n• Avoiding building the wrong thing.\n\n💡 WHY IT MATTERS\nValidation saves time and money before big investment.\n\n🪜 STEP BY STEP\n1. Talk to 10 potential customers.\n2. Ask about their problem.\n3. Offer a simple version.\n4. See if they'd pay.\n\n✅ QUICK SUMMARY\nValidate by talking to real customers and testing willingness to pay.\n\n✏️ TRY THIS\nWrite 3 questions to validate your idea.",
-    "Business Model Basics": "📌 WHAT YOU LEARN\n• How a business makes money.\n• Costs vs revenue.\n• Simple business models.\n\n💡 WHY IT MATTERS\nA clear model shows how you'll be profitable.\n\n🪜 STEP BY STEP\n1. List how you'll earn.\n2. List your main costs.\n3. Check if revenue beats costs.\n4. Simplify the model.\n\n✅ QUICK SUMMARY\nKnow your revenue, costs and how you'll make a profit.\n\n✏️ TRY THIS\nSketch how your idea earns and what it costs.",
-    "Funding & Costs": "📌 WHAT YOU LEARN\n• Estimating startup costs.\n• Funding options (savings, loans).\n• Managing cash carefully.\n\n💡 WHY IT MATTERS\nKnowing costs and funding prevents running out of money.\n\n🪜 STEP BY STEP\n1. List startup and monthly costs.\n2. Decide how to fund them.\n3. Keep a cash buffer.\n4. Track spending.\n\n✅ QUICK SUMMARY\nEstimate costs, choose funding, and manage cash carefully.\n\n✏️ TRY THIS\nList 5 startup costs for your idea.",
-    "Launching Your Startup": "📌 WHAT YOU LEARN\n• Planning a simple launch.\n• Getting first customers.\n• Learning and improving.\n\n💡 WHY IT MATTERS\nLaunching small and learning fast beats waiting for perfect.\n\n🪜 STEP BY STEP\n1. Set a launch date and offer.\n2. Tell your network.\n3. Serve first customers well.\n4. Improve from feedback.\n\n✅ QUICK SUMMARY\nLaunch small with an offer, win first customers, and improve.\n\n✏️ TRY THIS\nDraft a simple launch plan in 4 steps.",
+    "Idea to Business": "WHAT YOU LEARN\n• Turning an idea into a plan.\n• Spotting real problems to solve.\n• First steps to start.\n\nWHY IT MATTERS\nIdeas become businesses only with action and a plan.\n\nSTEP BY STEP\n1. Identify a real problem.\n2. Describe your solution simply.\n3. Note who would pay.\n4. Plan a small first step.\n\nQUICK SUMMARY\nTurn a problem into a simple, payable solution and act small.\n\nTRY THIS\nWrite your idea as 'I help X do Y'.",
+    "Validating Your Idea": "WHAT YOU LEARN\n• Testing if people want it.\n• Talking to potential customers.\n• Avoiding building the wrong thing.\n\nWHY IT MATTERS\nValidation saves time and money before big investment.\n\nSTEP BY STEP\n1. Talk to 10 potential customers.\n2. Ask about their problem.\n3. Offer a simple version.\n4. See if they'd pay.\n\nQUICK SUMMARY\nValidate by talking to real customers and testing willingness to pay.\n\nTRY THIS\nWrite 3 questions to validate your idea.",
+    "Business Model Basics": "WHAT YOU LEARN\n• How a business makes money.\n• Costs vs revenue.\n• Simple business models.\n\nWHY IT MATTERS\nA clear model shows how you'll be profitable.\n\nSTEP BY STEP\n1. List how you'll earn.\n2. List your main costs.\n3. Check if revenue beats costs.\n4. Simplify the model.\n\nQUICK SUMMARY\nKnow your revenue, costs and how you'll make a profit.\n\nTRY THIS\nSketch how your idea earns and what it costs.",
+    "Funding & Costs": "WHAT YOU LEARN\n• Estimating startup costs.\n• Funding options (savings, loans).\n• Managing cash carefully.\n\nWHY IT MATTERS\nKnowing costs and funding prevents running out of money.\n\nSTEP BY STEP\n1. List startup and monthly costs.\n2. Decide how to fund them.\n3. Keep a cash buffer.\n4. Track spending.\n\nQUICK SUMMARY\nEstimate costs, choose funding, and manage cash carefully.\n\nTRY THIS\nList 5 startup costs for your idea.",
+    "Launching Your Startup": "WHAT YOU LEARN\n• Planning a simple launch.\n• Getting first customers.\n• Learning and improving.\n\nWHY IT MATTERS\nLaunching small and learning fast beats waiting for perfect.\n\nSTEP BY STEP\n1. Set a launch date and offer.\n2. Tell your network.\n3. Serve first customers well.\n4. Improve from feedback.\n\nQUICK SUMMARY\nLaunch small with an offer, win first customers, and improve.\n\nTRY THIS\nDraft a simple launch plan in 4 steps.",
   },
   "small-business-management": {
-    "Setting Up a Business": "📌 WHAT YOU LEARN\n• Basic registration and licenses.\n• Choosing a structure.\n• Essential first systems.\n\n💡 WHY IT MATTERS\nProper setup avoids legal and operational trouble.\n\n🪜 STEP BY STEP\n1. Decide your business structure.\n2. Complete needed registrations.\n3. Open a business bank account.\n4. Set up basic records.\n\n✅ QUICK SUMMARY\nRegister correctly, separate finances, and set basic systems early.\n\n✏️ TRY THIS\nList the first 4 setup steps for a small shop.",
-    "Managing Money": "📌 WHAT YOU LEARN\n• Tracking income and expenses.\n• Pricing and margins.\n• Keeping cash healthy.\n\n💡 WHY IT MATTERS\nMoney management keeps a business alive and profitable.\n\n🪜 STEP BY STEP\n1. Record all money in and out.\n2. Price to cover costs plus profit.\n3. Watch cash flow weekly.\n4. Keep a buffer.\n\n✅ QUICK SUMMARY\nTrack money, price for profit, and protect cash flow.\n\n✏️ TRY THIS\nSet up a weekly income-and-expense check.",
-    "Hiring & Team": "📌 WHAT YOU LEARN\n• When and who to hire.\n• Clear roles and expectations.\n• Keeping a team motivated.\n\n💡 WHY IT MATTERS\nThe right team lets a business grow beyond you.\n\n🪜 STEP BY STEP\n1. Identify tasks to delegate.\n2. Hire for those roles.\n3. Set clear expectations.\n4. Give feedback and respect.\n\n✅ QUICK SUMMARY\nHire for clear roles and keep the team motivated and informed.\n\n✏️ TRY THIS\nList 2 roles you'd hire first and why.",
-    "Operations & Systems": "📌 WHAT YOU LEARN\n• Building simple processes.\n• Reducing daily chaos.\n• Using checklists/tools.\n\n💡 WHY IT MATTERS\nSystems make a business run smoothly and consistently.\n\n🪜 STEP BY STEP\n1. Map repeating tasks.\n2. Create simple checklists.\n3. Use tools to organise.\n4. Improve over time.\n\n✅ QUICK SUMMARY\nTurn repeating tasks into simple systems for consistency.\n\n✏️ TRY THIS\nWrite a checklist for one daily operation.",
-    "Growth Planning": "📌 WHAT YOU LEARN\n• Setting growth goals.\n• Finding more customers.\n• Scaling sensibly.\n\n💡 WHY IT MATTERS\nPlanned growth avoids overreach and waste.\n\n🪜 STEP BY STEP\n1. Set a clear growth goal.\n2. Identify how to reach more customers.\n3. Check you can deliver.\n4. Reinvest profit wisely.\n\n✅ QUICK SUMMARY\nSet goals, expand your customer base, and scale within capacity.\n\n✏️ TRY THIS\nWrite one growth goal for the next 3 months.",
+    "Setting Up a Business": "WHAT YOU LEARN\n• Basic registration and licenses.\n• Choosing a structure.\n• Essential first systems.\n\nWHY IT MATTERS\nProper setup avoids legal and operational trouble.\n\nSTEP BY STEP\n1. Decide your business structure.\n2. Complete needed registrations.\n3. Open a business bank account.\n4. Set up basic records.\n\nQUICK SUMMARY\nRegister correctly, separate finances, and set basic systems early.\n\nTRY THIS\nList the first 4 setup steps for a small shop.",
+    "Managing Money": "WHAT YOU LEARN\n• Tracking income and expenses.\n• Pricing and margins.\n• Keeping cash healthy.\n\nWHY IT MATTERS\nMoney management keeps a business alive and profitable.\n\nSTEP BY STEP\n1. Record all money in and out.\n2. Price to cover costs plus profit.\n3. Watch cash flow weekly.\n4. Keep a buffer.\n\nQUICK SUMMARY\nTrack money, price for profit, and protect cash flow.\n\nTRY THIS\nSet up a weekly income-and-expense check.",
+    "Hiring & Team": "WHAT YOU LEARN\n• When and who to hire.\n• Clear roles and expectations.\n• Keeping a team motivated.\n\nWHY IT MATTERS\nThe right team lets a business grow beyond you.\n\nSTEP BY STEP\n1. Identify tasks to delegate.\n2. Hire for those roles.\n3. Set clear expectations.\n4. Give feedback and respect.\n\nQUICK SUMMARY\nHire for clear roles and keep the team motivated and informed.\n\nTRY THIS\nList 2 roles you'd hire first and why.",
+    "Operations & Systems": "WHAT YOU LEARN\n• Building simple processes.\n• Reducing daily chaos.\n• Using checklists/tools.\n\nWHY IT MATTERS\nSystems make a business run smoothly and consistently.\n\nSTEP BY STEP\n1. Map repeating tasks.\n2. Create simple checklists.\n3. Use tools to organise.\n4. Improve over time.\n\nQUICK SUMMARY\nTurn repeating tasks into simple systems for consistency.\n\nTRY THIS\nWrite a checklist for one daily operation.",
+    "Growth Planning": "WHAT YOU LEARN\n• Setting growth goals.\n• Finding more customers.\n• Scaling sensibly.\n\nWHY IT MATTERS\nPlanned growth avoids overreach and waste.\n\nSTEP BY STEP\n1. Set a clear growth goal.\n2. Identify how to reach more customers.\n3. Check you can deliver.\n4. Reinvest profit wisely.\n\nQUICK SUMMARY\nSet goals, expand your customer base, and scale within capacity.\n\nTRY THIS\nWrite one growth goal for the next 3 months.",
   },
   "sales-marketing": {
-    "Understanding Customers": "📌 WHAT YOU LEARN\n• Knowing customer needs and pains.\n• Building buyer personas.\n• Listening to feedback.\n\n💡 WHY IT MATTERS\nUnderstanding customers makes selling far easier.\n\n🪜 STEP BY STEP\n1. Describe your ideal customer.\n2. List their main problems.\n3. Note what they value.\n4. Use this in your pitch.\n\n✅ QUICK SUMMARY\nKnow your customer's needs and values to sell effectively.\n\n✏️ TRY THIS\nWrite a short buyer persona.",
-    "Sales Funnel Basics": "📌 WHAT YOU LEARN\n• Stages: awareness, interest, decision.\n• Moving people through.\n• Reducing drop-off.\n\n💡 WHY IT MATTERS\nA funnel turns strangers into customers step by step.\n\n🪜 STEP BY STEP\n1. Attract attention (awareness).\n2. Build interest with value.\n3. Help them decide.\n4. Make buying easy.\n\n✅ QUICK SUMMARY\nGuide prospects from awareness to decision with a clear funnel.\n\n✏️ TRY THIS\nMap the funnel stages for your product.",
-    "Pitching & Closing": "📌 WHAT YOU LEARN\n• Presenting value clearly.\n• Handling objections.\n• Asking for the sale.\n\n💡 WHY IT MATTERS\nClosing turns interest into revenue.\n\n🪜 STEP BY STEP\n1. Focus on customer benefits.\n2. Address common objections.\n3. Confidently ask for the sale.\n4. Confirm next steps.\n\n✅ QUICK SUMMARY\nPitch benefits, handle objections, and confidently close.\n\n✏️ TRY THIS\nWrite one line answering 'It's too expensive'.",
-    "Marketing Channels": "📌 WHAT YOU LEARN\n• Choosing channels (social, ads, referrals).\n• Matching channel to audience.\n• Focusing efforts.\n\n💡 WHY IT MATTERS\nThe right channels reach buyers efficiently.\n\n🪜 STEP BY STEP\n1. List where your customers are.\n2. Pick 1–2 channels.\n3. Test with small effort.\n4. Double down on what works.\n\n✅ QUICK SUMMARY\nPick a couple of channels where your customers are and focus.\n\n✏️ TRY THIS\nChoose two channels for a local service.",
-    "Retaining Customers": "📌 WHAT YOU LEARN\n• Why retention beats constant new sales.\n• Follow-ups and loyalty.\n• Encouraging repeat purchases.\n\n💡 WHY IT MATTERS\nKeeping customers is cheaper and more profitable than finding new ones.\n\n🪜 STEP BY STEP\n1. Follow up after a sale.\n2. Offer loyalty perks.\n3. Ask for feedback and act.\n4. Stay in touch.\n\n✅ QUICK SUMMARY\nRetain customers with follow-ups, loyalty and great service.\n\n✏️ TRY THIS\nList 2 ways to encourage repeat buying.",
+    "Understanding Customers": "WHAT YOU LEARN\n• Knowing customer needs and pains.\n• Building buyer personas.\n• Listening to feedback.\n\nWHY IT MATTERS\nUnderstanding customers makes selling far easier.\n\nSTEP BY STEP\n1. Describe your ideal customer.\n2. List their main problems.\n3. Note what they value.\n4. Use this in your pitch.\n\nQUICK SUMMARY\nKnow your customer's needs and values to sell effectively.\n\nTRY THIS\nWrite a short buyer persona.",
+    "Sales Funnel Basics": "WHAT YOU LEARN\n• Stages: awareness, interest, decision.\n• Moving people through.\n• Reducing drop-off.\n\nWHY IT MATTERS\nA funnel turns strangers into customers step by step.\n\nSTEP BY STEP\n1. Attract attention (awareness).\n2. Build interest with value.\n3. Help them decide.\n4. Make buying easy.\n\nQUICK SUMMARY\nGuide prospects from awareness to decision with a clear funnel.\n\nTRY THIS\nMap the funnel stages for your product.",
+    "Pitching & Closing": "WHAT YOU LEARN\n• Presenting value clearly.\n• Handling objections.\n• Asking for the sale.\n\nWHY IT MATTERS\nClosing turns interest into revenue.\n\nSTEP BY STEP\n1. Focus on customer benefits.\n2. Address common objections.\n3. Confidently ask for the sale.\n4. Confirm next steps.\n\nQUICK SUMMARY\nPitch benefits, handle objections, and confidently close.\n\nTRY THIS\nWrite one line answering 'It's too expensive'.",
+    "Marketing Channels": "WHAT YOU LEARN\n• Choosing channels (social, ads, referrals).\n• Matching channel to audience.\n• Focusing efforts.\n\nWHY IT MATTERS\nThe right channels reach buyers efficiently.\n\nSTEP BY STEP\n1. List where your customers are.\n2. Pick 1–2 channels.\n3. Test with small effort.\n4. Double down on what works.\n\nQUICK SUMMARY\nPick a couple of channels where your customers are and focus.\n\nTRY THIS\nChoose two channels for a local service.",
+    "Retaining Customers": "WHAT YOU LEARN\n• Why retention beats constant new sales.\n• Follow-ups and loyalty.\n• Encouraging repeat purchases.\n\nWHY IT MATTERS\nKeeping customers is cheaper and more profitable than finding new ones.\n\nSTEP BY STEP\n1. Follow up after a sale.\n2. Offer loyalty perks.\n3. Ask for feedback and act.\n4. Stay in touch.\n\nQUICK SUMMARY\nRetain customers with follow-ups, loyalty and great service.\n\nTRY THIS\nList 2 ways to encourage repeat buying.",
   },
   "customer-service": {
-    "Customer Service Basics": "📌 WHAT YOU LEARN\n• What great service looks like.\n• Being helpful and polite.\n• Setting expectations.\n\n💡 WHY IT MATTERS\nGood service builds loyalty and word-of-mouth.\n\n🪜 STEP BY STEP\n1. Greet warmly and listen.\n2. Understand the real need.\n3. Help clearly and promptly.\n4. Confirm they're satisfied.\n\n✅ QUICK SUMMARY\nListen, help promptly, and confirm satisfaction for great service.\n\n✏️ TRY THIS\nList 3 traits of excellent customer service.",
-    "Handling Complaints": "📌 WHAT YOU LEARN\n• Staying calm under criticism.\n• Apologising and solving.\n• Turning complaints into loyalty.\n\n💡 WHY IT MATTERS\nWell-handled complaints can create loyal customers.\n\n🪜 STEP BY STEP\n1. Listen fully without arguing.\n2. Acknowledge and apologise.\n3. Offer a clear solution.\n4. Follow up to confirm.\n\n✅ QUICK SUMMARY\nListen, apologise, solve and follow up to win back upset customers.\n\n✏️ TRY THIS\nDraft a calm reply to an angry customer.",
-    "Communication Skills": "📌 WHAT YOU LEARN\n• Clear, friendly communication.\n• Positive language.\n• Listening well.\n\n💡 WHY IT MATTERS\nHow you say things shapes the customer's experience.\n\n🪜 STEP BY STEP\n1. Use positive, simple words.\n2. Listen and confirm understanding.\n3. Stay patient and warm.\n4. Avoid jargon.\n\n✅ QUICK SUMMARY\nCommunicate clearly, positively and patiently with customers.\n\n✏️ TRY THIS\nRephrase 'We can't do that' more positively.",
-    "Building Loyalty": "📌 WHAT YOU LEARN\n• Exceeding expectations.\n• Personal touches.\n• Rewarding loyal customers.\n\n💡 WHY IT MATTERS\nLoyal customers buy more and refer others.\n\n🪜 STEP BY STEP\n1. Remember repeat customers.\n2. Add small personal touches.\n3. Reward loyalty.\n4. Ask for and act on feedback.\n\n✅ QUICK SUMMARY\nBuild loyalty by exceeding expectations and personalising service.\n\n✏️ TRY THIS\nList 2 small touches that delight customers.",
-    "Service via Phone/Chat": "📌 WHAT YOU LEARN\n• Phone and chat etiquette.\n• Quick, clear responses.\n• Tone without face-to-face cues.\n\n💡 WHY IT MATTERS\nMuch service now happens on phone and chat.\n\n🪜 STEP BY STEP\n1. Greet and identify yourself.\n2. Respond quickly and clearly.\n3. Keep a warm tone in text.\n4. Summarise the resolution.\n\n✅ QUICK SUMMARY\nBe prompt, clear and warm on phone and chat support.\n\n✏️ TRY THIS\nWrite a friendly chat greeting for support.",
+    "Customer Service Basics": "WHAT YOU LEARN\n• What great service looks like.\n• Being helpful and polite.\n• Setting expectations.\n\nWHY IT MATTERS\nGood service builds loyalty and word-of-mouth.\n\nSTEP BY STEP\n1. Greet warmly and listen.\n2. Understand the real need.\n3. Help clearly and promptly.\n4. Confirm they're satisfied.\n\nQUICK SUMMARY\nListen, help promptly, and confirm satisfaction for great service.\n\nTRY THIS\nList 3 traits of excellent customer service.",
+    "Handling Complaints": "WHAT YOU LEARN\n• Staying calm under criticism.\n• Apologising and solving.\n• Turning complaints into loyalty.\n\nWHY IT MATTERS\nWell-handled complaints can create loyal customers.\n\nSTEP BY STEP\n1. Listen fully without arguing.\n2. Acknowledge and apologise.\n3. Offer a clear solution.\n4. Follow up to confirm.\n\nQUICK SUMMARY\nListen, apologise, solve and follow up to win back upset customers.\n\nTRY THIS\nDraft a calm reply to an angry customer.",
+    "Communication Skills": "WHAT YOU LEARN\n• Clear, friendly communication.\n• Positive language.\n• Listening well.\n\nWHY IT MATTERS\nHow you say things shapes the customer's experience.\n\nSTEP BY STEP\n1. Use positive, simple words.\n2. Listen and confirm understanding.\n3. Stay patient and warm.\n4. Avoid jargon.\n\nQUICK SUMMARY\nCommunicate clearly, positively and patiently with customers.\n\nTRY THIS\nRephrase 'We can't do that' more positively.",
+    "Building Loyalty": "WHAT YOU LEARN\n• Exceeding expectations.\n• Personal touches.\n• Rewarding loyal customers.\n\nWHY IT MATTERS\nLoyal customers buy more and refer others.\n\nSTEP BY STEP\n1. Remember repeat customers.\n2. Add small personal touches.\n3. Reward loyalty.\n4. Ask for and act on feedback.\n\nQUICK SUMMARY\nBuild loyalty by exceeding expectations and personalising service.\n\nTRY THIS\nList 2 small touches that delight customers.",
+    "Service via Phone/Chat": "WHAT YOU LEARN\n• Phone and chat etiquette.\n• Quick, clear responses.\n• Tone without face-to-face cues.\n\nWHY IT MATTERS\nMuch service now happens on phone and chat.\n\nSTEP BY STEP\n1. Greet and identify yourself.\n2. Respond quickly and clearly.\n3. Keep a warm tone in text.\n4. Summarise the resolution.\n\nQUICK SUMMARY\nBe prompt, clear and warm on phone and chat support.\n\nTRY THIS\nWrite a friendly chat greeting for support.",
   },
   "crm-management": {
-    "What is a CRM": "📌 WHAT YOU LEARN\n• CRM = system to manage customer relationships.\n• Why businesses use one.\n• Popular CRMs.\n\n💡 WHY IT MATTERS\nA CRM keeps all customer info organised in one place.\n\n🪜 STEP BY STEP\n1. Learn a CRM stores contacts and history.\n2. See why it prevents lost leads.\n3. Explore a simple CRM.\n4. Add a few contacts.\n\n✅ QUICK SUMMARY\nA CRM organises customer data so nothing slips through.\n\n✏️ TRY THIS\nName two things a CRM helps you track.",
-    "Managing Contacts & Leads": "📌 WHAT YOU LEARN\n• Storing contact details.\n• Tracking leads.\n• Keeping data clean.\n\n💡 WHY IT MATTERS\nOrganised contacts mean faster, better follow-up.\n\n🪜 STEP BY STEP\n1. Add contacts with key details.\n2. Tag leads by status.\n3. Note interactions.\n4. Keep data updated.\n\n✅ QUICK SUMMARY\nStore and tag contacts and leads with clean, updated data.\n\n✏️ TRY THIS\nList the key fields to store for a lead.",
-    "Sales Pipeline": "📌 WHAT YOU LEARN\n• Stages of a sales pipeline.\n• Moving deals forward.\n• Spotting stuck deals.\n\n💡 WHY IT MATTERS\nA pipeline shows where every deal stands.\n\n🪜 STEP BY STEP\n1. Define stages (new, contacted, won).\n2. Place each deal in a stage.\n3. Move deals as they progress.\n4. Follow up on stuck ones.\n\n✅ QUICK SUMMARY\nTrack deals through clear pipeline stages and unblock stuck ones.\n\n✏️ TRY THIS\nList 4 stages for a simple sales pipeline.",
-    "Follow-ups & Automation": "📌 WHAT YOU LEARN\n• Scheduling follow-ups.\n• Automating reminders/emails.\n• Never missing a lead.\n\n💡 WHY IT MATTERS\nConsistent follow-up wins more sales.\n\n🪜 STEP BY STEP\n1. Set follow-up reminders.\n2. Use templates for common messages.\n3. Automate simple sequences.\n4. Track responses.\n\n✅ QUICK SUMMARY\nUse reminders and automation so no follow-up is missed.\n\n✏️ TRY THIS\nPlan a 3-step follow-up sequence.",
-    "Reports & Insights": "📌 WHAT YOU LEARN\n• Reading CRM reports.\n• Tracking sales and activity.\n• Improving from data.\n\n💡 WHY IT MATTERS\nInsights show what's working in sales.\n\n🪜 STEP BY STEP\n1. Open your CRM dashboard.\n2. Check deals won and lost.\n3. Spot patterns.\n4. Adjust your approach.\n\n✅ QUICK SUMMARY\nUse CRM reports to track sales and refine your approach.\n\n✏️ TRY THIS\nList two CRM metrics worth tracking.",
+    "What is a CRM": "WHAT YOU LEARN\n• CRM = system to manage customer relationships.\n• Why businesses use one.\n• Popular CRMs.\n\nWHY IT MATTERS\nA CRM keeps all customer info organised in one place.\n\nSTEP BY STEP\n1. Learn a CRM stores contacts and history.\n2. See why it prevents lost leads.\n3. Explore a simple CRM.\n4. Add a few contacts.\n\nQUICK SUMMARY\nA CRM organises customer data so nothing slips through.\n\nTRY THIS\nName two things a CRM helps you track.",
+    "Managing Contacts & Leads": "WHAT YOU LEARN\n• Storing contact details.\n• Tracking leads.\n• Keeping data clean.\n\nWHY IT MATTERS\nOrganised contacts mean faster, better follow-up.\n\nSTEP BY STEP\n1. Add contacts with key details.\n2. Tag leads by status.\n3. Note interactions.\n4. Keep data updated.\n\nQUICK SUMMARY\nStore and tag contacts and leads with clean, updated data.\n\nTRY THIS\nList the key fields to store for a lead.",
+    "Sales Pipeline": "WHAT YOU LEARN\n• Stages of a sales pipeline.\n• Moving deals forward.\n• Spotting stuck deals.\n\nWHY IT MATTERS\nA pipeline shows where every deal stands.\n\nSTEP BY STEP\n1. Define stages (new, contacted, won).\n2. Place each deal in a stage.\n3. Move deals as they progress.\n4. Follow up on stuck ones.\n\nQUICK SUMMARY\nTrack deals through clear pipeline stages and unblock stuck ones.\n\nTRY THIS\nList 4 stages for a simple sales pipeline.",
+    "Follow-ups & Automation": "WHAT YOU LEARN\n• Scheduling follow-ups.\n• Automating reminders/emails.\n• Never missing a lead.\n\nWHY IT MATTERS\nConsistent follow-up wins more sales.\n\nSTEP BY STEP\n1. Set follow-up reminders.\n2. Use templates for common messages.\n3. Automate simple sequences.\n4. Track responses.\n\nQUICK SUMMARY\nUse reminders and automation so no follow-up is missed.\n\nTRY THIS\nPlan a 3-step follow-up sequence.",
+    "Reports & Insights": "WHAT YOU LEARN\n• Reading CRM reports.\n• Tracking sales and activity.\n• Improving from data.\n\nWHY IT MATTERS\nInsights show what's working in sales.\n\nSTEP BY STEP\n1. Open your CRM dashboard.\n2. Check deals won and lost.\n3. Spot patterns.\n4. Adjust your approach.\n\nQUICK SUMMARY\nUse CRM reports to track sales and refine your approach.\n\nTRY THIS\nList two CRM metrics worth tracking.",
   },
   "website-design": {
-    "Design Principles": "📌 WHAT YOU LEARN\n• Core principles: balance, contrast, alignment, hierarchy.\n• Keeping designs clean and purposeful.\n• Guiding the user's eye.\n\n💡 WHY IT MATTERS\nGood principles make any website look professional and easy to use.\n\n🪜 STEP BY STEP\n1. Give each page one clear goal.\n2. Use contrast to highlight key items.\n3. Align elements neatly to a grid.\n4. Create hierarchy with size and spacing.\n\n✅ QUICK SUMMARY\nApply balance, contrast, alignment and hierarchy for clean, usable design.\n\n✏️ TRY THIS\nCritique any website for these four principles.",
-    "Layout & Spacing": "📌 WHAT YOU LEARN\n• Using grids and sections.\n• White space to avoid clutter.\n• Consistent margins and padding.\n\n💡 WHY IT MATTERS\nSpacing and layout decide whether a page feels calm or messy.\n\n🪜 STEP BY STEP\n1. Divide the page into clear sections.\n2. Add generous white space.\n3. Keep consistent spacing between items.\n4. Align to a simple grid.\n\n✅ QUICK SUMMARY\nUse grids and white space with consistent spacing for a clean layout.\n\n✏️ TRY THIS\nSketch a homepage layout with header, hero and three sections.",
-    "Colors & Typography": "📌 WHAT YOU LEARN\n• Choosing a small colour palette.\n• Pairing readable fonts.\n• Contrast for readability.\n\n💡 WHY IT MATTERS\nColours and fonts set the mood and make content easy to read.\n\n🪜 STEP BY STEP\n1. Pick 2–3 main colours.\n2. Choose one heading and one body font.\n3. Ensure text contrasts with the background.\n4. Stay consistent across pages.\n\n✅ QUICK SUMMARY\nUse a tight palette and readable font pairing with strong contrast.\n\n✏️ TRY THIS\nPick a 3-colour palette and a font pair for a brand idea.",
-    "Responsive Design": "📌 WHAT YOU LEARN\n• Designing for mobile, tablet and desktop.\n• Flexible layouts that adapt.\n• Testing on different screens.\n\n💡 WHY IT MATTERS\nMost visitors use phones; sites must look great on every screen.\n\n🪜 STEP BY STEP\n1. Design mobile-first.\n2. Use flexible widths, not fixed pixels.\n3. Stack sections on small screens.\n4. Test on a phone and a laptop.\n\n✅ QUICK SUMMARY\nBuild mobile-first, flexible layouts and test across screen sizes.\n\n✏️ TRY THIS\nDescribe how a 3-column section should look on mobile.",
-    "Design Tools (Figma)": "📌 WHAT YOU LEARN\n• What Figma is and why designers use it.\n• Frames, shapes and text.\n• Sharing designs.\n\n💡 WHY IT MATTERS\nFigma is the industry-standard, free tool to design and prototype.\n\n🪜 STEP BY STEP\n1. Create a free Figma account.\n2. Make a frame for a webpage.\n3. Add shapes, text and images.\n4. Share a view link.\n\n✅ QUICK SUMMARY\nUse Figma to design pages with frames, then share with a link.\n\n✏️ TRY THIS\nCreate a simple landing-page frame in Figma.",
+    "Design Principles": "WHAT YOU LEARN\n• Core principles: balance, contrast, alignment, hierarchy.\n• Keeping designs clean and purposeful.\n• Guiding the user's eye.\n\nWHY IT MATTERS\nGood principles make any website look professional and easy to use.\n\nSTEP BY STEP\n1. Give each page one clear goal.\n2. Use contrast to highlight key items.\n3. Align elements neatly to a grid.\n4. Create hierarchy with size and spacing.\n\nQUICK SUMMARY\nApply balance, contrast, alignment and hierarchy for clean, usable design.\n\nTRY THIS\nCritique any website for these four principles.",
+    "Layout & Spacing": "WHAT YOU LEARN\n• Using grids and sections.\n• White space to avoid clutter.\n• Consistent margins and padding.\n\nWHY IT MATTERS\nSpacing and layout decide whether a page feels calm or messy.\n\nSTEP BY STEP\n1. Divide the page into clear sections.\n2. Add generous white space.\n3. Keep consistent spacing between items.\n4. Align to a simple grid.\n\nQUICK SUMMARY\nUse grids and white space with consistent spacing for a clean layout.\n\nTRY THIS\nSketch a homepage layout with header, hero and three sections.",
+    "Colors & Typography": "WHAT YOU LEARN\n• Choosing a small colour palette.\n• Pairing readable fonts.\n• Contrast for readability.\n\nWHY IT MATTERS\nColours and fonts set the mood and make content easy to read.\n\nSTEP BY STEP\n1. Pick 2–3 main colours.\n2. Choose one heading and one body font.\n3. Ensure text contrasts with the background.\n4. Stay consistent across pages.\n\nQUICK SUMMARY\nUse a tight palette and readable font pairing with strong contrast.\n\nTRY THIS\nPick a 3-colour palette and a font pair for a brand idea.",
+    "Responsive Design": "WHAT YOU LEARN\n• Designing for mobile, tablet and desktop.\n• Flexible layouts that adapt.\n• Testing on different screens.\n\nWHY IT MATTERS\nMost visitors use phones; sites must look great on every screen.\n\nSTEP BY STEP\n1. Design mobile-first.\n2. Use flexible widths, not fixed pixels.\n3. Stack sections on small screens.\n4. Test on a phone and a laptop.\n\nQUICK SUMMARY\nBuild mobile-first, flexible layouts and test across screen sizes.\n\nTRY THIS\nDescribe how a 3-column section should look on mobile.",
+    "Design Tools (Figma)": "WHAT YOU LEARN\n• What Figma is and why designers use it.\n• Frames, shapes and text.\n• Sharing designs.\n\nWHY IT MATTERS\nFigma is the industry-standard, free tool to design and prototype.\n\nSTEP BY STEP\n1. Create a free Figma account.\n2. Make a frame for a webpage.\n3. Add shapes, text and images.\n4. Share a view link.\n\nQUICK SUMMARY\nUse Figma to design pages with frames, then share with a link.\n\nTRY THIS\nCreate a simple landing-page frame in Figma.",
   },
   "wordpress-development": {
-    "WordPress Setup": "📌 WHAT YOU LEARN\n• What WordPress is.\n• Hosting, domain and installation.\n• The WordPress dashboard.\n\n💡 WHY IT MATTERS\nWordPress powers a huge share of websites with no heavy coding.\n\n🪜 STEP BY STEP\n1. Get hosting and a domain.\n2. Install WordPress (often one-click).\n3. Log in to the dashboard.\n4. Explore Posts, Pages and Appearance.\n\n✅ QUICK SUMMARY\nSet up hosting, install WordPress, and learn the dashboard.\n\n✏️ TRY THIS\nList the steps to install WordPress on hosting.",
-    "Themes & Customizing": "📌 WHAT YOU LEARN\n• Choosing and installing a theme.\n• Customising colours, logo and menus.\n• Using the Customizer/editor.\n\n💡 WHY IT MATTERS\nThemes give your site its look without coding.\n\n🪜 STEP BY STEP\n1. Install a clean theme.\n2. Open the Customizer.\n3. Set your logo and colours.\n4. Preview and publish.\n\n✅ QUICK SUMMARY\nPick a theme and customise branding via the Customizer.\n\n✏️ TRY THIS\nChoose a theme and plan its colours and logo.",
-    "Pages, Posts & Menus": "📌 WHAT YOU LEARN\n• Difference between pages and posts.\n• Creating content with the block editor.\n• Building navigation menus.\n\n💡 WHY IT MATTERS\nPages, posts and menus form the structure visitors navigate.\n\n🪜 STEP BY STEP\n1. Create Home and About pages.\n2. Write a blog post.\n3. Build a menu with your pages.\n4. Set the homepage.\n\n✅ QUICK SUMMARY\nUse pages for fixed content, posts for blogs, and menus to navigate.\n\n✏️ TRY THIS\nPlan 4 pages and a top menu for a small business.",
-    "Plugins You Need": "📌 WHAT YOU LEARN\n• What plugins do.\n• Essential ones: SEO, security, contact form.\n• Installing safely.\n\n💡 WHY IT MATTERS\nPlugins add features fast without coding.\n\n🪜 STEP BY STEP\n1. Install an SEO plugin.\n2. Add a contact form plugin.\n3. Add security and caching.\n4. Keep plugins updated.\n\n✅ QUICK SUMMARY\nAdd a few essential plugins (SEO, form, security) and keep them updated.\n\n✏️ TRY THIS\nList four must-have plugins for a business site.",
-    "Going Live": "📌 WHAT YOU LEARN\n• Pre-launch checks.\n• Connecting your domain.\n• Basic SEO and speed checks.\n\n💡 WHY IT MATTERS\nA smooth launch makes a strong first impression.\n\n🪜 STEP BY STEP\n1. Proofread all pages and links.\n2. Connect the custom domain.\n3. Check mobile view and speed.\n4. Submit the site to Google.\n\n✅ QUICK SUMMARY\nCheck content, connect the domain, verify mobile/speed, then launch.\n\n✏️ TRY THIS\nWrite a 5-point pre-launch checklist.",
+    "WordPress Setup": "WHAT YOU LEARN\n• What WordPress is.\n• Hosting, domain and installation.\n• The WordPress dashboard.\n\nWHY IT MATTERS\nWordPress powers a huge share of websites with no heavy coding.\n\nSTEP BY STEP\n1. Get hosting and a domain.\n2. Install WordPress (often one-click).\n3. Log in to the dashboard.\n4. Explore Posts, Pages and Appearance.\n\nQUICK SUMMARY\nSet up hosting, install WordPress, and learn the dashboard.\n\nTRY THIS\nList the steps to install WordPress on hosting.",
+    "Themes & Customizing": "WHAT YOU LEARN\n• Choosing and installing a theme.\n• Customising colours, logo and menus.\n• Using the Customizer/editor.\n\nWHY IT MATTERS\nThemes give your site its look without coding.\n\nSTEP BY STEP\n1. Install a clean theme.\n2. Open the Customizer.\n3. Set your logo and colours.\n4. Preview and publish.\n\nQUICK SUMMARY\nPick a theme and customise branding via the Customizer.\n\nTRY THIS\nChoose a theme and plan its colours and logo.",
+    "Pages, Posts & Menus": "WHAT YOU LEARN\n• Difference between pages and posts.\n• Creating content with the block editor.\n• Building navigation menus.\n\nWHY IT MATTERS\nPages, posts and menus form the structure visitors navigate.\n\nSTEP BY STEP\n1. Create Home and About pages.\n2. Write a blog post.\n3. Build a menu with your pages.\n4. Set the homepage.\n\nQUICK SUMMARY\nUse pages for fixed content, posts for blogs, and menus to navigate.\n\nTRY THIS\nPlan 4 pages and a top menu for a small business.",
+    "Plugins You Need": "WHAT YOU LEARN\n• What plugins do.\n• Essential ones: SEO, security, contact form.\n• Installing safely.\n\nWHY IT MATTERS\nPlugins add features fast without coding.\n\nSTEP BY STEP\n1. Install an SEO plugin.\n2. Add a contact form plugin.\n3. Add security and caching.\n4. Keep plugins updated.\n\nQUICK SUMMARY\nAdd a few essential plugins (SEO, form, security) and keep them updated.\n\nTRY THIS\nList four must-have plugins for a business site.",
+    "Going Live": "WHAT YOU LEARN\n• Pre-launch checks.\n• Connecting your domain.\n• Basic SEO and speed checks.\n\nWHY IT MATTERS\nA smooth launch makes a strong first impression.\n\nSTEP BY STEP\n1. Proofread all pages and links.\n2. Connect the custom domain.\n3. Check mobile view and speed.\n4. Submit the site to Google.\n\nQUICK SUMMARY\nCheck content, connect the domain, verify mobile/speed, then launch.\n\nTRY THIS\nWrite a 5-point pre-launch checklist.",
   },
   "e-commerce-website": {
-    "Plan Your Online Store": "📌 WHAT YOU LEARN\n• Choosing products and a platform (Shopify/WooCommerce).\n• Defining your audience.\n• Store goals and budget.\n\n💡 WHY IT MATTERS\nA clear plan prevents costly mistakes when selling online.\n\n🪜 STEP BY STEP\n1. Decide what to sell and to whom.\n2. Pick a platform.\n3. Plan pages and policies.\n4. Set a starting budget.\n\n✅ QUICK SUMMARY\nPlan products, audience and platform before building your store.\n\n✏️ TRY THIS\nOutline a store plan for one product line.",
-    "Products & Categories": "📌 WHAT YOU LEARN\n• Adding products with photos and prices.\n• Writing product descriptions.\n• Organising into categories.\n\n💡 WHY IT MATTERS\nClear products and categories help shoppers find and buy quickly.\n\n🪜 STEP BY STEP\n1. Add a product with images.\n2. Write a benefit-focused description.\n3. Set price and stock.\n4. Group products into categories.\n\n✅ QUICK SUMMARY\nList products with good photos, descriptions and categories.\n\n✏️ TRY THIS\nWrite a product description for one item.",
-    "Cart & Checkout": "📌 WHAT YOU LEARN\n• How cart and checkout work.\n• Reducing checkout friction.\n• Collecting shipping info.\n\n💡 WHY IT MATTERS\nA smooth checkout means fewer abandoned carts and more sales.\n\n🪜 STEP BY STEP\n1. Enable add-to-cart on products.\n2. Keep checkout short.\n3. Show shipping and total clearly.\n4. Allow guest checkout.\n\n✅ QUICK SUMMARY\nMake cart and checkout simple and transparent to boost sales.\n\n✏️ TRY THIS\nList 3 ways to reduce checkout drop-offs.",
-    "Payment Gateways": "📌 WHAT YOU LEARN\n• What a payment gateway is.\n• Popular options (Razorpay, Stripe, UPI).\n• Setting up secure payments.\n\n💡 WHY IT MATTERS\nYou must accept payments safely to run a real store.\n\n🪜 STEP BY STEP\n1. Choose a gateway available in India.\n2. Connect it to your store.\n3. Enable cards/UPI/wallets.\n4. Test a sample payment.\n\n✅ QUICK SUMMARY\nConnect a trusted gateway and enable common payment methods securely.\n\n✏️ TRY THIS\nName two payment gateways and the methods they support.",
-    "Launch & Promote": "📌 WHAT YOU LEARN\n• Launching your store.\n• Promoting via social and ads.\n• Getting first sales and reviews.\n\n💡 WHY IT MATTERS\nA store needs traffic and trust to start selling.\n\n🪜 STEP BY STEP\n1. Announce on social media.\n2. Run a small launch offer.\n3. Use ads to reach buyers.\n4. Ask happy customers for reviews.\n\n✅ QUICK SUMMARY\nLaunch with an offer, promote on social/ads, and collect early reviews.\n\n✏️ TRY THIS\nDraft a launch-week promotion plan.",
+    "Plan Your Online Store": "WHAT YOU LEARN\n• Choosing products and a platform (Shopify/WooCommerce).\n• Defining your audience.\n• Store goals and budget.\n\nWHY IT MATTERS\nA clear plan prevents costly mistakes when selling online.\n\nSTEP BY STEP\n1. Decide what to sell and to whom.\n2. Pick a platform.\n3. Plan pages and policies.\n4. Set a starting budget.\n\nQUICK SUMMARY\nPlan products, audience and platform before building your store.\n\nTRY THIS\nOutline a store plan for one product line.",
+    "Products & Categories": "WHAT YOU LEARN\n• Adding products with photos and prices.\n• Writing product descriptions.\n• Organising into categories.\n\nWHY IT MATTERS\nClear products and categories help shoppers find and buy quickly.\n\nSTEP BY STEP\n1. Add a product with images.\n2. Write a benefit-focused description.\n3. Set price and stock.\n4. Group products into categories.\n\nQUICK SUMMARY\nList products with good photos, descriptions and categories.\n\nTRY THIS\nWrite a product description for one item.",
+    "Cart & Checkout": "WHAT YOU LEARN\n• How cart and checkout work.\n• Reducing checkout friction.\n• Collecting shipping info.\n\nWHY IT MATTERS\nA smooth checkout means fewer abandoned carts and more sales.\n\nSTEP BY STEP\n1. Enable add-to-cart on products.\n2. Keep checkout short.\n3. Show shipping and total clearly.\n4. Allow guest checkout.\n\nQUICK SUMMARY\nMake cart and checkout simple and transparent to boost sales.\n\nTRY THIS\nList 3 ways to reduce checkout drop-offs.",
+    "Payment Gateways": "WHAT YOU LEARN\n• What a payment gateway is.\n• Popular options (Razorpay, Stripe, UPI).\n• Setting up secure payments.\n\nWHY IT MATTERS\nYou must accept payments safely to run a real store.\n\nSTEP BY STEP\n1. Choose a gateway available in India.\n2. Connect it to your store.\n3. Enable cards/UPI/wallets.\n4. Test a sample payment.\n\nQUICK SUMMARY\nConnect a trusted gateway and enable common payment methods securely.\n\nTRY THIS\nName two payment gateways and the methods they support.",
+    "Launch & Promote": "WHAT YOU LEARN\n• Launching your store.\n• Promoting via social and ads.\n• Getting first sales and reviews.\n\nWHY IT MATTERS\nA store needs traffic and trust to start selling.\n\nSTEP BY STEP\n1. Announce on social media.\n2. Run a small launch offer.\n3. Use ads to reach buyers.\n4. Ask happy customers for reviews.\n\nQUICK SUMMARY\nLaunch with an offer, promote on social/ads, and collect early reviews.\n\nTRY THIS\nDraft a launch-week promotion plan.",
   },
   "progressive-web-apps": {
-    "What is a PWA": "📌 WHAT YOU LEARN\n• PWA = website that behaves like an app.\n• Benefits: installable, offline, fast.\n• Examples of PWAs.\n\n💡 WHY IT MATTERS\nPWAs give app-like experiences without app stores.\n\n🪜 STEP BY STEP\n1. Understand a PWA is a special website.\n2. Note key features (install, offline).\n3. See real PWA examples.\n4. Decide when a PWA fits.\n\n✅ QUICK SUMMARY\nA PWA is a website with app-like powers: installable, offline and fast.\n\n✏️ TRY THIS\nList three benefits of a PWA over a normal site.",
-    "Manifest & Icons": "📌 WHAT YOU LEARN\n• What the web app manifest is.\n• Adding name, icons and theme colour.\n• Why it enables install.\n\n💡 WHY IT MATTERS\nThe manifest lets users add your app to their home screen.\n\n🪜 STEP BY STEP\n1. Create a manifest.json file.\n2. Add app name and start URL.\n3. Add icon sizes.\n4. Link it in your HTML.\n\n✅ QUICK SUMMARY\nThe manifest defines your app's name and icons for installation.\n\n✏️ TRY THIS\nList the key fields a manifest should include.",
-    "Service Workers": "📌 WHAT YOU LEARN\n• What a service worker does.\n• Caching files for speed/offline.\n• Registering it.\n\n💡 WHY IT MATTERS\nService workers power offline use and faster loading.\n\n🪜 STEP BY STEP\n1. Create a service worker file.\n2. Register it in your app.\n3. Cache key files on install.\n4. Serve cached files when offline.\n\n✅ QUICK SUMMARY\nA service worker caches files to enable offline use and speed.\n\n✏️ TRY THIS\nExplain in one line what a service worker caches.",
-    "Offline Support": "📌 WHAT YOU LEARN\n• Making your app work without internet.\n• Cache strategies.\n• Showing an offline page.\n\n💡 WHY IT MATTERS\nOffline support keeps your app usable on poor connections.\n\n🪜 STEP BY STEP\n1. Cache the core pages and assets.\n2. Decide what to serve when offline.\n3. Add a friendly offline message.\n4. Test with the network off.\n\n✅ QUICK SUMMARY\nCache essentials and handle no-network gracefully for offline use.\n\n✏️ TRY THIS\nDescribe what your app should show with no internet.",
-    "Installable Apps": "📌 WHAT YOU LEARN\n• How users install a PWA.\n• The install prompt.\n• Testing installability.\n\n💡 WHY IT MATTERS\nInstallable apps sit on the home screen and feel native.\n\n🪜 STEP BY STEP\n1. Ensure manifest + service worker exist.\n2. Serve over HTTPS.\n3. Trigger or wait for the install prompt.\n4. Test 'Add to Home Screen'.\n\n✅ QUICK SUMMARY\nWith a manifest, service worker and HTTPS, your PWA becomes installable.\n\n✏️ TRY THIS\nList the requirements for a PWA to be installable.",
+    "What is a PWA": "WHAT YOU LEARN\n• PWA = website that behaves like an app.\n• Benefits: installable, offline, fast.\n• Examples of PWAs.\n\nWHY IT MATTERS\nPWAs give app-like experiences without app stores.\n\nSTEP BY STEP\n1. Understand a PWA is a special website.\n2. Note key features (install, offline).\n3. See real PWA examples.\n4. Decide when a PWA fits.\n\nQUICK SUMMARY\nA PWA is a website with app-like powers: installable, offline and fast.\n\nTRY THIS\nList three benefits of a PWA over a normal site.",
+    "Manifest & Icons": "WHAT YOU LEARN\n• What the web app manifest is.\n• Adding name, icons and theme colour.\n• Why it enables install.\n\nWHY IT MATTERS\nThe manifest lets users add your app to their home screen.\n\nSTEP BY STEP\n1. Create a manifest.json file.\n2. Add app name and start URL.\n3. Add icon sizes.\n4. Link it in your HTML.\n\nQUICK SUMMARY\nThe manifest defines your app's name and icons for installation.\n\nTRY THIS\nList the key fields a manifest should include.",
+    "Service Workers": "WHAT YOU LEARN\n• What a service worker does.\n• Caching files for speed/offline.\n• Registering it.\n\nWHY IT MATTERS\nService workers power offline use and faster loading.\n\nSTEP BY STEP\n1. Create a service worker file.\n2. Register it in your app.\n3. Cache key files on install.\n4. Serve cached files when offline.\n\nQUICK SUMMARY\nA service worker caches files to enable offline use and speed.\n\nTRY THIS\nExplain in one line what a service worker caches.",
+    "Offline Support": "WHAT YOU LEARN\n• Making your app work without internet.\n• Cache strategies.\n• Showing an offline page.\n\nWHY IT MATTERS\nOffline support keeps your app usable on poor connections.\n\nSTEP BY STEP\n1. Cache the core pages and assets.\n2. Decide what to serve when offline.\n3. Add a friendly offline message.\n4. Test with the network off.\n\nQUICK SUMMARY\nCache essentials and handle no-network gracefully for offline use.\n\nTRY THIS\nDescribe what your app should show with no internet.",
+    "Installable Apps": "WHAT YOU LEARN\n• How users install a PWA.\n• The install prompt.\n• Testing installability.\n\nWHY IT MATTERS\nInstallable apps sit on the home screen and feel native.\n\nSTEP BY STEP\n1. Ensure manifest + service worker exist.\n2. Serve over HTTPS.\n3. Trigger or wait for the install prompt.\n4. Test 'Add to Home Screen'.\n\nQUICK SUMMARY\nWith a manifest, service worker and HTTPS, your PWA becomes installable.\n\nTRY THIS\nList the requirements for a PWA to be installable.",
   },
   "mobile-app-development": {
-    "App Basics & Tools": "📌 WHAT YOU LEARN\n• Native vs cross-platform apps.\n• Tools like Flutter and React Native.\n• What you need to start.\n\n💡 WHY IT MATTERS\nChoosing the right approach saves time when building apps.\n\n🪜 STEP BY STEP\n1. Learn native vs cross-platform.\n2. Pick a beginner-friendly tool.\n3. Set up the development environment.\n4. Run a starter app.\n\n✅ QUICK SUMMARY\nUnderstand app types and pick a tool, then run a starter project.\n\n✏️ TRY THIS\nList one pro and con of cross-platform apps.",
-    "UI Screens & Navigation": "📌 WHAT YOU LEARN\n• Designing app screens.\n• Moving between screens.\n• Common navigation patterns.\n\n💡 WHY IT MATTERS\nClear screens and navigation make apps easy to use.\n\n🪜 STEP BY STEP\n1. Sketch the main screens.\n2. Decide the flow between them.\n3. Add a bottom tab or stack navigation.\n4. Test moving around.\n\n✅ QUICK SUMMARY\nPlan screens and add navigation so users move smoothly.\n\n✏️ TRY THIS\nSketch 3 screens and how a user moves between them.",
-    "Buttons, Inputs & Lists": "📌 WHAT YOU LEARN\n• Adding buttons and text inputs.\n• Showing lists of data.\n• Handling user taps.\n\n💡 WHY IT MATTERS\nThese are the building blocks of almost every app screen.\n\n🪜 STEP BY STEP\n1. Add a button with a tap action.\n2. Add a text input and read it.\n3. Display a scrollable list.\n4. Respond to taps on list items.\n\n✅ QUICK SUMMARY\nUse buttons, inputs and lists to build interactive screens.\n\n✏️ TRY THIS\nDescribe a screen with an input and a list of added items.",
-    "Storing Data": "📌 WHAT YOU LEARN\n• Saving data on the device.\n• Local storage options.\n• Using a cloud database.\n\n💡 WHY IT MATTERS\nApps must remember user data between sessions.\n\n🪜 STEP BY STEP\n1. Use local storage for simple data.\n2. Save and load a value.\n3. Connect a cloud DB for bigger data.\n4. Sync when online.\n\n✅ QUICK SUMMARY\nStore small data locally and larger data in the cloud.\n\n✏️ TRY THIS\nDecide what data your app should save locally vs cloud.",
-    "Publishing Your App": "📌 WHAT YOU LEARN\n• Preparing an app for release.\n• Play Store basics.\n• App icon, name and screenshots.\n\n💡 WHY IT MATTERS\nPublishing puts your app in users' hands.\n\n🪜 STEP BY STEP\n1. Test thoroughly on real devices.\n2. Create an icon and screenshots.\n3. Build a release version.\n4. Submit to the Play Store.\n\n✅ QUICK SUMMARY\nTest, prepare store assets, build a release, and submit.\n\n✏️ TRY THIS\nList what you need to submit an app to the Play Store.",
+    "App Basics & Tools": "WHAT YOU LEARN\n• Native vs cross-platform apps.\n• Tools like Flutter and React Native.\n• What you need to start.\n\nWHY IT MATTERS\nChoosing the right approach saves time when building apps.\n\nSTEP BY STEP\n1. Learn native vs cross-platform.\n2. Pick a beginner-friendly tool.\n3. Set up the development environment.\n4. Run a starter app.\n\nQUICK SUMMARY\nUnderstand app types and pick a tool, then run a starter project.\n\nTRY THIS\nList one pro and con of cross-platform apps.",
+    "UI Screens & Navigation": "WHAT YOU LEARN\n• Designing app screens.\n• Moving between screens.\n• Common navigation patterns.\n\nWHY IT MATTERS\nClear screens and navigation make apps easy to use.\n\nSTEP BY STEP\n1. Sketch the main screens.\n2. Decide the flow between them.\n3. Add a bottom tab or stack navigation.\n4. Test moving around.\n\nQUICK SUMMARY\nPlan screens and add navigation so users move smoothly.\n\nTRY THIS\nSketch 3 screens and how a user moves between them.",
+    "Buttons, Inputs & Lists": "WHAT YOU LEARN\n• Adding buttons and text inputs.\n• Showing lists of data.\n• Handling user taps.\n\nWHY IT MATTERS\nThese are the building blocks of almost every app screen.\n\nSTEP BY STEP\n1. Add a button with a tap action.\n2. Add a text input and read it.\n3. Display a scrollable list.\n4. Respond to taps on list items.\n\nQUICK SUMMARY\nUse buttons, inputs and lists to build interactive screens.\n\nTRY THIS\nDescribe a screen with an input and a list of added items.",
+    "Storing Data": "WHAT YOU LEARN\n• Saving data on the device.\n• Local storage options.\n• Using a cloud database.\n\nWHY IT MATTERS\nApps must remember user data between sessions.\n\nSTEP BY STEP\n1. Use local storage for simple data.\n2. Save and load a value.\n3. Connect a cloud DB for bigger data.\n4. Sync when online.\n\nQUICK SUMMARY\nStore small data locally and larger data in the cloud.\n\nTRY THIS\nDecide what data your app should save locally vs cloud.",
+    "Publishing Your App": "WHAT YOU LEARN\n• Preparing an app for release.\n• Play Store basics.\n• App icon, name and screenshots.\n\nWHY IT MATTERS\nPublishing puts your app in users' hands.\n\nSTEP BY STEP\n1. Test thoroughly on real devices.\n2. Create an icon and screenshots.\n3. Build a release version.\n4. Submit to the Play Store.\n\nQUICK SUMMARY\nTest, prepare store assets, build a release, and submit.\n\nTRY THIS\nList what you need to submit an app to the Play Store.",
   },
   "saas-development": {
-    "What is SaaS": "📌 WHAT YOU LEARN\n• SaaS = software people use online by subscription.\n• Examples (Canva, Zoho).\n• Why SaaS is popular.\n\n💡 WHY IT MATTERS\nSaaS is a strong, recurring-income business model.\n\n🪜 STEP BY STEP\n1. Learn SaaS is cloud software you rent.\n2. See common examples.\n3. Note the subscription model.\n4. Think of a simple SaaS idea.\n\n✅ QUICK SUMMARY\nSaaS is subscription cloud software — scalable and recurring.\n\n✏️ TRY THIS\nName three SaaS products you use or know.",
-    "Planning Your SaaS": "📌 WHAT YOU LEARN\n• Picking a problem to solve.\n• Defining core features (MVP).\n• Knowing your users.\n\n💡 WHY IT MATTERS\nA focused plan keeps a SaaS small enough to actually launch.\n\n🪜 STEP BY STEP\n1. Pick one painful problem.\n2. List the minimum features to solve it.\n3. Describe your ideal user.\n4. Sketch the main screens.\n\n✅ QUICK SUMMARY\nSolve one clear problem with a minimal feature set for real users.\n\n✏️ TRY THIS\nWrite a one-line problem your SaaS would solve.",
-    "User Accounts & Plans": "📌 WHAT YOU LEARN\n• Adding sign-up and login.\n• Free vs paid plans.\n• Restricting features by plan.\n\n💡 WHY IT MATTERS\nAccounts and plans are the backbone of a SaaS.\n\n🪜 STEP BY STEP\n1. Add secure user accounts.\n2. Define free and paid tiers.\n3. Lock premium features for paid users.\n4. Show plan options clearly.\n\n✅ QUICK SUMMARY\nOffer accounts with free/paid plans and gate premium features.\n\n✏️ TRY THIS\nOutline a free and a paid plan for a SaaS idea.",
-    "Subscriptions & Payments": "📌 WHAT YOU LEARN\n• Recurring billing basics.\n• Using Stripe/Razorpay for subscriptions.\n• Handling upgrades and cancellations.\n\n💡 WHY IT MATTERS\nReliable subscription billing is how a SaaS earns.\n\n🪜 STEP BY STEP\n1. Choose a billing provider.\n2. Set up monthly/yearly plans.\n3. Connect checkout.\n4. Handle cancel and renew.\n\n✅ QUICK SUMMARY\nUse a billing provider for recurring plans, upgrades and cancellations.\n\n✏️ TRY THIS\nList the steps a user takes to subscribe and pay.",
-    "Launching to Users": "📌 WHAT YOU LEARN\n• Beta testing with early users.\n• Collecting feedback.\n• Growing the user base.\n\n💡 WHY IT MATTERS\nEarly feedback shapes a SaaS people actually pay for.\n\n🪜 STEP BY STEP\n1. Invite a small beta group.\n2. Watch how they use it.\n3. Fix top issues quickly.\n4. Open up and promote.\n\n✅ QUICK SUMMARY\nLaunch a beta, learn from users, improve, then grow.\n\n✏️ TRY THIS\nPlan how you'd find 10 beta users.",
+    "What is SaaS": "WHAT YOU LEARN\n• SaaS = software people use online by subscription.\n• Examples (Canva, Zoho).\n• Why SaaS is popular.\n\nWHY IT MATTERS\nSaaS is a strong, recurring-income business model.\n\nSTEP BY STEP\n1. Learn SaaS is cloud software you rent.\n2. See common examples.\n3. Note the subscription model.\n4. Think of a simple SaaS idea.\n\nQUICK SUMMARY\nSaaS is subscription cloud software — scalable and recurring.\n\nTRY THIS\nName three SaaS products you use or know.",
+    "Planning Your SaaS": "WHAT YOU LEARN\n• Picking a problem to solve.\n• Defining core features (MVP).\n• Knowing your users.\n\nWHY IT MATTERS\nA focused plan keeps a SaaS small enough to actually launch.\n\nSTEP BY STEP\n1. Pick one painful problem.\n2. List the minimum features to solve it.\n3. Describe your ideal user.\n4. Sketch the main screens.\n\nQUICK SUMMARY\nSolve one clear problem with a minimal feature set for real users.\n\nTRY THIS\nWrite a one-line problem your SaaS would solve.",
+    "User Accounts & Plans": "WHAT YOU LEARN\n• Adding sign-up and login.\n• Free vs paid plans.\n• Restricting features by plan.\n\nWHY IT MATTERS\nAccounts and plans are the backbone of a SaaS.\n\nSTEP BY STEP\n1. Add secure user accounts.\n2. Define free and paid tiers.\n3. Lock premium features for paid users.\n4. Show plan options clearly.\n\nQUICK SUMMARY\nOffer accounts with free/paid plans and gate premium features.\n\nTRY THIS\nOutline a free and a paid plan for a SaaS idea.",
+    "Subscriptions & Payments": "WHAT YOU LEARN\n• Recurring billing basics.\n• Using Stripe/Razorpay for subscriptions.\n• Handling upgrades and cancellations.\n\nWHY IT MATTERS\nReliable subscription billing is how a SaaS earns.\n\nSTEP BY STEP\n1. Choose a billing provider.\n2. Set up monthly/yearly plans.\n3. Connect checkout.\n4. Handle cancel and renew.\n\nQUICK SUMMARY\nUse a billing provider for recurring plans, upgrades and cancellations.\n\nTRY THIS\nList the steps a user takes to subscribe and pay.",
+    "Launching to Users": "WHAT YOU LEARN\n• Beta testing with early users.\n• Collecting feedback.\n• Growing the user base.\n\nWHY IT MATTERS\nEarly feedback shapes a SaaS people actually pay for.\n\nSTEP BY STEP\n1. Invite a small beta group.\n2. Watch how they use it.\n3. Fix top issues quickly.\n4. Open up and promote.\n\nQUICK SUMMARY\nLaunch a beta, learn from users, improve, then grow.\n\nTRY THIS\nPlan how you'd find 10 beta users.",
   },
   "canva-design-mastery": {
-    "Canva Basics": "📌 WHAT YOU LEARN\n• Canva's interface and templates.\n• Adding text, images and elements.\n• Saving and exporting designs.\n\n💡 WHY IT MATTERS\nCanva lets anyone create pro designs free, no experience needed.\n\n🪜 STEP BY STEP\n1. Create a free Canva account.\n2. Pick a template size.\n3. Edit text and images.\n4. Download your design.\n\n✅ QUICK SUMMARY\nUse templates and simple editing in Canva to make pro designs fast.\n\n✏️ TRY THIS\nMake a simple social post using a template.",
-    "Posters & Social Posts": "📌 WHAT YOU LEARN\n• Designing posters and platform-sized posts.\n• Strong headlines and layout.\n• Using brand colours.\n\n💡 WHY IT MATTERS\nEye-catching posts grow reach and promote your work.\n\n🪜 STEP BY STEP\n1. Choose the right size for the platform.\n2. Add a bold headline.\n3. Keep layout clean.\n4. Export and post.\n\n✅ QUICK SUMMARY\nCreate platform-sized posts with bold headlines and clean layout.\n\n✏️ TRY THIS\nDesign an Instagram post announcing an offer.",
-    "Templates & Brand Kit": "📌 WHAT YOU LEARN\n• Saving reusable templates.\n• Setting up a brand kit (colours, fonts, logo).\n• Staying consistent.\n\n💡 WHY IT MATTERS\nA brand kit keeps all designs consistent and fast to make.\n\n🪜 STEP BY STEP\n1. Create a template you reuse.\n2. Add brand colours and fonts.\n3. Upload your logo.\n4. Apply the kit to new designs.\n\n✅ QUICK SUMMARY\nUse templates and a brand kit for consistent, quick designs.\n\n✏️ TRY THIS\nSet up a brand kit with 3 colours and a font.",
-    "Logos & Thumbnails": "📌 WHAT YOU LEARN\n• Designing simple logos.\n• Making click-worthy thumbnails.\n• Contrast and readability.\n\n💡 WHY IT MATTERS\nLogos build identity; thumbnails win clicks.\n\n🪜 STEP BY STEP\n1. Sketch a simple logo idea.\n2. Build it in Canva with a clean font.\n3. Create a thumbnail with big text.\n4. Use strong contrast.\n\n✅ QUICK SUMMARY\nKeep logos simple and thumbnails bold and readable.\n\n✏️ TRY THIS\nDesign a thumbnail with 3-word bold text.",
-    "Presentations & Videos": "📌 WHAT YOU LEARN\n• Building slide decks in Canva.\n• Simple video edits.\n• Adding animations and music.\n\n💡 WHY IT MATTERS\nCanva does presentations and short videos in one place.\n\n🪜 STEP BY STEP\n1. Start a presentation template.\n2. Add slides with visuals.\n3. Try a short video edit.\n4. Add music and export.\n\n✅ QUICK SUMMARY\nCreate decks and simple videos in Canva with visuals and music.\n\n✏️ TRY THIS\nMake a 3-slide presentation in Canva.",
+    "Canva Basics": "WHAT YOU LEARN\n• Canva's interface and templates.\n• Adding text, images and elements.\n• Saving and exporting designs.\n\nWHY IT MATTERS\nCanva lets anyone create pro designs free, no experience needed.\n\nSTEP BY STEP\n1. Create a free Canva account.\n2. Pick a template size.\n3. Edit text and images.\n4. Download your design.\n\nQUICK SUMMARY\nUse templates and simple editing in Canva to make pro designs fast.\n\nTRY THIS\nMake a simple social post using a template.",
+    "Posters & Social Posts": "WHAT YOU LEARN\n• Designing posters and platform-sized posts.\n• Strong headlines and layout.\n• Using brand colours.\n\nWHY IT MATTERS\nEye-catching posts grow reach and promote your work.\n\nSTEP BY STEP\n1. Choose the right size for the platform.\n2. Add a bold headline.\n3. Keep layout clean.\n4. Export and post.\n\nQUICK SUMMARY\nCreate platform-sized posts with bold headlines and clean layout.\n\nTRY THIS\nDesign an Instagram post announcing an offer.",
+    "Templates & Brand Kit": "WHAT YOU LEARN\n• Saving reusable templates.\n• Setting up a brand kit (colours, fonts, logo).\n• Staying consistent.\n\nWHY IT MATTERS\nA brand kit keeps all designs consistent and fast to make.\n\nSTEP BY STEP\n1. Create a template you reuse.\n2. Add brand colours and fonts.\n3. Upload your logo.\n4. Apply the kit to new designs.\n\nQUICK SUMMARY\nUse templates and a brand kit for consistent, quick designs.\n\nTRY THIS\nSet up a brand kit with 3 colours and a font.",
+    "Logos & Thumbnails": "WHAT YOU LEARN\n• Designing simple logos.\n• Making click-worthy thumbnails.\n• Contrast and readability.\n\nWHY IT MATTERS\nLogos build identity; thumbnails win clicks.\n\nSTEP BY STEP\n1. Sketch a simple logo idea.\n2. Build it in Canva with a clean font.\n3. Create a thumbnail with big text.\n4. Use strong contrast.\n\nQUICK SUMMARY\nKeep logos simple and thumbnails bold and readable.\n\nTRY THIS\nDesign a thumbnail with 3-word bold text.",
+    "Presentations & Videos": "WHAT YOU LEARN\n• Building slide decks in Canva.\n• Simple video edits.\n• Adding animations and music.\n\nWHY IT MATTERS\nCanva does presentations and short videos in one place.\n\nSTEP BY STEP\n1. Start a presentation template.\n2. Add slides with visuals.\n3. Try a short video edit.\n4. Add music and export.\n\nQUICK SUMMARY\nCreate decks and simple videos in Canva with visuals and music.\n\nTRY THIS\nMake a 3-slide presentation in Canva.",
   },
   "graphic-design": {
-    "Design Principles": "📌 WHAT YOU LEARN\n• Alignment, contrast, repetition, proximity.\n• Visual hierarchy.\n• Clean, intentional design.\n\n💡 WHY IT MATTERS\nPrinciples separate amateur work from professional design.\n\n🪜 STEP BY STEP\n1. Align elements neatly.\n2. Use contrast to guide the eye.\n3. Repeat styles for consistency.\n4. Group related items (proximity).\n\n✅ QUICK SUMMARY\nApply alignment, contrast, repetition and proximity for strong design.\n\n✏️ TRY THIS\nImprove a flyer using these four principles.",
-    "Color Theory": "📌 WHAT YOU LEARN\n• The colour wheel and harmonies.\n• Warm vs cool colours.\n• Picking palettes that work.\n\n💡 WHY IT MATTERS\nColour sets mood and meaning in every design.\n\n🪜 STEP BY STEP\n1. Learn complementary and analogous colours.\n2. Choose a base colour.\n3. Build a small harmonious palette.\n4. Test contrast.\n\n✅ QUICK SUMMARY\nUse colour harmonies and contrast to build effective palettes.\n\n✏️ TRY THIS\nCreate a 3-colour palette using a harmony rule.",
-    "Typography Basics": "📌 WHAT YOU LEARN\n• Font types (serif, sans-serif).\n• Pairing fonts well.\n• Sizes, spacing and readability.\n\n💡 WHY IT MATTERS\nType carries most of your message — readability is key.\n\n🪜 STEP BY STEP\n1. Pick one heading and one body font.\n2. Set clear size differences.\n3. Adjust line spacing.\n4. Check readability.\n\n✅ QUICK SUMMARY\nPair fonts thoughtfully and prioritise readable sizes and spacing.\n\n✏️ TRY THIS\nChoose a heading + body font pair and justify it.",
-    "Composition & Layout": "📌 WHAT YOU LEARN\n• Arranging elements with balance.\n• Grids and focal points.\n• Guiding the viewer's eye.\n\n💡 WHY IT MATTERS\nGood composition makes designs feel organised and powerful.\n\n🪜 STEP BY STEP\n1. Choose a focal point.\n2. Use a grid to place elements.\n3. Balance the layout.\n4. Add white space.\n\n✅ QUICK SUMMARY\nCompose with a focal point, grid and balance for clear layouts.\n\n✏️ TRY THIS\nLay out a poster with one clear focal point.",
-    "Building a Portfolio": "📌 WHAT YOU LEARN\n• Selecting your best work.\n• Presenting projects clearly.\n• Where to host a portfolio.\n\n💡 WHY IT MATTERS\nA portfolio wins clients and jobs in design.\n\n🪜 STEP BY STEP\n1. Pick 4–6 strong pieces.\n2. Add a short note for each.\n3. Keep a clean, consistent layout.\n4. Host on Behance or your site.\n\n✅ QUICK SUMMARY\nShow your best work clearly and host it where clients can find it.\n\n✏️ TRY THIS\nList 4 pieces you'd put in a starter portfolio.",
+    "Design Principles": "WHAT YOU LEARN\n• Alignment, contrast, repetition, proximity.\n• Visual hierarchy.\n• Clean, intentional design.\n\nWHY IT MATTERS\nPrinciples separate amateur work from professional design.\n\nSTEP BY STEP\n1. Align elements neatly.\n2. Use contrast to guide the eye.\n3. Repeat styles for consistency.\n4. Group related items (proximity).\n\nQUICK SUMMARY\nApply alignment, contrast, repetition and proximity for strong design.\n\nTRY THIS\nImprove a flyer using these four principles.",
+    "Color Theory": "WHAT YOU LEARN\n• The colour wheel and harmonies.\n• Warm vs cool colours.\n• Picking palettes that work.\n\nWHY IT MATTERS\nColour sets mood and meaning in every design.\n\nSTEP BY STEP\n1. Learn complementary and analogous colours.\n2. Choose a base colour.\n3. Build a small harmonious palette.\n4. Test contrast.\n\nQUICK SUMMARY\nUse colour harmonies and contrast to build effective palettes.\n\nTRY THIS\nCreate a 3-colour palette using a harmony rule.",
+    "Typography Basics": "WHAT YOU LEARN\n• Font types (serif, sans-serif).\n• Pairing fonts well.\n• Sizes, spacing and readability.\n\nWHY IT MATTERS\nType carries most of your message — readability is key.\n\nSTEP BY STEP\n1. Pick one heading and one body font.\n2. Set clear size differences.\n3. Adjust line spacing.\n4. Check readability.\n\nQUICK SUMMARY\nPair fonts thoughtfully and prioritise readable sizes and spacing.\n\nTRY THIS\nChoose a heading + body font pair and justify it.",
+    "Composition & Layout": "WHAT YOU LEARN\n• Arranging elements with balance.\n• Grids and focal points.\n• Guiding the viewer's eye.\n\nWHY IT MATTERS\nGood composition makes designs feel organised and powerful.\n\nSTEP BY STEP\n1. Choose a focal point.\n2. Use a grid to place elements.\n3. Balance the layout.\n4. Add white space.\n\nQUICK SUMMARY\nCompose with a focal point, grid and balance for clear layouts.\n\nTRY THIS\nLay out a poster with one clear focal point.",
+    "Building a Portfolio": "WHAT YOU LEARN\n• Selecting your best work.\n• Presenting projects clearly.\n• Where to host a portfolio.\n\nWHY IT MATTERS\nA portfolio wins clients and jobs in design.\n\nSTEP BY STEP\n1. Pick 4–6 strong pieces.\n2. Add a short note for each.\n3. Keep a clean, consistent layout.\n4. Host on Behance or your site.\n\nQUICK SUMMARY\nShow your best work clearly and host it where clients can find it.\n\nTRY THIS\nList 4 pieces you'd put in a starter portfolio.",
   },
   "photoshop": {
-    "Photoshop Interface": "📌 WHAT YOU LEARN\n• The toolbar, panels and canvas.\n• Opening and saving files.\n• Zoom and navigation.\n\n💡 WHY IT MATTERS\nKnowing the interface makes everything else faster.\n\n🪜 STEP BY STEP\n1. Open an image.\n2. Find the tools and layers panels.\n3. Zoom and pan around.\n4. Save as PSD and as image.\n\n✅ QUICK SUMMARY\nLearn the tools, panels and saving before editing.\n\n✏️ TRY THIS\nOpen an image and locate 5 tools in the toolbar.",
-    "Layers & Selections": "📌 WHAT YOU LEARN\n• Working with layers.\n• Making selections.\n• Masking basics.\n\n💡 WHY IT MATTERS\nLayers and selections are the core of all photo editing.\n\n🪜 STEP BY STEP\n1. Add a new layer.\n2. Make a selection with a tool.\n3. Edit only inside the selection.\n4. Try a layer mask.\n\n✅ QUICK SUMMARY\nUse layers and selections to edit parts of an image non-destructively.\n\n✏️ TRY THIS\nSelect one object and place it on a new layer.",
-    "Photo Editing & Retouch": "📌 WHAT YOU LEARN\n• Adjusting brightness, contrast, colour.\n• Removing spots and objects.\n• Basic retouching.\n\n💡 WHY IT MATTERS\nEditing turns ordinary photos into polished images.\n\n🪜 STEP BY STEP\n1. Fix exposure and contrast.\n2. Correct colours.\n3. Remove blemishes with healing tools.\n4. Compare before/after.\n\n✅ QUICK SUMMARY\nAdjust light and colour, then retouch for clean, polished photos.\n\n✏️ TRY THIS\nImprove a photo's brightness and remove one spot.",
-    "Text & Effects": "📌 WHAT YOU LEARN\n• Adding and styling text.\n• Layer styles (shadow, stroke).\n• Simple effects.\n\n💡 WHY IT MATTERS\nText and effects make posters and thumbnails stand out.\n\n🪜 STEP BY STEP\n1. Add a text layer.\n2. Choose font and colour.\n3. Apply a shadow or stroke.\n4. Keep it readable.\n\n✅ QUICK SUMMARY\nAdd styled text with subtle effects while keeping it readable.\n\n✏️ TRY THIS\nAdd bold text with a drop shadow to an image.",
-    "Exporting for Web/Print": "📌 WHAT YOU LEARN\n• File formats (JPG, PNG, PDF).\n• Resolution for web vs print.\n• Export settings.\n\n💡 WHY IT MATTERS\nThe right export keeps quality and fits the use.\n\n🪜 STEP BY STEP\n1. Choose format for the purpose.\n2. Set resolution (72 web, 300 print).\n3. Export the file.\n4. Check the result.\n\n✅ QUICK SUMMARY\nPick the right format and resolution when exporting for web or print.\n\n✏️ TRY THIS\nState the format and resolution you'd use for a web banner.",
+    "Photoshop Interface": "WHAT YOU LEARN\n• The toolbar, panels and canvas.\n• Opening and saving files.\n• Zoom and navigation.\n\nWHY IT MATTERS\nKnowing the interface makes everything else faster.\n\nSTEP BY STEP\n1. Open an image.\n2. Find the tools and layers panels.\n3. Zoom and pan around.\n4. Save as PSD and as image.\n\nQUICK SUMMARY\nLearn the tools, panels and saving before editing.\n\nTRY THIS\nOpen an image and locate 5 tools in the toolbar.",
+    "Layers & Selections": "WHAT YOU LEARN\n• Working with layers.\n• Making selections.\n• Masking basics.\n\nWHY IT MATTERS\nLayers and selections are the core of all photo editing.\n\nSTEP BY STEP\n1. Add a new layer.\n2. Make a selection with a tool.\n3. Edit only inside the selection.\n4. Try a layer mask.\n\nQUICK SUMMARY\nUse layers and selections to edit parts of an image non-destructively.\n\nTRY THIS\nSelect one object and place it on a new layer.",
+    "Photo Editing & Retouch": "WHAT YOU LEARN\n• Adjusting brightness, contrast, colour.\n• Removing spots and objects.\n• Basic retouching.\n\nWHY IT MATTERS\nEditing turns ordinary photos into polished images.\n\nSTEP BY STEP\n1. Fix exposure and contrast.\n2. Correct colours.\n3. Remove blemishes with healing tools.\n4. Compare before/after.\n\nQUICK SUMMARY\nAdjust light and colour, then retouch for clean, polished photos.\n\nTRY THIS\nImprove a photo's brightness and remove one spot.",
+    "Text & Effects": "WHAT YOU LEARN\n• Adding and styling text.\n• Layer styles (shadow, stroke).\n• Simple effects.\n\nWHY IT MATTERS\nText and effects make posters and thumbnails stand out.\n\nSTEP BY STEP\n1. Add a text layer.\n2. Choose font and colour.\n3. Apply a shadow or stroke.\n4. Keep it readable.\n\nQUICK SUMMARY\nAdd styled text with subtle effects while keeping it readable.\n\nTRY THIS\nAdd bold text with a drop shadow to an image.",
+    "Exporting for Web/Print": "WHAT YOU LEARN\n• File formats (JPG, PNG, PDF).\n• Resolution for web vs print.\n• Export settings.\n\nWHY IT MATTERS\nThe right export keeps quality and fits the use.\n\nSTEP BY STEP\n1. Choose format for the purpose.\n2. Set resolution (72 web, 300 print).\n3. Export the file.\n4. Check the result.\n\nQUICK SUMMARY\nPick the right format and resolution when exporting for web or print.\n\nTRY THIS\nState the format and resolution you'd use for a web banner.",
   },
   "illustrator": {
-    "Illustrator Basics": "📌 WHAT YOU LEARN\n• What vectors are and why they scale.\n• The interface and artboards.\n• Saving vector files.\n\n💡 WHY IT MATTERS\nIllustrator makes logos and graphics that stay sharp at any size.\n\n🪜 STEP BY STEP\n1. Create a new document with an artboard.\n2. Learn the main tools.\n3. Draw a basic shape.\n4. Save as a vector file.\n\n✅ QUICK SUMMARY\nIllustrator uses scalable vectors — learn artboards and saving first.\n\n✏️ TRY THIS\nCreate an artboard and draw a simple shape.",
-    "Shapes & Pen Tool": "📌 WHAT YOU LEARN\n• Drawing with shape tools.\n• Using the Pen tool for paths.\n• Combining shapes.\n\n💡 WHY IT MATTERS\nShapes and the Pen tool build every vector graphic.\n\n🪜 STEP BY STEP\n1. Draw circles and rectangles.\n2. Practise the Pen tool on a path.\n3. Combine shapes with Pathfinder.\n4. Edit anchor points.\n\n✅ QUICK SUMMARY\nBuild graphics from shapes and Pen-tool paths, combined cleanly.\n\n✏️ TRY THIS\nDraw a simple icon using basic shapes.",
-    "Working with Color": "📌 WHAT YOU LEARN\n• Fills and strokes.\n• Swatches and gradients.\n• Consistent colour use.\n\n💡 WHY IT MATTERS\nColour gives vector art life and brand identity.\n\n🪜 STEP BY STEP\n1. Set fill and stroke colours.\n2. Save swatches.\n3. Apply a gradient.\n4. Keep colours consistent.\n\n✅ QUICK SUMMARY\nUse fills, strokes, swatches and gradients consistently.\n\n✏️ TRY THIS\nCreate 3 swatches and apply them to shapes.",
-    "Logos & Icons": "📌 WHAT YOU LEARN\n• Designing simple, scalable logos.\n• Building clean icons.\n• Keeping shapes minimal.\n\n💡 WHY IT MATTERS\nLogos and icons are core paid work for designers.\n\n🪜 STEP BY STEP\n1. Sketch a simple logo idea.\n2. Build it with shapes and the Pen tool.\n3. Test it small and large.\n4. Export in vector and PNG.\n\n✅ QUICK SUMMARY\nCreate minimal, scalable logos and icons that work at any size.\n\n✏️ TRY THIS\nDesign a simple icon for a notes app.",
-    "Vector Illustrations": "📌 WHAT YOU LEARN\n• Combining shapes into illustrations.\n• Layering and grouping.\n• Adding detail cleanly.\n\n💡 WHY IT MATTERS\nVector illustrations are in demand for brands and content.\n\n🪜 STEP BY STEP\n1. Plan a simple illustration.\n2. Build it from shapes.\n3. Group and layer parts.\n4. Refine colours and details.\n\n✅ QUICK SUMMARY\nLayer and group shapes to create clean vector illustrations.\n\n✏️ TRY THIS\nPlan an illustration made of 4–5 simple shapes.",
+    "Illustrator Basics": "WHAT YOU LEARN\n• What vectors are and why they scale.\n• The interface and artboards.\n• Saving vector files.\n\nWHY IT MATTERS\nIllustrator makes logos and graphics that stay sharp at any size.\n\nSTEP BY STEP\n1. Create a new document with an artboard.\n2. Learn the main tools.\n3. Draw a basic shape.\n4. Save as a vector file.\n\nQUICK SUMMARY\nIllustrator uses scalable vectors — learn artboards and saving first.\n\nTRY THIS\nCreate an artboard and draw a simple shape.",
+    "Shapes & Pen Tool": "WHAT YOU LEARN\n• Drawing with shape tools.\n• Using the Pen tool for paths.\n• Combining shapes.\n\nWHY IT MATTERS\nShapes and the Pen tool build every vector graphic.\n\nSTEP BY STEP\n1. Draw circles and rectangles.\n2. Practise the Pen tool on a path.\n3. Combine shapes with Pathfinder.\n4. Edit anchor points.\n\nQUICK SUMMARY\nBuild graphics from shapes and Pen-tool paths, combined cleanly.\n\nTRY THIS\nDraw a simple icon using basic shapes.",
+    "Working with Color": "WHAT YOU LEARN\n• Fills and strokes.\n• Swatches and gradients.\n• Consistent colour use.\n\nWHY IT MATTERS\nColour gives vector art life and brand identity.\n\nSTEP BY STEP\n1. Set fill and stroke colours.\n2. Save swatches.\n3. Apply a gradient.\n4. Keep colours consistent.\n\nQUICK SUMMARY\nUse fills, strokes, swatches and gradients consistently.\n\nTRY THIS\nCreate 3 swatches and apply them to shapes.",
+    "Logos & Icons": "WHAT YOU LEARN\n• Designing simple, scalable logos.\n• Building clean icons.\n• Keeping shapes minimal.\n\nWHY IT MATTERS\nLogos and icons are core paid work for designers.\n\nSTEP BY STEP\n1. Sketch a simple logo idea.\n2. Build it with shapes and the Pen tool.\n3. Test it small and large.\n4. Export in vector and PNG.\n\nQUICK SUMMARY\nCreate minimal, scalable logos and icons that work at any size.\n\nTRY THIS\nDesign a simple icon for a notes app.",
+    "Vector Illustrations": "WHAT YOU LEARN\n• Combining shapes into illustrations.\n• Layering and grouping.\n• Adding detail cleanly.\n\nWHY IT MATTERS\nVector illustrations are in demand for brands and content.\n\nSTEP BY STEP\n1. Plan a simple illustration.\n2. Build it from shapes.\n3. Group and layer parts.\n4. Refine colours and details.\n\nQUICK SUMMARY\nLayer and group shapes to create clean vector illustrations.\n\nTRY THIS\nPlan an illustration made of 4–5 simple shapes.",
   },
   "ui-ux-design": {
-    "UX vs UI": "📌 WHAT YOU LEARN\n• UX = experience/flow; UI = look/visuals.\n• How they work together.\n• Why both matter.\n\n💡 WHY IT MATTERS\nGreat products need both smooth UX and attractive UI.\n\n🪜 STEP BY STEP\n1. Learn UX is how it works/feels.\n2. Learn UI is how it looks.\n3. See examples of good and bad.\n4. Note how they overlap.\n\n✅ QUICK SUMMARY\nUX is the experience; UI is the interface — both are essential.\n\n✏️ TRY THIS\nGive one UX and one UI example for an app.",
-    "User Research Basics": "📌 WHAT YOU LEARN\n• Understanding user needs.\n• Simple research methods (interviews, surveys).\n• Turning findings into ideas.\n\n💡 WHY IT MATTERS\nDesigning for real needs avoids wasted effort.\n\n🪜 STEP BY STEP\n1. Define who your users are.\n2. Ask a few about their problems.\n3. Note common pain points.\n4. Use insights to guide design.\n\n✅ QUICK SUMMARY\nResearch users' needs and let findings drive your design.\n\n✏️ TRY THIS\nWrite 3 questions to ask potential users.",
-    "Wireframing": "📌 WHAT YOU LEARN\n• What wireframes are.\n• Sketching layouts quickly.\n• Focusing on structure, not style.\n\n💡 WHY IT MATTERS\nWireframes test ideas cheaply before detailed design.\n\n🪜 STEP BY STEP\n1. Sketch the main screen as boxes.\n2. Place key elements.\n3. Show the flow between screens.\n4. Get quick feedback.\n\n✅ QUICK SUMMARY\nWireframe layouts as simple sketches to plan structure early.\n\n✏️ TRY THIS\nWireframe a login screen with boxes and labels.",
-    "UI Design in Figma": "📌 WHAT YOU LEARN\n• Turning wireframes into UI in Figma.\n• Colours, type and components.\n• Consistent spacing.\n\n💡 WHY IT MATTERS\nFigma is the standard tool for polished UI design.\n\n🪜 STEP BY STEP\n1. Recreate a wireframe in Figma.\n2. Add colours and fonts.\n3. Build reusable components.\n4. Keep spacing consistent.\n\n✅ QUICK SUMMARY\nDesign polished UI in Figma with consistent styles and components.\n\n✏️ TRY THIS\nDesign one app screen in Figma from a wireframe.",
-    "Prototyping & Testing": "📌 WHAT YOU LEARN\n• Linking screens into a clickable prototype.\n• Testing with users.\n• Improving from feedback.\n\n💡 WHY IT MATTERS\nPrototypes reveal problems before development.\n\n🪜 STEP BY STEP\n1. Connect screens with links in Figma.\n2. Share the prototype.\n3. Watch users try it.\n4. Fix confusing parts.\n\n✅ QUICK SUMMARY\nPrototype, test with users, and refine before building.\n\n✏️ TRY THIS\nDescribe how you'd test a 3-screen prototype.",
+    "UX vs UI": "WHAT YOU LEARN\n• UX = experience/flow; UI = look/visuals.\n• How they work together.\n• Why both matter.\n\nWHY IT MATTERS\nGreat products need both smooth UX and attractive UI.\n\nSTEP BY STEP\n1. Learn UX is how it works/feels.\n2. Learn UI is how it looks.\n3. See examples of good and bad.\n4. Note how they overlap.\n\nQUICK SUMMARY\nUX is the experience; UI is the interface — both are essential.\n\nTRY THIS\nGive one UX and one UI example for an app.",
+    "User Research Basics": "WHAT YOU LEARN\n• Understanding user needs.\n• Simple research methods (interviews, surveys).\n• Turning findings into ideas.\n\nWHY IT MATTERS\nDesigning for real needs avoids wasted effort.\n\nSTEP BY STEP\n1. Define who your users are.\n2. Ask a few about their problems.\n3. Note common pain points.\n4. Use insights to guide design.\n\nQUICK SUMMARY\nResearch users' needs and let findings drive your design.\n\nTRY THIS\nWrite 3 questions to ask potential users.",
+    "Wireframing": "WHAT YOU LEARN\n• What wireframes are.\n• Sketching layouts quickly.\n• Focusing on structure, not style.\n\nWHY IT MATTERS\nWireframes test ideas cheaply before detailed design.\n\nSTEP BY STEP\n1. Sketch the main screen as boxes.\n2. Place key elements.\n3. Show the flow between screens.\n4. Get quick feedback.\n\nQUICK SUMMARY\nWireframe layouts as simple sketches to plan structure early.\n\nTRY THIS\nWireframe a login screen with boxes and labels.",
+    "UI Design in Figma": "WHAT YOU LEARN\n• Turning wireframes into UI in Figma.\n• Colours, type and components.\n• Consistent spacing.\n\nWHY IT MATTERS\nFigma is the standard tool for polished UI design.\n\nSTEP BY STEP\n1. Recreate a wireframe in Figma.\n2. Add colours and fonts.\n3. Build reusable components.\n4. Keep spacing consistent.\n\nQUICK SUMMARY\nDesign polished UI in Figma with consistent styles and components.\n\nTRY THIS\nDesign one app screen in Figma from a wireframe.",
+    "Prototyping & Testing": "WHAT YOU LEARN\n• Linking screens into a clickable prototype.\n• Testing with users.\n• Improving from feedback.\n\nWHY IT MATTERS\nPrototypes reveal problems before development.\n\nSTEP BY STEP\n1. Connect screens with links in Figma.\n2. Share the prototype.\n3. Watch users try it.\n4. Fix confusing parts.\n\nQUICK SUMMARY\nPrototype, test with users, and refine before building.\n\nTRY THIS\nDescribe how you'd test a 3-screen prototype.",
   },
   "logo-design": {
-    "Logo Types & Ideas": "📌 WHAT YOU LEARN\n• Logo types: wordmark, symbol, combination.\n• Gathering inspiration.\n• Matching logo to brand.\n\n💡 WHY IT MATTERS\nThe right logo type fits the brand and is memorable.\n\n🪜 STEP BY STEP\n1. Learn the main logo types.\n2. Collect inspiration.\n3. Note the brand's personality.\n4. Pick a suitable type.\n\n✅ QUICK SUMMARY\nChoose a logo type that matches the brand's personality.\n\n✏️ TRY THIS\nPick a logo type for a coffee shop and explain why.",
-    "Sketching Concepts": "📌 WHAT YOU LEARN\n• Brainstorming many ideas.\n• Quick rough sketches.\n• Choosing the strongest.\n\n💡 WHY IT MATTERS\nSketching explores ideas fast before going digital.\n\n🪜 STEP BY STEP\n1. List words about the brand.\n2. Sketch 10 rough ideas.\n3. Circle the best 2–3.\n4. Refine those.\n\n✅ QUICK SUMMARY\nSketch many concepts on paper, then refine the strongest.\n\n✏️ TRY THIS\nSketch 5 quick logo ideas for a brand.",
-    "Color & Font Choices": "📌 WHAT YOU LEARN\n• Picking brand colours.\n• Choosing a fitting font.\n• Keeping it simple.\n\n💡 WHY IT MATTERS\nColour and font shape how the logo and brand feel.\n\n🪜 STEP BY STEP\n1. Choose 1–2 brand colours.\n2. Select a font matching the mood.\n3. Test in black and white too.\n4. Keep it minimal.\n\n✅ QUICK SUMMARY\nPick simple, fitting colours and fonts that work even in black/white.\n\n✏️ TRY THIS\nChoose colours and a font for a tech brand logo.",
-    "Designing in Canva/Illustrator": "📌 WHAT YOU LEARN\n• Building the logo digitally.\n• Using shapes and text.\n• Exporting properly.\n\n💡 WHY IT MATTERS\nA clean digital file is what clients actually use.\n\n🪜 STEP BY STEP\n1. Recreate your sketch in Canva or Illustrator.\n2. Refine shapes and spacing.\n3. Test at small sizes.\n4. Export PNG and vector.\n\n✅ QUICK SUMMARY\nBuild the logo digitally, refine, and export web and vector files.\n\n✏️ TRY THIS\nOutline steps to make a wordmark logo in Canva.",
-    "Delivering to Clients": "📌 WHAT YOU LEARN\n• Files clients need (PNG, SVG, PDF).\n• Providing colour variations.\n• A simple brand guide.\n\n💡 WHY IT MATTERS\nProfessional delivery earns trust and repeat work.\n\n🪜 STEP BY STEP\n1. Export multiple formats and sizes.\n2. Include light/dark versions.\n3. Add a one-page usage guide.\n4. Send in a tidy folder.\n\n✅ QUICK SUMMARY\nDeliver all formats, colour versions and a short brand guide.\n\n✏️ TRY THIS\nList the files you'd hand a client with their logo.",
+    "Logo Types & Ideas": "WHAT YOU LEARN\n• Logo types: wordmark, symbol, combination.\n• Gathering inspiration.\n• Matching logo to brand.\n\nWHY IT MATTERS\nThe right logo type fits the brand and is memorable.\n\nSTEP BY STEP\n1. Learn the main logo types.\n2. Collect inspiration.\n3. Note the brand's personality.\n4. Pick a suitable type.\n\nQUICK SUMMARY\nChoose a logo type that matches the brand's personality.\n\nTRY THIS\nPick a logo type for a coffee shop and explain why.",
+    "Sketching Concepts": "WHAT YOU LEARN\n• Brainstorming many ideas.\n• Quick rough sketches.\n• Choosing the strongest.\n\nWHY IT MATTERS\nSketching explores ideas fast before going digital.\n\nSTEP BY STEP\n1. List words about the brand.\n2. Sketch 10 rough ideas.\n3. Circle the best 2–3.\n4. Refine those.\n\nQUICK SUMMARY\nSketch many concepts on paper, then refine the strongest.\n\nTRY THIS\nSketch 5 quick logo ideas for a brand.",
+    "Color & Font Choices": "WHAT YOU LEARN\n• Picking brand colours.\n• Choosing a fitting font.\n• Keeping it simple.\n\nWHY IT MATTERS\nColour and font shape how the logo and brand feel.\n\nSTEP BY STEP\n1. Choose 1–2 brand colours.\n2. Select a font matching the mood.\n3. Test in black and white too.\n4. Keep it minimal.\n\nQUICK SUMMARY\nPick simple, fitting colours and fonts that work even in black/white.\n\nTRY THIS\nChoose colours and a font for a tech brand logo.",
+    "Designing in Canva/Illustrator": "WHAT YOU LEARN\n• Building the logo digitally.\n• Using shapes and text.\n• Exporting properly.\n\nWHY IT MATTERS\nA clean digital file is what clients actually use.\n\nSTEP BY STEP\n1. Recreate your sketch in Canva or Illustrator.\n2. Refine shapes and spacing.\n3. Test at small sizes.\n4. Export PNG and vector.\n\nQUICK SUMMARY\nBuild the logo digitally, refine, and export web and vector files.\n\nTRY THIS\nOutline steps to make a wordmark logo in Canva.",
+    "Delivering to Clients": "WHAT YOU LEARN\n• Files clients need (PNG, SVG, PDF).\n• Providing colour variations.\n• A simple brand guide.\n\nWHY IT MATTERS\nProfessional delivery earns trust and repeat work.\n\nSTEP BY STEP\n1. Export multiple formats and sizes.\n2. Include light/dark versions.\n3. Add a one-page usage guide.\n4. Send in a tidy folder.\n\nQUICK SUMMARY\nDeliver all formats, colour versions and a short brand guide.\n\nTRY THIS\nList the files you'd hand a client with their logo.",
   },
   "seo": {
-    "What is SEO": "📌 WHAT YOU LEARN\n• SEO = ranking higher on Google.\n• On-page vs off-page vs technical.\n• Why it brings free traffic.\n\n💡 WHY IT MATTERS\nSEO drives long-term, free visitors to your site.\n\n🪜 STEP BY STEP\n1. Learn what search engines reward.\n2. See the three SEO areas.\n3. Note that good content is central.\n4. Set a simple SEO goal.\n\n✅ QUICK SUMMARY\nSEO improves your Google ranking for steady, free traffic.\n\n✏️ TRY THIS\nExplain on-page vs off-page SEO in one line each.",
-    "Keyword Research": "📌 WHAT YOU LEARN\n• Finding what people search.\n• Search volume vs competition.\n• Free keyword tools.\n\n💡 WHY IT MATTERS\nTargeting the right keywords brings the right visitors.\n\n🪜 STEP BY STEP\n1. Brainstorm topics customers search.\n2. Use a free tool for ideas.\n3. Pick low-competition keywords.\n4. Map keywords to pages.\n\n✅ QUICK SUMMARY\nResearch realistic keywords and assign them to your pages.\n\n✏️ TRY THIS\nFind 5 keywords for a topic in your niche.",
-    "On-Page SEO": "📌 WHAT YOU LEARN\n• Optimising titles, headings and content.\n• Meta descriptions and URLs.\n• Using keywords naturally.\n\n💡 WHY IT MATTERS\nOn-page SEO is the part you fully control.\n\n🪜 STEP BY STEP\n1. Put the keyword in the title.\n2. Use clear headings.\n3. Write helpful content with the keyword.\n4. Add a meta description.\n\n✅ QUICK SUMMARY\nOptimise titles, headings, content and meta tags around your keyword.\n\n✏️ TRY THIS\nWrite an SEO title and meta description for a page.",
-    "Backlinks & Off-Page": "📌 WHAT YOU LEARN\n• What backlinks are.\n• Why they build authority.\n• Ethical ways to earn them.\n\n💡 WHY IT MATTERS\nQuality backlinks tell Google your site is trusted.\n\n🪜 STEP BY STEP\n1. Create content worth linking to.\n2. Share it widely.\n3. Guest post or get listed.\n4. Avoid spammy link buying.\n\n✅ QUICK SUMMARY\nEarn quality backlinks with good content and honest outreach.\n\n✏️ TRY THIS\nList 3 honest ways to earn backlinks.",
-    "Tracking with Analytics": "📌 WHAT YOU LEARN\n• Using Google Analytics/Search Console.\n• Tracking traffic and keywords.\n• Improving from data.\n\n💡 WHY IT MATTERS\nTracking shows what works so you can do more of it.\n\n🪜 STEP BY STEP\n1. Set up Analytics and Search Console.\n2. Watch traffic sources.\n3. See which keywords rank.\n4. Improve weak pages.\n\n✅ QUICK SUMMARY\nUse analytics to track results and refine your SEO over time.\n\n✏️ TRY THIS\nName two metrics you'd watch in Search Console.",
+    "What is SEO": "WHAT YOU LEARN\n• SEO = ranking higher on Google.\n• On-page vs off-page vs technical.\n• Why it brings free traffic.\n\nWHY IT MATTERS\nSEO drives long-term, free visitors to your site.\n\nSTEP BY STEP\n1. Learn what search engines reward.\n2. See the three SEO areas.\n3. Note that good content is central.\n4. Set a simple SEO goal.\n\nQUICK SUMMARY\nSEO improves your Google ranking for steady, free traffic.\n\nTRY THIS\nExplain on-page vs off-page SEO in one line each.",
+    "Keyword Research": "WHAT YOU LEARN\n• Finding what people search.\n• Search volume vs competition.\n• Free keyword tools.\n\nWHY IT MATTERS\nTargeting the right keywords brings the right visitors.\n\nSTEP BY STEP\n1. Brainstorm topics customers search.\n2. Use a free tool for ideas.\n3. Pick low-competition keywords.\n4. Map keywords to pages.\n\nQUICK SUMMARY\nResearch realistic keywords and assign them to your pages.\n\nTRY THIS\nFind 5 keywords for a topic in your niche.",
+    "On-Page SEO": "WHAT YOU LEARN\n• Optimising titles, headings and content.\n• Meta descriptions and URLs.\n• Using keywords naturally.\n\nWHY IT MATTERS\nOn-page SEO is the part you fully control.\n\nSTEP BY STEP\n1. Put the keyword in the title.\n2. Use clear headings.\n3. Write helpful content with the keyword.\n4. Add a meta description.\n\nQUICK SUMMARY\nOptimise titles, headings, content and meta tags around your keyword.\n\nTRY THIS\nWrite an SEO title and meta description for a page.",
+    "Backlinks & Off-Page": "WHAT YOU LEARN\n• What backlinks are.\n• Why they build authority.\n• Ethical ways to earn them.\n\nWHY IT MATTERS\nQuality backlinks tell Google your site is trusted.\n\nSTEP BY STEP\n1. Create content worth linking to.\n2. Share it widely.\n3. Guest post or get listed.\n4. Avoid spammy link buying.\n\nQUICK SUMMARY\nEarn quality backlinks with good content and honest outreach.\n\nTRY THIS\nList 3 honest ways to earn backlinks.",
+    "Tracking with Analytics": "WHAT YOU LEARN\n• Using Google Analytics/Search Console.\n• Tracking traffic and keywords.\n• Improving from data.\n\nWHY IT MATTERS\nTracking shows what works so you can do more of it.\n\nSTEP BY STEP\n1. Set up Analytics and Search Console.\n2. Watch traffic sources.\n3. See which keywords rank.\n4. Improve weak pages.\n\nQUICK SUMMARY\nUse analytics to track results and refine your SEO over time.\n\nTRY THIS\nName two metrics you'd watch in Search Console.",
   },
   "social-media-marketing": {
-    "Choosing the Right Platforms": "📌 WHAT YOU LEARN\n• Matching platforms to your audience.\n• Strengths of Instagram, YouTube, etc.\n• Focusing your effort.\n\n💡 WHY IT MATTERS\nBeing where your audience is beats spreading thin.\n\n🪜 STEP BY STEP\n1. Define your audience.\n2. Find where they spend time.\n3. Pick 1–2 platforms.\n4. Go deep, not wide.\n\n✅ QUICK SUMMARY\nChoose the platforms your audience uses and focus there.\n\n✏️ TRY THIS\nPick the best platform for a local food business.",
-    "Content Planning": "📌 WHAT YOU LEARN\n• Building a content calendar.\n• Mixing content types.\n• Batching content.\n\n💡 WHY IT MATTERS\nPlanning keeps you consistent without daily stress.\n\n🪜 STEP BY STEP\n1. Decide posting frequency.\n2. Plan a week of varied posts.\n3. Batch-create them.\n4. Schedule ahead.\n\n✅ QUICK SUMMARY\nPlan and batch varied content on a calendar for consistency.\n\n✏️ TRY THIS\nPlan 7 posts mixing tips, offers and stories.",
-    "Growing Followers": "📌 WHAT YOU LEARN\n• Tactics to attract followers.\n• Hooks, hashtags and collaboration.\n• Posting consistently.\n\n💡 WHY IT MATTERS\nA growing audience increases reach and sales.\n\n🪜 STEP BY STEP\n1. Use strong hooks in the first line.\n2. Add relevant hashtags.\n3. Collaborate with others.\n4. Post consistently.\n\n✅ QUICK SUMMARY\nGrow with strong hooks, hashtags, collaborations and consistency.\n\n✏️ TRY THIS\nWrite 3 scroll-stopping first lines for posts.",
-    "Engagement Strategy": "📌 WHAT YOU LEARN\n• Encouraging likes, comments and shares.\n• Replying to build community.\n• Using questions and CTAs.\n\n💡 WHY IT MATTERS\nEngagement boosts reach and builds loyal followers.\n\n🪜 STEP BY STEP\n1. Ask questions in posts.\n2. Reply to every comment early.\n3. Add clear calls to action.\n4. Run simple polls.\n\n✅ QUICK SUMMARY\nSpark and reply to engagement to grow reach and loyalty.\n\n✏️ TRY THIS\nWrite a post that ends with an engaging question.",
-    "Measuring Results": "📌 WHAT YOU LEARN\n• Key metrics (reach, engagement, saves).\n• Reading insights.\n• Doing more of what works.\n\n💡 WHY IT MATTERS\nMeasuring tells you where to focus your effort.\n\n🪜 STEP BY STEP\n1. Check post insights weekly.\n2. Find your top posts.\n3. Note what they had in common.\n4. Repeat the winning style.\n\n✅ QUICK SUMMARY\nTrack key metrics and repeat what your best posts did.\n\n✏️ TRY THIS\nList 3 metrics you'd check each week.",
+    "Choosing the Right Platforms": "WHAT YOU LEARN\n• Matching platforms to your audience.\n• Strengths of Instagram, YouTube, etc.\n• Focusing your effort.\n\nWHY IT MATTERS\nBeing where your audience is beats spreading thin.\n\nSTEP BY STEP\n1. Define your audience.\n2. Find where they spend time.\n3. Pick 1–2 platforms.\n4. Go deep, not wide.\n\nQUICK SUMMARY\nChoose the platforms your audience uses and focus there.\n\nTRY THIS\nPick the best platform for a local food business.",
+    "Content Planning": "WHAT YOU LEARN\n• Building a content calendar.\n• Mixing content types.\n• Batching content.\n\nWHY IT MATTERS\nPlanning keeps you consistent without daily stress.\n\nSTEP BY STEP\n1. Decide posting frequency.\n2. Plan a week of varied posts.\n3. Batch-create them.\n4. Schedule ahead.\n\nQUICK SUMMARY\nPlan and batch varied content on a calendar for consistency.\n\nTRY THIS\nPlan 7 posts mixing tips, offers and stories.",
+    "Growing Followers": "WHAT YOU LEARN\n• Tactics to attract followers.\n• Hooks, hashtags and collaboration.\n• Posting consistently.\n\nWHY IT MATTERS\nA growing audience increases reach and sales.\n\nSTEP BY STEP\n1. Use strong hooks in the first line.\n2. Add relevant hashtags.\n3. Collaborate with others.\n4. Post consistently.\n\nQUICK SUMMARY\nGrow with strong hooks, hashtags, collaborations and consistency.\n\nTRY THIS\nWrite 3 scroll-stopping first lines for posts.",
+    "Engagement Strategy": "WHAT YOU LEARN\n• Encouraging likes, comments and shares.\n• Replying to build community.\n• Using questions and CTAs.\n\nWHY IT MATTERS\nEngagement boosts reach and builds loyal followers.\n\nSTEP BY STEP\n1. Ask questions in posts.\n2. Reply to every comment early.\n3. Add clear calls to action.\n4. Run simple polls.\n\nQUICK SUMMARY\nSpark and reply to engagement to grow reach and loyalty.\n\nTRY THIS\nWrite a post that ends with an engaging question.",
+    "Measuring Results": "WHAT YOU LEARN\n• Key metrics (reach, engagement, saves).\n• Reading insights.\n• Doing more of what works.\n\nWHY IT MATTERS\nMeasuring tells you where to focus your effort.\n\nSTEP BY STEP\n1. Check post insights weekly.\n2. Find your top posts.\n3. Note what they had in common.\n4. Repeat the winning style.\n\nQUICK SUMMARY\nTrack key metrics and repeat what your best posts did.\n\nTRY THIS\nList 3 metrics you'd check each week.",
   },
   "facebook-ads": {
-    "Ads Manager Basics": "📌 WHAT YOU LEARN\n• What Ads Manager is.\n• Campaign, ad set, ad structure.\n• Setting an objective.\n\n💡 WHY IT MATTERS\nAds Manager is where all Facebook/Instagram ads are built.\n\n🪜 STEP BY STEP\n1. Open Ads Manager.\n2. Learn campaign > ad set > ad.\n3. Choose an objective (e.g., leads).\n4. Explore the layout.\n\n✅ QUICK SUMMARY\nAds Manager structures ads as campaign, ad set and ad with an objective.\n\n✏️ TRY THIS\nDescribe the three levels of an ad campaign.",
-    "Audience Targeting": "📌 WHAT YOU LEARN\n• Targeting by location, age, interests.\n• Custom and lookalike audiences.\n• Avoiding too-narrow targeting.\n\n💡 WHY IT MATTERS\nReaching the right people lowers cost and raises results.\n\n🪜 STEP BY STEP\n1. Define your ideal customer.\n2. Set location and demographics.\n3. Add relevant interests.\n4. Try a lookalike audience later.\n\n✅ QUICK SUMMARY\nTarget the right people by location, demographics and interests.\n\n✏️ TRY THIS\nDefine a target audience for a local gym.",
-    "Creating an Ad": "📌 WHAT YOU LEARN\n• Choosing format (image, video, carousel).\n• Writing copy and a CTA.\n• Strong visuals.\n\n💡 WHY IT MATTERS\nThe ad creative decides if people stop and click.\n\n🪜 STEP BY STEP\n1. Pick a format.\n2. Add a strong image/video.\n3. Write clear copy and offer.\n4. Add a call-to-action button.\n\n✅ QUICK SUMMARY\nBuild an ad with a strong visual, clear copy and a CTA.\n\n✏️ TRY THIS\nDraft ad copy and a CTA for one product.",
-    "Budget & Bidding": "📌 WHAT YOU LEARN\n• Daily vs lifetime budget.\n• How bidding works simply.\n• Starting small and scaling.\n\n💡 WHY IT MATTERS\nSmart budgeting tests cheaply before spending big.\n\n🪜 STEP BY STEP\n1. Set a small daily budget.\n2. Let the ad run a few days.\n3. Check cost per result.\n4. Increase budget on winners.\n\n✅ QUICK SUMMARY\nStart with a small budget, measure cost per result, then scale winners.\n\n✏️ TRY THIS\nDecide a sensible starting daily budget and why.",
-    "Reading Ad Results": "📌 WHAT YOU LEARN\n• Key metrics (CTR, CPC, results).\n• Spotting winning vs losing ads.\n• Improving performance.\n\n💡 WHY IT MATTERS\nReading results turns ad spend into smart decisions.\n\n🪜 STEP BY STEP\n1. Check CTR and cost per result.\n2. Pause poor performers.\n3. Scale strong ones.\n4. Test new creatives.\n\n✅ QUICK SUMMARY\nRead CTR and cost per result to pause losers and scale winners.\n\n✏️ TRY THIS\nExplain what a high CTR but low sales might mean.",
+    "Ads Manager Basics": "WHAT YOU LEARN\n• What Ads Manager is.\n• Campaign, ad set, ad structure.\n• Setting an objective.\n\nWHY IT MATTERS\nAds Manager is where all Facebook/Instagram ads are built.\n\nSTEP BY STEP\n1. Open Ads Manager.\n2. Learn campaign > ad set > ad.\n3. Choose an objective (e.g., leads).\n4. Explore the layout.\n\nQUICK SUMMARY\nAds Manager structures ads as campaign, ad set and ad with an objective.\n\nTRY THIS\nDescribe the three levels of an ad campaign.",
+    "Audience Targeting": "WHAT YOU LEARN\n• Targeting by location, age, interests.\n• Custom and lookalike audiences.\n• Avoiding too-narrow targeting.\n\nWHY IT MATTERS\nReaching the right people lowers cost and raises results.\n\nSTEP BY STEP\n1. Define your ideal customer.\n2. Set location and demographics.\n3. Add relevant interests.\n4. Try a lookalike audience later.\n\nQUICK SUMMARY\nTarget the right people by location, demographics and interests.\n\nTRY THIS\nDefine a target audience for a local gym.",
+    "Creating an Ad": "WHAT YOU LEARN\n• Choosing format (image, video, carousel).\n• Writing copy and a CTA.\n• Strong visuals.\n\nWHY IT MATTERS\nThe ad creative decides if people stop and click.\n\nSTEP BY STEP\n1. Pick a format.\n2. Add a strong image/video.\n3. Write clear copy and offer.\n4. Add a call-to-action button.\n\nQUICK SUMMARY\nBuild an ad with a strong visual, clear copy and a CTA.\n\nTRY THIS\nDraft ad copy and a CTA for one product.",
+    "Budget & Bidding": "WHAT YOU LEARN\n• Daily vs lifetime budget.\n• How bidding works simply.\n• Starting small and scaling.\n\nWHY IT MATTERS\nSmart budgeting tests cheaply before spending big.\n\nSTEP BY STEP\n1. Set a small daily budget.\n2. Let the ad run a few days.\n3. Check cost per result.\n4. Increase budget on winners.\n\nQUICK SUMMARY\nStart with a small budget, measure cost per result, then scale winners.\n\nTRY THIS\nDecide a sensible starting daily budget and why.",
+    "Reading Ad Results": "WHAT YOU LEARN\n• Key metrics (CTR, CPC, results).\n• Spotting winning vs losing ads.\n• Improving performance.\n\nWHY IT MATTERS\nReading results turns ad spend into smart decisions.\n\nSTEP BY STEP\n1. Check CTR and cost per result.\n2. Pause poor performers.\n3. Scale strong ones.\n4. Test new creatives.\n\nQUICK SUMMARY\nRead CTR and cost per result to pause losers and scale winners.\n\nTRY THIS\nExplain what a high CTR but low sales might mean.",
   },
   "google-ads": {
-    "Google Ads Overview": "📌 WHAT YOU LEARN\n• How Google Ads shows your site in search.\n• Pay-per-click basics.\n• Campaign types.\n\n💡 WHY IT MATTERS\nGoogle Ads reaches people actively searching for what you offer.\n\n🪜 STEP BY STEP\n1. Learn ads appear for searches.\n2. Understand you pay per click.\n3. See Search vs Display.\n4. Pick a goal.\n\n✅ QUICK SUMMARY\nGoogle Ads puts you in front of active searchers; you pay per click.\n\n✏️ TRY THIS\nExplain pay-per-click in one line.",
-    "Keywords & Match Types": "📌 WHAT YOU LEARN\n• Choosing keywords to bid on.\n• Broad, phrase, exact match.\n• Negative keywords.\n\n💡 WHY IT MATTERS\nMatch types control who sees your ad and your cost.\n\n🪜 STEP BY STEP\n1. List keywords buyers search.\n2. Choose match types.\n3. Add negative keywords.\n4. Refine over time.\n\n✅ QUICK SUMMARY\nPick keywords and match types, and use negatives to avoid waste.\n\n✏️ TRY THIS\nGive an example of an exact-match keyword.",
-    "Writing Search Ads": "📌 WHAT YOU LEARN\n• Headlines and descriptions.\n• Including keywords and offers.\n• Clear calls to action.\n\n💡 WHY IT MATTERS\nStrong ad text earns clicks from searchers.\n\n🪜 STEP BY STEP\n1. Write headlines with the keyword.\n2. Add a benefit and an offer.\n3. Include a CTA.\n4. Test multiple versions.\n\n✅ QUICK SUMMARY\nWrite keyword-rich headlines with a clear offer and CTA.\n\n✏️ TRY THIS\nWrite 3 headlines for a service ad.",
-    "Budget & Bidding": "📌 WHAT YOU LEARN\n• Setting daily budgets.\n• Bid strategies in simple terms.\n• Controlling spend.\n\n💡 WHY IT MATTERS\nBudgeting keeps costs in check while testing.\n\n🪜 STEP BY STEP\n1. Set a modest daily budget.\n2. Pick a simple bid strategy.\n3. Monitor cost per click.\n4. Adjust based on results.\n\n✅ QUICK SUMMARY\nSet a daily budget and a simple bid strategy, then adjust by results.\n\n✏️ TRY THIS\nDecide a starting daily budget for a small campaign.",
-    "Conversion Tracking": "📌 WHAT YOU LEARN\n• What a conversion is.\n• Setting up tracking.\n• Measuring true results.\n\n💡 WHY IT MATTERS\nTracking shows which clicks turn into sales/leads.\n\n🪜 STEP BY STEP\n1. Define your conversion (sale, form).\n2. Set up conversion tracking.\n3. See which keywords convert.\n4. Spend more on those.\n\n✅ QUICK SUMMARY\nTrack conversions to find what actually drives sales and double down.\n\n✏️ TRY THIS\nList two conversions a service business would track.",
+    "Google Ads Overview": "WHAT YOU LEARN\n• How Google Ads shows your site in search.\n• Pay-per-click basics.\n• Campaign types.\n\nWHY IT MATTERS\nGoogle Ads reaches people actively searching for what you offer.\n\nSTEP BY STEP\n1. Learn ads appear for searches.\n2. Understand you pay per click.\n3. See Search vs Display.\n4. Pick a goal.\n\nQUICK SUMMARY\nGoogle Ads puts you in front of active searchers; you pay per click.\n\nTRY THIS\nExplain pay-per-click in one line.",
+    "Keywords & Match Types": "WHAT YOU LEARN\n• Choosing keywords to bid on.\n• Broad, phrase, exact match.\n• Negative keywords.\n\nWHY IT MATTERS\nMatch types control who sees your ad and your cost.\n\nSTEP BY STEP\n1. List keywords buyers search.\n2. Choose match types.\n3. Add negative keywords.\n4. Refine over time.\n\nQUICK SUMMARY\nPick keywords and match types, and use negatives to avoid waste.\n\nTRY THIS\nGive an example of an exact-match keyword.",
+    "Writing Search Ads": "WHAT YOU LEARN\n• Headlines and descriptions.\n• Including keywords and offers.\n• Clear calls to action.\n\nWHY IT MATTERS\nStrong ad text earns clicks from searchers.\n\nSTEP BY STEP\n1. Write headlines with the keyword.\n2. Add a benefit and an offer.\n3. Include a CTA.\n4. Test multiple versions.\n\nQUICK SUMMARY\nWrite keyword-rich headlines with a clear offer and CTA.\n\nTRY THIS\nWrite 3 headlines for a service ad.",
+    "Budget & Bidding": "WHAT YOU LEARN\n• Setting daily budgets.\n• Bid strategies in simple terms.\n• Controlling spend.\n\nWHY IT MATTERS\nBudgeting keeps costs in check while testing.\n\nSTEP BY STEP\n1. Set a modest daily budget.\n2. Pick a simple bid strategy.\n3. Monitor cost per click.\n4. Adjust based on results.\n\nQUICK SUMMARY\nSet a daily budget and a simple bid strategy, then adjust by results.\n\nTRY THIS\nDecide a starting daily budget for a small campaign.",
+    "Conversion Tracking": "WHAT YOU LEARN\n• What a conversion is.\n• Setting up tracking.\n• Measuring true results.\n\nWHY IT MATTERS\nTracking shows which clicks turn into sales/leads.\n\nSTEP BY STEP\n1. Define your conversion (sale, form).\n2. Set up conversion tracking.\n3. See which keywords convert.\n4. Spend more on those.\n\nQUICK SUMMARY\nTrack conversions to find what actually drives sales and double down.\n\nTRY THIS\nList two conversions a service business would track.",
   },
   "content-marketing": {
-    "Content Strategy": "📌 WHAT YOU LEARN\n• Setting content goals and audience.\n• Choosing topics and formats.\n• Planning consistency.\n\n💡 WHY IT MATTERS\nStrategy makes content drive real business results.\n\n🪜 STEP BY STEP\n1. Define your goal and audience.\n2. List topics they care about.\n3. Pick formats (blog, video, email).\n4. Set a publishing schedule.\n\n✅ QUICK SUMMARY\nBuild a strategy with clear goals, topics, formats and a schedule.\n\n✏️ TRY THIS\nDraft a one-line content goal and 3 topics.",
-    "Blogging & SEO": "📌 WHAT YOU LEARN\n• Writing helpful, SEO-friendly blogs.\n• Structuring posts well.\n• Using keywords naturally.\n\n💡 WHY IT MATTERS\nBlogs bring free search traffic and build authority.\n\n🪜 STEP BY STEP\n1. Pick a keyword/topic.\n2. Outline with clear headings.\n3. Write genuinely useful content.\n4. Optimise title and meta.\n\n✅ QUICK SUMMARY\nWrite useful, well-structured blogs optimised around a keyword.\n\n✏️ TRY THIS\nOutline a blog post for a chosen keyword.",
-    "Email Marketing": "📌 WHAT YOU LEARN\n• Building an email list.\n• Writing emails people open.\n• Simple campaigns.\n\n💡 WHY IT MATTERS\nEmail is a direct, owned channel with high returns.\n\n🪜 STEP BY STEP\n1. Offer a reason to subscribe.\n2. Collect emails ethically.\n3. Write a helpful newsletter.\n4. Track opens and clicks.\n\n✅ QUICK SUMMARY\nGrow a list and send helpful emails; measure opens and clicks.\n\n✏️ TRY THIS\nWrite a subject line people would want to open.",
-    "Lead Magnets": "📌 WHAT YOU LEARN\n• What a lead magnet is.\n• Creating a free, valuable offer.\n• Capturing leads.\n\n💡 WHY IT MATTERS\nLead magnets grow your list with interested people.\n\n🪜 STEP BY STEP\n1. Pick a problem your audience has.\n2. Create a free guide/checklist.\n3. Offer it for an email.\n4. Deliver it automatically.\n\n✅ QUICK SUMMARY\nOffer a valuable freebie in exchange for emails to build your list.\n\n✏️ TRY THIS\nBrainstorm a lead magnet idea for your niche.",
-    "Measuring Content ROI": "📌 WHAT YOU LEARN\n• Tracking what content achieves.\n• Metrics that matter.\n• Improving over time.\n\n💡 WHY IT MATTERS\nMeasuring shows which content is worth the effort.\n\n🪜 STEP BY STEP\n1. Define the goal per piece.\n2. Track traffic, leads or sales.\n3. Compare content types.\n4. Do more of what works.\n\n✅ QUICK SUMMARY\nTie content to goals and track results to invest wisely.\n\n✏️ TRY THIS\nList one metric for a blog and one for an email.",
+    "Content Strategy": "WHAT YOU LEARN\n• Setting content goals and audience.\n• Choosing topics and formats.\n• Planning consistency.\n\nWHY IT MATTERS\nStrategy makes content drive real business results.\n\nSTEP BY STEP\n1. Define your goal and audience.\n2. List topics they care about.\n3. Pick formats (blog, video, email).\n4. Set a publishing schedule.\n\nQUICK SUMMARY\nBuild a strategy with clear goals, topics, formats and a schedule.\n\nTRY THIS\nDraft a one-line content goal and 3 topics.",
+    "Blogging & SEO": "WHAT YOU LEARN\n• Writing helpful, SEO-friendly blogs.\n• Structuring posts well.\n• Using keywords naturally.\n\nWHY IT MATTERS\nBlogs bring free search traffic and build authority.\n\nSTEP BY STEP\n1. Pick a keyword/topic.\n2. Outline with clear headings.\n3. Write genuinely useful content.\n4. Optimise title and meta.\n\nQUICK SUMMARY\nWrite useful, well-structured blogs optimised around a keyword.\n\nTRY THIS\nOutline a blog post for a chosen keyword.",
+    "Email Marketing": "WHAT YOU LEARN\n• Building an email list.\n• Writing emails people open.\n• Simple campaigns.\n\nWHY IT MATTERS\nEmail is a direct, owned channel with high returns.\n\nSTEP BY STEP\n1. Offer a reason to subscribe.\n2. Collect emails ethically.\n3. Write a helpful newsletter.\n4. Track opens and clicks.\n\nQUICK SUMMARY\nGrow a list and send helpful emails; measure opens and clicks.\n\nTRY THIS\nWrite a subject line people would want to open.",
+    "Lead Magnets": "WHAT YOU LEARN\n• What a lead magnet is.\n• Creating a free, valuable offer.\n• Capturing leads.\n\nWHY IT MATTERS\nLead magnets grow your list with interested people.\n\nSTEP BY STEP\n1. Pick a problem your audience has.\n2. Create a free guide/checklist.\n3. Offer it for an email.\n4. Deliver it automatically.\n\nQUICK SUMMARY\nOffer a valuable freebie in exchange for emails to build your list.\n\nTRY THIS\nBrainstorm a lead magnet idea for your niche.",
+    "Measuring Content ROI": "WHAT YOU LEARN\n• Tracking what content achieves.\n• Metrics that matter.\n• Improving over time.\n\nWHY IT MATTERS\nMeasuring shows which content is worth the effort.\n\nSTEP BY STEP\n1. Define the goal per piece.\n2. Track traffic, leads or sales.\n3. Compare content types.\n4. Do more of what works.\n\nQUICK SUMMARY\nTie content to goals and track results to invest wisely.\n\nTRY THIS\nList one metric for a blog and one for an email.",
   },
   "affiliate-marketing": {
-    "What is Affiliate Marketing": "📌 WHAT YOU LEARN\n• Earning commission by promoting products.\n• How affiliate links work.\n• Honest promotion.\n\n💡 WHY IT MATTERS\nAffiliate marketing earns income without making your own product.\n\n🪜 STEP BY STEP\n1. Learn you earn per sale via a link.\n2. Join an affiliate program.\n3. Get your unique link.\n4. Promote honestly.\n\n✅ QUICK SUMMARY\nPromote others' products with your link and earn commission per sale.\n\n✏️ TRY THIS\nExplain how an affiliate link tracks a sale.",
-    "Choosing Products & Niches": "📌 WHAT YOU LEARN\n• Picking a profitable niche.\n• Choosing products you trust.\n• Matching to your audience.\n\n💡 WHY IT MATTERS\nThe right niche and products make promotion natural and effective.\n\n🪜 STEP BY STEP\n1. Pick a niche you like.\n2. Find quality products in it.\n3. Check commission and demand.\n4. Match to your audience.\n\n✅ QUICK SUMMARY\nChoose a niche and trusted products that fit your audience.\n\n✏️ TRY THIS\nPick a niche and 2 products you could promote.",
-    "Building a Platform": "📌 WHAT YOU LEARN\n• Where to share affiliate content (blog, YouTube, social).\n• Creating helpful content.\n• Building trust.\n\n💡 WHY IT MATTERS\nA platform gives you an audience to recommend to.\n\n🪜 STEP BY STEP\n1. Choose one platform.\n2. Create useful, honest content.\n3. Add affiliate links naturally.\n4. Grow your audience.\n\n✅ QUICK SUMMARY\nBuild one platform with helpful content where you recommend products.\n\n✏️ TRY THIS\nDecide which platform fits your strengths.",
-    "Driving Traffic": "📌 WHAT YOU LEARN\n• Free and paid traffic methods.\n• SEO and social for affiliates.\n• Consistency.\n\n💡 WHY IT MATTERS\nMore targeted traffic means more affiliate sales.\n\n🪜 STEP BY STEP\n1. Use SEO for free search traffic.\n2. Share on social regularly.\n3. Try simple ads carefully.\n4. Focus on interested audiences.\n\n✅ QUICK SUMMARY\nDrive targeted traffic via SEO and social, consistently.\n\n✏️ TRY THIS\nList two free ways to drive traffic to a review.",
-    "Tracking Commissions": "📌 WHAT YOU LEARN\n• Reading affiliate dashboards.\n• Tracking clicks and sales.\n• Improving what converts.\n\n💡 WHY IT MATTERS\nTracking shows which content earns so you can do more.\n\n🪜 STEP BY STEP\n1. Check your affiliate dashboard.\n2. See clicks vs conversions.\n3. Find top-earning content.\n4. Create more like it.\n\n✅ QUICK SUMMARY\nTrack clicks and commissions to find and repeat what earns.\n\n✏️ TRY THIS\nName two numbers you'd watch in an affiliate dashboard.",
+    "What is Affiliate Marketing": "WHAT YOU LEARN\n• Earning commission by promoting products.\n• How affiliate links work.\n• Honest promotion.\n\nWHY IT MATTERS\nAffiliate marketing earns income without making your own product.\n\nSTEP BY STEP\n1. Learn you earn per sale via a link.\n2. Join an affiliate program.\n3. Get your unique link.\n4. Promote honestly.\n\nQUICK SUMMARY\nPromote others' products with your link and earn commission per sale.\n\nTRY THIS\nExplain how an affiliate link tracks a sale.",
+    "Choosing Products & Niches": "WHAT YOU LEARN\n• Picking a profitable niche.\n• Choosing products you trust.\n• Matching to your audience.\n\nWHY IT MATTERS\nThe right niche and products make promotion natural and effective.\n\nSTEP BY STEP\n1. Pick a niche you like.\n2. Find quality products in it.\n3. Check commission and demand.\n4. Match to your audience.\n\nQUICK SUMMARY\nChoose a niche and trusted products that fit your audience.\n\nTRY THIS\nPick a niche and 2 products you could promote.",
+    "Building a Platform": "WHAT YOU LEARN\n• Where to share affiliate content (blog, YouTube, social).\n• Creating helpful content.\n• Building trust.\n\nWHY IT MATTERS\nA platform gives you an audience to recommend to.\n\nSTEP BY STEP\n1. Choose one platform.\n2. Create useful, honest content.\n3. Add affiliate links naturally.\n4. Grow your audience.\n\nQUICK SUMMARY\nBuild one platform with helpful content where you recommend products.\n\nTRY THIS\nDecide which platform fits your strengths.",
+    "Driving Traffic": "WHAT YOU LEARN\n• Free and paid traffic methods.\n• SEO and social for affiliates.\n• Consistency.\n\nWHY IT MATTERS\nMore targeted traffic means more affiliate sales.\n\nSTEP BY STEP\n1. Use SEO for free search traffic.\n2. Share on social regularly.\n3. Try simple ads carefully.\n4. Focus on interested audiences.\n\nQUICK SUMMARY\nDrive targeted traffic via SEO and social, consistently.\n\nTRY THIS\nList two free ways to drive traffic to a review.",
+    "Tracking Commissions": "WHAT YOU LEARN\n• Reading affiliate dashboards.\n• Tracking clicks and sales.\n• Improving what converts.\n\nWHY IT MATTERS\nTracking shows which content earns so you can do more.\n\nSTEP BY STEP\n1. Check your affiliate dashboard.\n2. See clicks vs conversions.\n3. Find top-earning content.\n4. Create more like it.\n\nQUICK SUMMARY\nTrack clicks and commissions to find and repeat what earns.\n\nTRY THIS\nName two numbers you'd watch in an affiliate dashboard.",
   },
   "computer-basics": {
-    "Parts of a Computer": "📌 WHAT YOU LEARN\n• Main parts: monitor, CPU, keyboard, mouse, and storage.\n• Hardware (you can touch) vs software (programs).\n• Input, output and memory in simple words.\n\n💡 WHY IT MATTERS\nKnowing the parts removes fear and helps you use any computer confidently.\n\n🪜 STEP BY STEP\n1. Identify the screen (output) and keyboard/mouse (input).\n2. Find the CPU box or laptop body (the brain).\n3. Learn RAM = short memory, hard disk/SSD = storage.\n4. Turn the computer on and off properly.\n\n✅ QUICK SUMMARY\nA computer = input + brain + memory + output. Hardware is physical; software runs on it.\n\n✏️ TRY THIS\nPoint to and name 5 parts of the computer in front of you.",
-    "Using Windows & Files": "📌 WHAT YOU LEARN\n• The desktop, taskbar and Start menu.\n• Creating, renaming, moving and deleting files/folders.\n• Organising work into folders.\n\n💡 WHY IT MATTERS\nGood file habits mean you never lose your work and find things fast.\n\n🪜 STEP BY STEP\n1. Right-click the desktop and create a new folder.\n2. Rename it (e.g., 'My Work').\n3. Put files inside and copy/move them.\n4. Use the Recycle Bin to delete and restore.\n\n✅ QUICK SUMMARY\nUse folders to organise, and master create, rename, move and delete.\n\n✏️ TRY THIS\nMake a folder named 'Practice' and put two files in it.",
-    "Keyboard & Mouse Skills": "📌 WHAT YOU LEARN\n• Key uses: Enter, Space, Backspace, Shift, Ctrl.\n• Mouse: left-click, right-click, double-click, drag.\n• Handy shortcuts: copy, paste, undo.\n\n💡 WHY IT MATTERS\nComfort with keyboard and mouse makes every task faster.\n\n🪜 STEP BY STEP\n1. Practise typing a sentence with capitals (Shift).\n2. Right-click to open menus; double-click to open files.\n3. Drag to select or move items.\n4. Try Ctrl+C, Ctrl+V, Ctrl+Z.\n\n✅ QUICK SUMMARY\nLearn the main keys, the four mouse actions, and basic shortcuts.\n\n✏️ TRY THIS\nCopy a sentence and paste it three times using shortcuts.",
-    "Internet & Browsers": "📌 WHAT YOU LEARN\n• What the internet and a browser are.\n• Using Chrome: address bar, tabs, search.\n• Bookmarks and history.\n\n💡 WHY IT MATTERS\nThe internet is your gateway to learning, jobs and services.\n\n🪜 STEP BY STEP\n1. Open Chrome and type a website or search.\n2. Open multiple tabs and switch between them.\n3. Bookmark a useful page.\n4. Check your history to find a page again.\n\n✅ QUICK SUMMARY\nA browser opens websites; use tabs, search and bookmarks to work smartly.\n\n✏️ TRY THIS\nSearch a topic, open 2 results in tabs, and bookmark one.",
-    "Staying Safe Online": "📌 WHAT YOU LEARN\n• Spotting scams, fake links and viruses.\n• Strong passwords and not sharing OTPs.\n• Safe downloads and privacy basics.\n\n💡 WHY IT MATTERS\nOnline safety protects your money, data and identity.\n\n🪜 STEP BY STEP\n1. Never share OTP, PIN or passwords with anyone.\n2. Check links before clicking; avoid 'too good' offers.\n3. Use strong, different passwords.\n4. Download only from trusted sites.\n\n✅ QUICK SUMMARY\nGuard your passwords/OTPs, avoid suspicious links, and download carefully.\n\n✏️ TRY THIS\nCreate one strong password using letters, numbers and a symbol.",
+    "Parts of a Computer": "WHAT YOU LEARN\n• Main parts: monitor, CPU, keyboard, mouse, and storage.\n• Hardware (you can touch) vs software (programs).\n• Input, output and memory in simple words.\n\nWHY IT MATTERS\nKnowing the parts removes fear and helps you use any computer confidently.\n\nSTEP BY STEP\n1. Identify the screen (output) and keyboard/mouse (input).\n2. Find the CPU box or laptop body (the brain).\n3. Learn RAM = short memory, hard disk/SSD = storage.\n4. Turn the computer on and off properly.\n\nQUICK SUMMARY\nA computer = input + brain + memory + output. Hardware is physical; software runs on it.\n\nTRY THIS\nPoint to and name 5 parts of the computer in front of you.",
+    "Using Windows & Files": "WHAT YOU LEARN\n• The desktop, taskbar and Start menu.\n• Creating, renaming, moving and deleting files/folders.\n• Organising work into folders.\n\nWHY IT MATTERS\nGood file habits mean you never lose your work and find things fast.\n\nSTEP BY STEP\n1. Right-click the desktop and create a new folder.\n2. Rename it (e.g., 'My Work').\n3. Put files inside and copy/move them.\n4. Use the Recycle Bin to delete and restore.\n\nQUICK SUMMARY\nUse folders to organise, and master create, rename, move and delete.\n\nTRY THIS\nMake a folder named 'Practice' and put two files in it.",
+    "Keyboard & Mouse Skills": "WHAT YOU LEARN\n• Key uses: Enter, Space, Backspace, Shift, Ctrl.\n• Mouse: left-click, right-click, double-click, drag.\n• Handy shortcuts: copy, paste, undo.\n\nWHY IT MATTERS\nComfort with keyboard and mouse makes every task faster.\n\nSTEP BY STEP\n1. Practise typing a sentence with capitals (Shift).\n2. Right-click to open menus; double-click to open files.\n3. Drag to select or move items.\n4. Try Ctrl+C, Ctrl+V, Ctrl+Z.\n\nQUICK SUMMARY\nLearn the main keys, the four mouse actions, and basic shortcuts.\n\nTRY THIS\nCopy a sentence and paste it three times using shortcuts.",
+    "Internet & Browsers": "WHAT YOU LEARN\n• What the internet and a browser are.\n• Using Chrome: address bar, tabs, search.\n• Bookmarks and history.\n\nWHY IT MATTERS\nThe internet is your gateway to learning, jobs and services.\n\nSTEP BY STEP\n1. Open Chrome and type a website or search.\n2. Open multiple tabs and switch between them.\n3. Bookmark a useful page.\n4. Check your history to find a page again.\n\nQUICK SUMMARY\nA browser opens websites; use tabs, search and bookmarks to work smartly.\n\nTRY THIS\nSearch a topic, open 2 results in tabs, and bookmark one.",
+    "Staying Safe Online": "WHAT YOU LEARN\n• Spotting scams, fake links and viruses.\n• Strong passwords and not sharing OTPs.\n• Safe downloads and privacy basics.\n\nWHY IT MATTERS\nOnline safety protects your money, data and identity.\n\nSTEP BY STEP\n1. Never share OTP, PIN or passwords with anyone.\n2. Check links before clicking; avoid 'too good' offers.\n3. Use strong, different passwords.\n4. Download only from trusted sites.\n\nQUICK SUMMARY\nGuard your passwords/OTPs, avoid suspicious links, and download carefully.\n\nTRY THIS\nCreate one strong password using letters, numbers and a symbol.",
   },
   "ms-office-complete": {
-    "MS Word Essentials": "📌 WHAT YOU LEARN\n• Typing, formatting and saving documents.\n• Fonts, bold/italic, headings and alignment.\n• Bullet lists and simple tables.\n\n💡 WHY IT MATTERS\nWord is used for letters, resumes and reports in almost every office.\n\n🪜 STEP BY STEP\n1. Type a paragraph and make a title bold.\n2. Change font and size; centre the title.\n3. Add a bullet list.\n4. Save with Ctrl+S.\n\n✅ QUICK SUMMARY\nMaster typing, basic formatting, lists and saving in Word.\n\n✏️ TRY THIS\nType a short letter with a bold heading and a bullet list.",
-    "MS Excel Essentials": "📌 WHAT YOU LEARN\n• Cells, rows, columns and entering data.\n• Basic formulas: SUM, AVERAGE.\n• Simple formatting and saving.\n\n💡 WHY IT MATTERS\nExcel handles bills, marks, stock and reports everywhere.\n\n🪜 STEP BY STEP\n1. Enter numbers in a column.\n2. Use =SUM() to total them.\n3. Use =AVERAGE() for the mean.\n4. Format and save.\n\n✅ QUICK SUMMARY\nEnter data, use SUM/AVERAGE, format and save your sheet.\n\n✏️ TRY THIS\nList 5 prices and find their total and average.",
-    "MS PowerPoint Essentials": "📌 WHAT YOU LEARN\n• Adding slides, text and images.\n• Choosing a theme.\n• Running a slideshow.\n\n💡 WHY IT MATTERS\nPresentations help you explain ideas in class and at work.\n\n🪜 STEP BY STEP\n1. Add a title slide and 2 content slides.\n2. Insert an image and a bullet list.\n3. Pick a theme for a clean look.\n4. Press F5 to present.\n\n✅ QUICK SUMMARY\nAdd slides with text/images, apply a theme, and present.\n\n✏️ TRY THIS\nMake a 3-slide deck about yourself.",
-    "Working Between Office Apps": "📌 WHAT YOU LEARN\n• Copying data between Word, Excel and PowerPoint.\n• Pasting an Excel table into Word/PPT.\n• Keeping formatting tidy.\n\n💡 WHY IT MATTERS\nReal work moves content between apps; doing it cleanly saves time.\n\n🪜 STEP BY STEP\n1. Copy an Excel table.\n2. Paste it into Word and into PowerPoint.\n3. Use Paste Special to keep or remove formatting.\n4. Adjust size and alignment.\n\n✅ QUICK SUMMARY\nMove content smoothly between Office apps using copy/paste and Paste Special.\n\n✏️ TRY THIS\nPaste a small Excel table into a Word document neatly.",
-    "Printing & Saving as PDF": "📌 WHAT YOU LEARN\n• Print settings: pages, copies, orientation.\n• Saving any document as PDF.\n• Print preview to avoid mistakes.\n\n💡 WHY IT MATTERS\nPDFs are the standard for sharing; correct printing avoids wasted paper.\n\n🪜 STEP BY STEP\n1. Open Print (Ctrl+P) and check the preview.\n2. Set pages, copies and orientation.\n3. Choose 'Save as PDF' to make a PDF.\n4. Print only when the preview looks right.\n\n✅ QUICK SUMMARY\nPreview first, set options, and use Save as PDF for clean sharing.\n\n✏️ TRY THIS\nSave a Word document as a PDF and open it.",
+    "MS Word Essentials": "WHAT YOU LEARN\n• Typing, formatting and saving documents.\n• Fonts, bold/italic, headings and alignment.\n• Bullet lists and simple tables.\n\nWHY IT MATTERS\nWord is used for letters, resumes and reports in almost every office.\n\nSTEP BY STEP\n1. Type a paragraph and make a title bold.\n2. Change font and size; centre the title.\n3. Add a bullet list.\n4. Save with Ctrl+S.\n\nQUICK SUMMARY\nMaster typing, basic formatting, lists and saving in Word.\n\nTRY THIS\nType a short letter with a bold heading and a bullet list.",
+    "MS Excel Essentials": "WHAT YOU LEARN\n• Cells, rows, columns and entering data.\n• Basic formulas: SUM, AVERAGE.\n• Simple formatting and saving.\n\nWHY IT MATTERS\nExcel handles bills, marks, stock and reports everywhere.\n\nSTEP BY STEP\n1. Enter numbers in a column.\n2. Use =SUM() to total them.\n3. Use =AVERAGE() for the mean.\n4. Format and save.\n\nQUICK SUMMARY\nEnter data, use SUM/AVERAGE, format and save your sheet.\n\nTRY THIS\nList 5 prices and find their total and average.",
+    "MS PowerPoint Essentials": "WHAT YOU LEARN\n• Adding slides, text and images.\n• Choosing a theme.\n• Running a slideshow.\n\nWHY IT MATTERS\nPresentations help you explain ideas in class and at work.\n\nSTEP BY STEP\n1. Add a title slide and 2 content slides.\n2. Insert an image and a bullet list.\n3. Pick a theme for a clean look.\n4. Press F5 to present.\n\nQUICK SUMMARY\nAdd slides with text/images, apply a theme, and present.\n\nTRY THIS\nMake a 3-slide deck about yourself.",
+    "Working Between Office Apps": "WHAT YOU LEARN\n• Copying data between Word, Excel and PowerPoint.\n• Pasting an Excel table into Word/PPT.\n• Keeping formatting tidy.\n\nWHY IT MATTERS\nReal work moves content between apps; doing it cleanly saves time.\n\nSTEP BY STEP\n1. Copy an Excel table.\n2. Paste it into Word and into PowerPoint.\n3. Use Paste Special to keep or remove formatting.\n4. Adjust size and alignment.\n\nQUICK SUMMARY\nMove content smoothly between Office apps using copy/paste and Paste Special.\n\nTRY THIS\nPaste a small Excel table into a Word document neatly.",
+    "Printing & Saving as PDF": "WHAT YOU LEARN\n• Print settings: pages, copies, orientation.\n• Saving any document as PDF.\n• Print preview to avoid mistakes.\n\nWHY IT MATTERS\nPDFs are the standard for sharing; correct printing avoids wasted paper.\n\nSTEP BY STEP\n1. Open Print (Ctrl+P) and check the preview.\n2. Set pages, copies and orientation.\n3. Choose 'Save as PDF' to make a PDF.\n4. Print only when the preview looks right.\n\nQUICK SUMMARY\nPreview first, set options, and use Save as PDF for clean sharing.\n\nTRY THIS\nSave a Word document as a PDF and open it.",
   },
   "powerpoint-mastery": {
-    "Slide Design Basics": "📌 WHAT YOU LEARN\n• One idea per slide; less text, more clarity.\n• Readable fonts and good contrast.\n• Using images to support points.\n\n💡 WHY IT MATTERS\nClean slides keep the audience focused on you, not crowded text.\n\n🪜 STEP BY STEP\n1. Put one main point on each slide.\n2. Use large, simple fonts.\n3. Add a relevant image.\n4. Remove anything unnecessary.\n\n✅ QUICK SUMMARY\nKeep slides simple: one idea, big text, helpful visuals.\n\n✏️ TRY THIS\nRedesign a busy slide into two clean slides.",
-    "Themes & Layouts": "📌 WHAT YOU LEARN\n• Applying built-in themes for a consistent look.\n• Using slide layouts (title, content, two-content).\n• Matching colours across slides.\n\n💡 WHY IT MATTERS\nConsistency looks professional and saves design time.\n\n🪜 STEP BY STEP\n1. Pick a theme from the Design tab.\n2. Use the right layout for each slide.\n3. Keep one colour scheme.\n4. Use Slide Master for repeated elements.\n\n✅ QUICK SUMMARY\nApply a theme and proper layouts for a polished, consistent deck.\n\n✏️ TRY THIS\nApply one theme to a 4-slide deck and keep colours consistent.",
-    "Animations & Transitions": "📌 WHAT YOU LEARN\n• Adding simple entrance animations.\n• Slide transitions between slides.\n• Using effects sparingly.\n\n💡 WHY IT MATTERS\nSubtle motion adds polish; too much distracts.\n\n🪜 STEP BY STEP\n1. Select text and add a simple 'Appear' animation.\n2. Add one transition between slides.\n3. Keep timing quick.\n4. Preview the whole show.\n\n✅ QUICK SUMMARY\nUse light, consistent animations and transitions — less is more.\n\n✏️ TRY THIS\nAdd one entrance animation and one transition, then preview.",
-    "Charts & SmartArt": "📌 WHAT YOU LEARN\n• Inserting charts to show numbers.\n• Using SmartArt for processes and lists.\n• Keeping visuals clean and labelled.\n\n💡 WHY IT MATTERS\nVisuals make data and ideas easy to understand instantly.\n\n🪜 STEP BY STEP\n1. Insert a chart and enter simple data.\n2. Add SmartArt for a 3-step process.\n3. Label clearly and pick matching colours.\n4. Avoid clutter.\n\n✅ QUICK SUMMARY\nShow numbers with charts and ideas with SmartArt — clear and labelled.\n\n✏️ TRY THIS\nMake a simple bar chart and a 3-step SmartArt.",
-    "Presenting with Confidence": "📌 WHAT YOU LEARN\n• Practising and using Presenter View.\n• Speaking clearly and making eye contact.\n• Handling nerves and questions.\n\n💡 WHY IT MATTERS\nDelivery matters as much as slides — it builds trust.\n\n🪜 STEP BY STEP\n1. Practise out loud 2–3 times.\n2. Use Presenter View to see notes.\n3. Pause, breathe and look up.\n4. Invite questions at the end.\n\n✅ QUICK SUMMARY\nPractise, use notes, speak calmly, and welcome questions.\n\n✏️ TRY THIS\nPresent your 3-slide deck aloud to a friend or mirror.",
+    "Slide Design Basics": "WHAT YOU LEARN\n• One idea per slide; less text, more clarity.\n• Readable fonts and good contrast.\n• Using images to support points.\n\nWHY IT MATTERS\nClean slides keep the audience focused on you, not crowded text.\n\nSTEP BY STEP\n1. Put one main point on each slide.\n2. Use large, simple fonts.\n3. Add a relevant image.\n4. Remove anything unnecessary.\n\nQUICK SUMMARY\nKeep slides simple: one idea, big text, helpful visuals.\n\nTRY THIS\nRedesign a busy slide into two clean slides.",
+    "Themes & Layouts": "WHAT YOU LEARN\n• Applying built-in themes for a consistent look.\n• Using slide layouts (title, content, two-content).\n• Matching colours across slides.\n\nWHY IT MATTERS\nConsistency looks professional and saves design time.\n\nSTEP BY STEP\n1. Pick a theme from the Design tab.\n2. Use the right layout for each slide.\n3. Keep one colour scheme.\n4. Use Slide Master for repeated elements.\n\nQUICK SUMMARY\nApply a theme and proper layouts for a polished, consistent deck.\n\nTRY THIS\nApply one theme to a 4-slide deck and keep colours consistent.",
+    "Animations & Transitions": "WHAT YOU LEARN\n• Adding simple entrance animations.\n• Slide transitions between slides.\n• Using effects sparingly.\n\nWHY IT MATTERS\nSubtle motion adds polish; too much distracts.\n\nSTEP BY STEP\n1. Select text and add a simple 'Appear' animation.\n2. Add one transition between slides.\n3. Keep timing quick.\n4. Preview the whole show.\n\nQUICK SUMMARY\nUse light, consistent animations and transitions — less is more.\n\nTRY THIS\nAdd one entrance animation and one transition, then preview.",
+    "Charts & SmartArt": "WHAT YOU LEARN\n• Inserting charts to show numbers.\n• Using SmartArt for processes and lists.\n• Keeping visuals clean and labelled.\n\nWHY IT MATTERS\nVisuals make data and ideas easy to understand instantly.\n\nSTEP BY STEP\n1. Insert a chart and enter simple data.\n2. Add SmartArt for a 3-step process.\n3. Label clearly and pick matching colours.\n4. Avoid clutter.\n\nQUICK SUMMARY\nShow numbers with charts and ideas with SmartArt — clear and labelled.\n\nTRY THIS\nMake a simple bar chart and a 3-step SmartArt.",
+    "Presenting with Confidence": "WHAT YOU LEARN\n• Practising and using Presenter View.\n• Speaking clearly and making eye contact.\n• Handling nerves and questions.\n\nWHY IT MATTERS\nDelivery matters as much as slides — it builds trust.\n\nSTEP BY STEP\n1. Practise out loud 2–3 times.\n2. Use Presenter View to see notes.\n3. Pause, breathe and look up.\n4. Invite questions at the end.\n\nQUICK SUMMARY\nPractise, use notes, speak calmly, and welcome questions.\n\nTRY THIS\nPresent your 3-slide deck aloud to a friend or mirror.",
   },
   "internet-email-skills": {
-    "Browsing & Searching Well": "📌 WHAT YOU LEARN\n• Searching with the right keywords.\n• Judging which results are trustworthy.\n• Using tabs and saving pages.\n\n💡 WHY IT MATTERS\nSmart searching finds correct answers faster.\n\n🪜 STEP BY STEP\n1. Use short, specific keywords.\n2. Prefer official and well-known sites.\n3. Open promising results in tabs.\n4. Bookmark the best one.\n\n✅ QUICK SUMMARY\nSearch with good keywords, trust reliable sources, and save what's useful.\n\n✏️ TRY THIS\nFind an official source answering a question you have today.",
-    "Creating & Using Email": "📌 WHAT YOU LEARN\n• Making a Gmail account.\n• Sending, replying and forwarding.\n• Writing clear subjects and messages.\n\n💡 WHY IT MATTERS\nEmail is essential for jobs, college and services.\n\n🪜 STEP BY STEP\n1. Create a Gmail account.\n2. Compose a mail with a clear subject.\n3. Reply and forward a message.\n4. Organise with labels/stars.\n\n✅ QUICK SUMMARY\nSet up email and master send, reply, forward with clear subjects.\n\n✏️ TRY THIS\nSend yourself a test email with a subject and a short body.",
-    "Attachments & Drive": "📌 WHAT YOU LEARN\n• Attaching files to email.\n• Using Google Drive to store and share.\n• Sharing links with permissions.\n\n💡 WHY IT MATTERS\nYou'll often need to send documents and share files safely.\n\n🪜 STEP BY STEP\n1. Attach a file to an email.\n2. Upload a file to Google Drive.\n3. Create a share link.\n4. Set view or edit permission.\n\n✅ QUICK SUMMARY\nAttach files in email and use Drive to store and share with the right access.\n\n✏️ TRY THIS\nUpload a file to Drive and create a 'view only' share link.",
-    "Online Safety & Passwords": "📌 WHAT YOU LEARN\n• Strong, unique passwords.\n• Two-factor authentication (2FA).\n• Spotting phishing emails.\n\n💡 WHY IT MATTERS\nMost account hacks come from weak passwords and phishing.\n\n🪜 STEP BY STEP\n1. Make a long, unique password.\n2. Turn on 2FA for your email.\n3. Don't click suspicious links/attachments.\n4. Never share OTPs.\n\n✅ QUICK SUMMARY\nUse strong passwords + 2FA and stay alert to phishing.\n\n✏️ TRY THIS\nEnable 2FA on your email account.",
-    "Video Calls & Meetings": "📌 WHAT YOU LEARN\n• Joining Google Meet/Zoom calls.\n• Mic, camera and screen-share basics.\n• Meeting etiquette.\n\n💡 WHY IT MATTERS\nOnline meetings are normal for study, work and interviews.\n\n🪜 STEP BY STEP\n1. Join a meeting from a link.\n2. Test mic and camera.\n3. Mute when not speaking.\n4. Share your screen when needed.\n\n✅ QUICK SUMMARY\nJoin calls confidently: manage mic/camera, mute politely, and share screen.\n\n✏️ TRY THIS\nStart a test Google Meet and try screen sharing.",
+    "Browsing & Searching Well": "WHAT YOU LEARN\n• Searching with the right keywords.\n• Judging which results are trustworthy.\n• Using tabs and saving pages.\n\nWHY IT MATTERS\nSmart searching finds correct answers faster.\n\nSTEP BY STEP\n1. Use short, specific keywords.\n2. Prefer official and well-known sites.\n3. Open promising results in tabs.\n4. Bookmark the best one.\n\nQUICK SUMMARY\nSearch with good keywords, trust reliable sources, and save what's useful.\n\nTRY THIS\nFind an official source answering a question you have today.",
+    "Creating & Using Email": "WHAT YOU LEARN\n• Making a Gmail account.\n• Sending, replying and forwarding.\n• Writing clear subjects and messages.\n\nWHY IT MATTERS\nEmail is essential for jobs, college and services.\n\nSTEP BY STEP\n1. Create a Gmail account.\n2. Compose a mail with a clear subject.\n3. Reply and forward a message.\n4. Organise with labels/stars.\n\nQUICK SUMMARY\nSet up email and master send, reply, forward with clear subjects.\n\nTRY THIS\nSend yourself a test email with a subject and a short body.",
+    "Attachments & Drive": "WHAT YOU LEARN\n• Attaching files to email.\n• Using Google Drive to store and share.\n• Sharing links with permissions.\n\nWHY IT MATTERS\nYou'll often need to send documents and share files safely.\n\nSTEP BY STEP\n1. Attach a file to an email.\n2. Upload a file to Google Drive.\n3. Create a share link.\n4. Set view or edit permission.\n\nQUICK SUMMARY\nAttach files in email and use Drive to store and share with the right access.\n\nTRY THIS\nUpload a file to Drive and create a 'view only' share link.",
+    "Online Safety & Passwords": "WHAT YOU LEARN\n• Strong, unique passwords.\n• Two-factor authentication (2FA).\n• Spotting phishing emails.\n\nWHY IT MATTERS\nMost account hacks come from weak passwords and phishing.\n\nSTEP BY STEP\n1. Make a long, unique password.\n2. Turn on 2FA for your email.\n3. Don't click suspicious links/attachments.\n4. Never share OTPs.\n\nQUICK SUMMARY\nUse strong passwords + 2FA and stay alert to phishing.\n\nTRY THIS\nEnable 2FA on your email account.",
+    "Video Calls & Meetings": "WHAT YOU LEARN\n• Joining Google Meet/Zoom calls.\n• Mic, camera and screen-share basics.\n• Meeting etiquette.\n\nWHY IT MATTERS\nOnline meetings are normal for study, work and interviews.\n\nSTEP BY STEP\n1. Join a meeting from a link.\n2. Test mic and camera.\n3. Mute when not speaking.\n4. Share your screen when needed.\n\nQUICK SUMMARY\nJoin calls confidently: manage mic/camera, mute politely, and share screen.\n\nTRY THIS\nStart a test Google Meet and try screen sharing.",
   },
   "typing-tamil-english": {
-    "Home Row & Posture": "📌 WHAT YOU LEARN\n• Home row keys (ASDF JKL;) and finger placement.\n• Correct sitting posture and wrist position.\n• Looking at the screen, not the keyboard.\n\n💡 WHY IT MATTERS\nRight habits prevent pain and build real typing speed.\n\n🪜 STEP BY STEP\n1. Rest fingers on ASDF and JKL;.\n2. Sit straight, wrists relaxed.\n3. Feel the bumps on F and J.\n4. Type slowly without looking down.\n\n✅ QUICK SUMMARY\nStart on the home row with good posture and eyes on the screen.\n\n✏️ TRY THIS\nType 'asdf jkl;' ten times without looking at the keys.",
-    "English Touch Typing": "📌 WHAT YOU LEARN\n• Which finger hits which key.\n• Building muscle memory.\n• Typing common words smoothly.\n\n💡 WHY IT MATTERS\nTouch typing lets you type fast while reading the screen.\n\n🪜 STEP BY STEP\n1. Learn finger-to-key mapping row by row.\n2. Practise short words daily.\n3. Use a free typing site for drills.\n4. Increase difficulty slowly.\n\n✅ QUICK SUMMARY\nMap fingers to keys and practise daily to type without looking.\n\n✏️ TRY THIS\nDo a 5-minute typing drill on a free site like keybr.",
-    "Tamil Typing Basics": "📌 WHAT YOU LEARN\n• Tamil typing methods (Tamil99, phonetic, Google Input).\n• Setting up Tamil keyboard.\n• Typing simple Tamil words.\n\n💡 WHY IT MATTERS\nTamil typing is useful for documents, posts and local work.\n\n🪜 STEP BY STEP\n1. Enable a Tamil input method.\n2. Choose phonetic (type in English, get Tamil) to start.\n3. Type your name in Tamil.\n4. Practise common words.\n\n✅ QUICK SUMMARY\nSet up a Tamil keyboard and start with phonetic typing for ease.\n\n✏️ TRY THIS\nType your name and city in Tamil using phonetic input.",
-    "Speed Building Drills": "📌 WHAT YOU LEARN\n• Daily drills to raise words-per-minute (WPM).\n• Tracking progress.\n• Warming up before typing.\n\n💡 WHY IT MATTERS\nSteady drills turn slow typing into fast, confident typing.\n\n🪜 STEP BY STEP\n1. Test your current WPM.\n2. Do 10-minute drills daily.\n3. Repeat tricky words.\n4. Re-test weekly to see growth.\n\n✅ QUICK SUMMARY\nPractise short daily drills and track WPM to build speed.\n\n✏️ TRY THIS\nNote today's WPM and aim to beat it next week.",
-    "Accuracy & Shortcuts": "📌 WHAT YOU LEARN\n• Why accuracy matters more than raw speed.\n• Common keyboard shortcuts.\n• Reducing typing mistakes.\n\n💡 WHY IT MATTERS\nAccurate typing saves correction time and looks professional.\n\n🪜 STEP BY STEP\n1. Slow down slightly to cut errors.\n2. Learn Ctrl+C/V/Z/S and Ctrl+A.\n3. Fix bad habits on specific keys.\n4. Aim for 95%+ accuracy.\n\n✅ QUICK SUMMARY\nPrioritise accuracy and use shortcuts to work faster overall.\n\n✏️ TRY THIS\nType a paragraph aiming for zero mistakes, then check.",
+    "Home Row & Posture": "WHAT YOU LEARN\n• Home row keys (ASDF JKL;) and finger placement.\n• Correct sitting posture and wrist position.\n• Looking at the screen, not the keyboard.\n\nWHY IT MATTERS\nRight habits prevent pain and build real typing speed.\n\nSTEP BY STEP\n1. Rest fingers on ASDF and JKL;.\n2. Sit straight, wrists relaxed.\n3. Feel the bumps on F and J.\n4. Type slowly without looking down.\n\nQUICK SUMMARY\nStart on the home row with good posture and eyes on the screen.\n\nTRY THIS\nType 'asdf jkl;' ten times without looking at the keys.",
+    "English Touch Typing": "WHAT YOU LEARN\n• Which finger hits which key.\n• Building muscle memory.\n• Typing common words smoothly.\n\nWHY IT MATTERS\nTouch typing lets you type fast while reading the screen.\n\nSTEP BY STEP\n1. Learn finger-to-key mapping row by row.\n2. Practise short words daily.\n3. Use a free typing site for drills.\n4. Increase difficulty slowly.\n\nQUICK SUMMARY\nMap fingers to keys and practise daily to type without looking.\n\nTRY THIS\nDo a 5-minute typing drill on a free site like keybr.",
+    "Tamil Typing Basics": "WHAT YOU LEARN\n• Tamil typing methods (Tamil99, phonetic, Google Input).\n• Setting up Tamil keyboard.\n• Typing simple Tamil words.\n\nWHY IT MATTERS\nTamil typing is useful for documents, posts and local work.\n\nSTEP BY STEP\n1. Enable a Tamil input method.\n2. Choose phonetic (type in English, get Tamil) to start.\n3. Type your name in Tamil.\n4. Practise common words.\n\nQUICK SUMMARY\nSet up a Tamil keyboard and start with phonetic typing for ease.\n\nTRY THIS\nType your name and city in Tamil using phonetic input.",
+    "Speed Building Drills": "WHAT YOU LEARN\n• Daily drills to raise words-per-minute (WPM).\n• Tracking progress.\n• Warming up before typing.\n\nWHY IT MATTERS\nSteady drills turn slow typing into fast, confident typing.\n\nSTEP BY STEP\n1. Test your current WPM.\n2. Do 10-minute drills daily.\n3. Repeat tricky words.\n4. Re-test weekly to see growth.\n\nQUICK SUMMARY\nPractise short daily drills and track WPM to build speed.\n\nTRY THIS\nNote today's WPM and aim to beat it next week.",
+    "Accuracy & Shortcuts": "WHAT YOU LEARN\n• Why accuracy matters more than raw speed.\n• Common keyboard shortcuts.\n• Reducing typing mistakes.\n\nWHY IT MATTERS\nAccurate typing saves correction time and looks professional.\n\nSTEP BY STEP\n1. Slow down slightly to cut errors.\n2. Learn Ctrl+C/V/Z/S and Ctrl+A.\n3. Fix bad habits on specific keys.\n4. Aim for 95%+ accuracy.\n\nQUICK SUMMARY\nPrioritise accuracy and use shortcuts to work faster overall.\n\nTRY THIS\nType a paragraph aiming for zero mistakes, then check.",
   },
   "tally-prime": {
-    "Tally Setup & Company Creation": "📌 WHAT YOU LEARN\n• Installing Tally Prime.\n• Creating and configuring a company.\n• Navigating the main screen.\n\n💡 WHY IT MATTERS\nCompany setup is the first step before any accounting in Tally.\n\n🪜 STEP BY STEP\n1. Install and open Tally Prime.\n2. Create Company with name and financial year.\n3. Set currency and basic features.\n4. Explore the Gateway of Tally.\n\n✅ QUICK SUMMARY\nInstall Tally, create your company, and learn the main menu.\n\n✏️ TRY THIS\nCreate a practice company with this year's dates.",
-    "Ledgers & Groups": "📌 WHAT YOU LEARN\n• What ledgers and groups are.\n• Creating ledgers under correct groups.\n• Examples: Sales, Purchase, Cash, Bank.\n\n💡 WHY IT MATTERS\nCorrect ledgers and groups keep your accounts organised and reports accurate.\n\n🪜 STEP BY STEP\n1. Open Create > Ledger.\n2. Make a Cash ledger under Cash-in-hand.\n3. Make Sales and Purchase ledgers.\n4. Group customers under Sundry Debtors.\n\n✅ QUICK SUMMARY\nCreate ledgers under the right groups so reports come out correct.\n\n✏️ TRY THIS\nCreate Cash, Sales and one customer ledger.",
-    "Voucher Entry": "📌 WHAT YOU LEARN\n• Voucher types: payment, receipt, sales, purchase.\n• Recording day-to-day transactions.\n• Checking the Day Book.\n\n💡 WHY IT MATTERS\nVouchers are how every transaction enters Tally.\n\n🪜 STEP BY STEP\n1. Press the shortcut for a Sales voucher.\n2. Select parties and ledgers.\n3. Enter amount and save.\n4. View it in the Day Book.\n\n✅ QUICK SUMMARY\nUse the right voucher type for each transaction and verify in Day Book.\n\n✏️ TRY THIS\nRecord a cash sale and a cash purchase.",
-    "GST in Tally": "📌 WHAT YOU LEARN\n• Enabling GST in Tally.\n• Creating GST ledgers (CGST, SGST, IGST).\n• Recording GST invoices.\n\n💡 WHY IT MATTERS\nMost businesses need GST-compliant entries and reports.\n\n🪜 STEP BY STEP\n1. Enable GST in company features.\n2. Set GST rates on items/ledgers.\n3. Create tax ledgers.\n4. Record a GST sales invoice.\n\n✅ QUICK SUMMARY\nTurn on GST, set rates and tax ledgers, and book GST invoices correctly.\n\n✏️ TRY THIS\nRecord one GST sales invoice with CGST and SGST.",
-    "Reports & Balance Sheet": "📌 WHAT YOU LEARN\n• Key reports: Day Book, Trial Balance, P&L, Balance Sheet.\n• Reading what each report shows.\n• Exporting reports.\n\n💡 WHY IT MATTERS\nReports turn entries into useful business information.\n\n🪜 STEP BY STEP\n1. Open Display > Trial Balance.\n2. View Profit & Loss A/c.\n3. Open the Balance Sheet.\n4. Export a report to PDF/Excel.\n\n✅ QUICK SUMMARY\nGenerate and read the core financial reports, then export them.\n\n✏️ TRY THIS\nOpen the Balance Sheet for your practice company.",
+    "Tally Setup & Company Creation": "WHAT YOU LEARN\n• Installing Tally Prime.\n• Creating and configuring a company.\n• Navigating the main screen.\n\nWHY IT MATTERS\nCompany setup is the first step before any accounting in Tally.\n\nSTEP BY STEP\n1. Install and open Tally Prime.\n2. Create Company with name and financial year.\n3. Set currency and basic features.\n4. Explore the Gateway of Tally.\n\nQUICK SUMMARY\nInstall Tally, create your company, and learn the main menu.\n\nTRY THIS\nCreate a practice company with this year's dates.",
+    "Ledgers & Groups": "WHAT YOU LEARN\n• What ledgers and groups are.\n• Creating ledgers under correct groups.\n• Examples: Sales, Purchase, Cash, Bank.\n\nWHY IT MATTERS\nCorrect ledgers and groups keep your accounts organised and reports accurate.\n\nSTEP BY STEP\n1. Open Create > Ledger.\n2. Make a Cash ledger under Cash-in-hand.\n3. Make Sales and Purchase ledgers.\n4. Group customers under Sundry Debtors.\n\nQUICK SUMMARY\nCreate ledgers under the right groups so reports come out correct.\n\nTRY THIS\nCreate Cash, Sales and one customer ledger.",
+    "Voucher Entry": "WHAT YOU LEARN\n• Voucher types: payment, receipt, sales, purchase.\n• Recording day-to-day transactions.\n• Checking the Day Book.\n\nWHY IT MATTERS\nVouchers are how every transaction enters Tally.\n\nSTEP BY STEP\n1. Press the shortcut for a Sales voucher.\n2. Select parties and ledgers.\n3. Enter amount and save.\n4. View it in the Day Book.\n\nQUICK SUMMARY\nUse the right voucher type for each transaction and verify in Day Book.\n\nTRY THIS\nRecord a cash sale and a cash purchase.",
+    "GST in Tally": "WHAT YOU LEARN\n• Enabling GST in Tally.\n• Creating GST ledgers (CGST, SGST, IGST).\n• Recording GST invoices.\n\nWHY IT MATTERS\nMost businesses need GST-compliant entries and reports.\n\nSTEP BY STEP\n1. Enable GST in company features.\n2. Set GST rates on items/ledgers.\n3. Create tax ledgers.\n4. Record a GST sales invoice.\n\nQUICK SUMMARY\nTurn on GST, set rates and tax ledgers, and book GST invoices correctly.\n\nTRY THIS\nRecord one GST sales invoice with CGST and SGST.",
+    "Reports & Balance Sheet": "WHAT YOU LEARN\n• Key reports: Day Book, Trial Balance, P&L, Balance Sheet.\n• Reading what each report shows.\n• Exporting reports.\n\nWHY IT MATTERS\nReports turn entries into useful business information.\n\nSTEP BY STEP\n1. Open Display > Trial Balance.\n2. View Profit & Loss A/c.\n3. Open the Balance Sheet.\n4. Export a report to PDF/Excel.\n\nQUICK SUMMARY\nGenerate and read the core financial reports, then export them.\n\nTRY THIS\nOpen the Balance Sheet for your practice company.",
   },
   "gst-filing": {
-    "GST Basics & Types": "📌 WHAT YOU LEARN\n• What GST is and why it exists.\n• Types: CGST, SGST, IGST.\n• Who needs to register.\n\n💡 WHY IT MATTERS\nGST affects almost every business; basics prevent costly mistakes.\n\n🪜 STEP BY STEP\n1. Understand GST as one tax on supply.\n2. Learn intra-state (CGST+SGST) vs inter-state (IGST).\n3. Note the registration threshold.\n4. Know common return types.\n\n✅ QUICK SUMMARY\nGST is a unified tax; know CGST/SGST/IGST and who must register.\n\n✏️ TRY THIS\nExplain in one line the difference between CGST/SGST and IGST.",
-    "GST Registration": "📌 WHAT YOU LEARN\n• When registration is required.\n• Documents needed.\n• The online registration process.\n\n💡 WHY IT MATTERS\nCorrect registration is the legal first step to charge and claim GST.\n\n🪜 STEP BY STEP\n1. Check if turnover/activity needs GST.\n2. Gather PAN, address and bank proof.\n3. Apply on the GST portal.\n4. Receive your GSTIN.\n\n✅ QUICK SUMMARY\nConfirm need, prepare documents, apply online, and get your GSTIN.\n\n✏️ TRY THIS\nList the documents required for GST registration.",
-    "Invoices & Returns": "📌 WHAT YOU LEARN\n• What a GST invoice must contain.\n• Difference between invoice and return.\n• Return filing basics.\n\n💡 WHY IT MATTERS\nProper invoices and timely returns keep a business compliant.\n\n🪜 STEP BY STEP\n1. Include GSTIN, HSN, tax rate and amount on invoices.\n2. Keep sales and purchase records.\n3. Understand monthly/quarterly returns.\n4. File before due dates.\n\n✅ QUICK SUMMARY\nMake compliant invoices and file returns on time using your records.\n\n✏️ TRY THIS\nList 5 things a GST invoice must show.",
-    "GSTR-1 & GSTR-3B Filing": "📌 WHAT YOU LEARN\n• GSTR-1 (outward sales) vs GSTR-3B (summary).\n• What data goes in each.\n• The filing flow on the portal.\n\n💡 WHY IT MATTERS\nThese are the most common returns most businesses file.\n\n🪜 STEP BY STEP\n1. Prepare sales data for GSTR-1.\n2. File GSTR-1 on the portal.\n3. Prepare summary and tax for GSTR-3B.\n4. Pay tax and submit GSTR-3B.\n\n✅ QUICK SUMMARY\nGSTR-1 reports sales; GSTR-3B summarises and pays tax. File both on time.\n\n✏️ TRY THIS\nNote the due dates for GSTR-1 and GSTR-3B.",
-    "Input Tax Credit": "📌 WHAT YOU LEARN\n• What Input Tax Credit (ITC) is.\n• Conditions to claim it.\n• How ITC reduces tax payable.\n\n💡 WHY IT MATTERS\nITC saves money by offsetting tax you paid on purchases.\n\n🪜 STEP BY STEP\n1. Ensure purchase invoices are GST-compliant.\n2. Check the supplier filed their return.\n3. Match ITC in your records.\n4. Claim eligible ITC in GSTR-3B.\n\n✅ QUICK SUMMARY\nClaim ITC on valid purchases to lower your GST payable.\n\n✏️ TRY THIS\nWith a simple example, show how ITC reduces tax due.",
+    "GST Basics & Types": "WHAT YOU LEARN\n• What GST is and why it exists.\n• Types: CGST, SGST, IGST.\n• Who needs to register.\n\nWHY IT MATTERS\nGST affects almost every business; basics prevent costly mistakes.\n\nSTEP BY STEP\n1. Understand GST as one tax on supply.\n2. Learn intra-state (CGST+SGST) vs inter-state (IGST).\n3. Note the registration threshold.\n4. Know common return types.\n\nQUICK SUMMARY\nGST is a unified tax; know CGST/SGST/IGST and who must register.\n\nTRY THIS\nExplain in one line the difference between CGST/SGST and IGST.",
+    "GST Registration": "WHAT YOU LEARN\n• When registration is required.\n• Documents needed.\n• The online registration process.\n\nWHY IT MATTERS\nCorrect registration is the legal first step to charge and claim GST.\n\nSTEP BY STEP\n1. Check if turnover/activity needs GST.\n2. Gather PAN, address and bank proof.\n3. Apply on the GST portal.\n4. Receive your GSTIN.\n\nQUICK SUMMARY\nConfirm need, prepare documents, apply online, and get your GSTIN.\n\nTRY THIS\nList the documents required for GST registration.",
+    "Invoices & Returns": "WHAT YOU LEARN\n• What a GST invoice must contain.\n• Difference between invoice and return.\n• Return filing basics.\n\nWHY IT MATTERS\nProper invoices and timely returns keep a business compliant.\n\nSTEP BY STEP\n1. Include GSTIN, HSN, tax rate and amount on invoices.\n2. Keep sales and purchase records.\n3. Understand monthly/quarterly returns.\n4. File before due dates.\n\nQUICK SUMMARY\nMake compliant invoices and file returns on time using your records.\n\nTRY THIS\nList 5 things a GST invoice must show.",
+    "GSTR-1 & GSTR-3B Filing": "WHAT YOU LEARN\n• GSTR-1 (outward sales) vs GSTR-3B (summary).\n• What data goes in each.\n• The filing flow on the portal.\n\nWHY IT MATTERS\nThese are the most common returns most businesses file.\n\nSTEP BY STEP\n1. Prepare sales data for GSTR-1.\n2. File GSTR-1 on the portal.\n3. Prepare summary and tax for GSTR-3B.\n4. Pay tax and submit GSTR-3B.\n\nQUICK SUMMARY\nGSTR-1 reports sales; GSTR-3B summarises and pays tax. File both on time.\n\nTRY THIS\nNote the due dates for GSTR-1 and GSTR-3B.",
+    "Input Tax Credit": "WHAT YOU LEARN\n• What Input Tax Credit (ITC) is.\n• Conditions to claim it.\n• How ITC reduces tax payable.\n\nWHY IT MATTERS\nITC saves money by offsetting tax you paid on purchases.\n\nSTEP BY STEP\n1. Ensure purchase invoices are GST-compliant.\n2. Check the supplier filed their return.\n3. Match ITC in your records.\n4. Claim eligible ITC in GSTR-3B.\n\nQUICK SUMMARY\nClaim ITC on valid purchases to lower your GST payable.\n\nTRY THIS\nWith a simple example, show how ITC reduces tax due.",
   },
   "income-tax-basics": {
-    "Income Tax Overview": "📌 WHAT YOU LEARN\n• What income tax is and who pays it.\n• Financial year vs assessment year.\n• The idea of taxable income.\n\n💡 WHY IT MATTERS\nUnderstanding tax helps you plan and stay compliant.\n\n🪜 STEP BY STEP\n1. Learn that tax applies to yearly income.\n2. Note FY (earning) and AY (assessment).\n3. Understand income minus deductions = taxable income.\n4. Know that rates rise with income.\n\n✅ QUICK SUMMARY\nIncome tax is on yearly taxable income; know FY/AY and the basics.\n\n✏️ TRY THIS\nExplain the difference between financial year and assessment year.",
-    "Tax Slabs & Heads of Income": "📌 WHAT YOU LEARN\n• The five heads of income (salary, house, business, capital gains, other).\n• How slab rates work.\n• Old vs new regime idea.\n\n💡 WHY IT MATTERS\nKnowing heads and slabs helps you estimate and reduce tax.\n\n🪜 STEP BY STEP\n1. Identify which heads apply to you.\n2. Add income under each head.\n3. Apply the relevant slab rates.\n4. Compare old vs new regime broadly.\n\n✅ QUICK SUMMARY\nIncome falls under heads; slab rates apply progressively to taxable income.\n\n✏️ TRY THIS\nList the five heads of income.",
-    "Deductions (80C etc.)": "📌 WHAT YOU LEARN\n• Common deductions like 80C, 80D.\n• Investments that save tax.\n• Limits on deductions.\n\n💡 WHY IT MATTERS\nDeductions legally reduce your tax and encourage saving.\n\n🪜 STEP BY STEP\n1. Learn 80C items (PPF, LIC, ELSS) up to the limit.\n2. Know 80D for health insurance.\n3. Keep proofs of investments.\n4. Claim them while filing.\n\n✅ QUICK SUMMARY\nUse deductions like 80C/80D within limits to lower taxable income.\n\n✏️ TRY THIS\nName three investments that qualify under 80C.",
-    "Filing ITR Online": "📌 WHAT YOU LEARN\n• What an ITR is and who files which form.\n• The online filing steps.\n• Verifying your return.\n\n💡 WHY IT MATTERS\nFiling on time avoids penalties and enables refunds.\n\n🪜 STEP BY STEP\n1. Gather income and deduction details.\n2. Log in to the income tax portal.\n3. Fill the correct ITR form.\n4. Submit and e-verify.\n\n✅ QUICK SUMMARY\nPrepare details, file the right ITR form online, and e-verify.\n\n✏️ TRY THIS\nList the documents you'd keep ready before filing an ITR.",
-    "Form 16 & TDS": "📌 WHAT YOU LEARN\n• What TDS (tax deducted at source) is.\n• What Form 16 shows.\n• Using Form 16 to file returns.\n\n💡 WHY IT MATTERS\nSalaried people rely on Form 16 and TDS details to file correctly.\n\n🪜 STEP BY STEP\n1. Understand TDS is tax cut before you're paid.\n2. Get Form 16 from your employer.\n3. Read salary, deductions and TDS in it.\n4. Use it to fill your ITR.\n\n✅ QUICK SUMMARY\nTDS is pre-deducted tax; Form 16 summarises it for easy filing.\n\n✏️ TRY THIS\nExplain what information Form 16 contains.",
+    "Income Tax Overview": "WHAT YOU LEARN\n• What income tax is and who pays it.\n• Financial year vs assessment year.\n• The idea of taxable income.\n\nWHY IT MATTERS\nUnderstanding tax helps you plan and stay compliant.\n\nSTEP BY STEP\n1. Learn that tax applies to yearly income.\n2. Note FY (earning) and AY (assessment).\n3. Understand income minus deductions = taxable income.\n4. Know that rates rise with income.\n\nQUICK SUMMARY\nIncome tax is on yearly taxable income; know FY/AY and the basics.\n\nTRY THIS\nExplain the difference between financial year and assessment year.",
+    "Tax Slabs & Heads of Income": "WHAT YOU LEARN\n• The five heads of income (salary, house, business, capital gains, other).\n• How slab rates work.\n• Old vs new regime idea.\n\nWHY IT MATTERS\nKnowing heads and slabs helps you estimate and reduce tax.\n\nSTEP BY STEP\n1. Identify which heads apply to you.\n2. Add income under each head.\n3. Apply the relevant slab rates.\n4. Compare old vs new regime broadly.\n\nQUICK SUMMARY\nIncome falls under heads; slab rates apply progressively to taxable income.\n\nTRY THIS\nList the five heads of income.",
+    "Deductions (80C etc.)": "WHAT YOU LEARN\n• Common deductions like 80C, 80D.\n• Investments that save tax.\n• Limits on deductions.\n\nWHY IT MATTERS\nDeductions legally reduce your tax and encourage saving.\n\nSTEP BY STEP\n1. Learn 80C items (PPF, LIC, ELSS) up to the limit.\n2. Know 80D for health insurance.\n3. Keep proofs of investments.\n4. Claim them while filing.\n\nQUICK SUMMARY\nUse deductions like 80C/80D within limits to lower taxable income.\n\nTRY THIS\nName three investments that qualify under 80C.",
+    "Filing ITR Online": "WHAT YOU LEARN\n• What an ITR is and who files which form.\n• The online filing steps.\n• Verifying your return.\n\nWHY IT MATTERS\nFiling on time avoids penalties and enables refunds.\n\nSTEP BY STEP\n1. Gather income and deduction details.\n2. Log in to the income tax portal.\n3. Fill the correct ITR form.\n4. Submit and e-verify.\n\nQUICK SUMMARY\nPrepare details, file the right ITR form online, and e-verify.\n\nTRY THIS\nList the documents you'd keep ready before filing an ITR.",
+    "Form 16 & TDS": "WHAT YOU LEARN\n• What TDS (tax deducted at source) is.\n• What Form 16 shows.\n• Using Form 16 to file returns.\n\nWHY IT MATTERS\nSalaried people rely on Form 16 and TDS details to file correctly.\n\nSTEP BY STEP\n1. Understand TDS is tax cut before you're paid.\n2. Get Form 16 from your employer.\n3. Read salary, deductions and TDS in it.\n4. Use it to fill your ITR.\n\nQUICK SUMMARY\nTDS is pre-deducted tax; Form 16 summarises it for easy filing.\n\nTRY THIS\nExplain what information Form 16 contains.",
   },
   "payroll-management": {
-    "Salary Components": "📌 WHAT YOU LEARN\n• Parts of salary: basic, HRA, allowances.\n• Gross vs net (take-home) salary.\n• CTC meaning.\n\n💡 WHY IT MATTERS\nUnderstanding salary structure is key for payroll and offers.\n\n🪜 STEP BY STEP\n1. Identify basic pay and HRA.\n2. Add allowances to get gross.\n3. Subtract deductions to get net.\n4. See how CTC includes employer costs.\n\n✅ QUICK SUMMARY\nSalary = basic + allowances; net = gross minus deductions; CTC is total cost.\n\n✏️ TRY THIS\nBuild a simple salary breakup from a sample CTC.",
-    "PF, ESI & Deductions": "📌 WHAT YOU LEARN\n• Provident Fund (PF) and ESI basics.\n• Employee vs employer contributions.\n• Other common deductions.\n\n💡 WHY IT MATTERS\nThese deductions are legal requirements affecting take-home pay.\n\n🪜 STEP BY STEP\n1. Learn PF as retirement savings.\n2. Understand ESI for medical benefits.\n3. Note employee and employer shares.\n4. List deductions on the payslip.\n\n✅ QUICK SUMMARY\nPF and ESI are statutory deductions shared by employee and employer.\n\n✏️ TRY THIS\nList which deductions reduce take-home salary.",
-    "Payslip Preparation": "📌 WHAT YOU LEARN\n• What a payslip must show.\n• Earnings and deductions sections.\n• Net pay calculation.\n\n💡 WHY IT MATTERS\nClear payslips keep employees informed and records compliant.\n\n🪜 STEP BY STEP\n1. List earnings (basic, HRA, allowances).\n2. List deductions (PF, ESI, tax).\n3. Calculate net pay.\n4. Add employee and period details.\n\n✅ QUICK SUMMARY\nA payslip shows earnings minus deductions = net pay, with employee details.\n\n✏️ TRY THIS\nMake a sample payslip with two earnings and two deductions.",
-    "Payroll in Excel/Tally": "📌 WHAT YOU LEARN\n• Setting up a payroll sheet in Excel.\n• Formulas for totals and net pay.\n• Payroll features in Tally.\n\n💡 WHY IT MATTERS\nTools make monthly payroll fast and accurate.\n\n🪜 STEP BY STEP\n1. Make columns for each component.\n2. Use formulas for gross, deductions, net.\n3. Copy for all employees.\n4. Explore Tally's payroll option.\n\n✅ QUICK SUMMARY\nUse Excel formulas or Tally to automate monthly payroll.\n\n✏️ TRY THIS\nBuild a 3-employee payroll sheet with net pay formulas.",
-    "Compliance Basics": "📌 WHAT YOU LEARN\n• Key payroll compliances (PF, ESI, TDS).\n• Filing and payment deadlines.\n• Keeping proper records.\n\n💡 WHY IT MATTERS\nCompliance avoids penalties and legal trouble.\n\n🪜 STEP BY STEP\n1. Know what must be deducted and deposited.\n2. Track due dates for each filing.\n3. Keep registers and proofs.\n4. Review monthly.\n\n✅ QUICK SUMMARY\nDeduct, deposit and file PF/ESI/TDS on time, and keep clean records.\n\n✏️ TRY THIS\nList three payroll compliances and why each matters.",
+    "Salary Components": "WHAT YOU LEARN\n• Parts of salary: basic, HRA, allowances.\n• Gross vs net (take-home) salary.\n• CTC meaning.\n\nWHY IT MATTERS\nUnderstanding salary structure is key for payroll and offers.\n\nSTEP BY STEP\n1. Identify basic pay and HRA.\n2. Add allowances to get gross.\n3. Subtract deductions to get net.\n4. See how CTC includes employer costs.\n\nQUICK SUMMARY\nSalary = basic + allowances; net = gross minus deductions; CTC is total cost.\n\nTRY THIS\nBuild a simple salary breakup from a sample CTC.",
+    "PF, ESI & Deductions": "WHAT YOU LEARN\n• Provident Fund (PF) and ESI basics.\n• Employee vs employer contributions.\n• Other common deductions.\n\nWHY IT MATTERS\nThese deductions are legal requirements affecting take-home pay.\n\nSTEP BY STEP\n1. Learn PF as retirement savings.\n2. Understand ESI for medical benefits.\n3. Note employee and employer shares.\n4. List deductions on the payslip.\n\nQUICK SUMMARY\nPF and ESI are statutory deductions shared by employee and employer.\n\nTRY THIS\nList which deductions reduce take-home salary.",
+    "Payslip Preparation": "WHAT YOU LEARN\n• What a payslip must show.\n• Earnings and deductions sections.\n• Net pay calculation.\n\nWHY IT MATTERS\nClear payslips keep employees informed and records compliant.\n\nSTEP BY STEP\n1. List earnings (basic, HRA, allowances).\n2. List deductions (PF, ESI, tax).\n3. Calculate net pay.\n4. Add employee and period details.\n\nQUICK SUMMARY\nA payslip shows earnings minus deductions = net pay, with employee details.\n\nTRY THIS\nMake a sample payslip with two earnings and two deductions.",
+    "Payroll in Excel/Tally": "WHAT YOU LEARN\n• Setting up a payroll sheet in Excel.\n• Formulas for totals and net pay.\n• Payroll features in Tally.\n\nWHY IT MATTERS\nTools make monthly payroll fast and accurate.\n\nSTEP BY STEP\n1. Make columns for each component.\n2. Use formulas for gross, deductions, net.\n3. Copy for all employees.\n4. Explore Tally's payroll option.\n\nQUICK SUMMARY\nUse Excel formulas or Tally to automate monthly payroll.\n\nTRY THIS\nBuild a 3-employee payroll sheet with net pay formulas.",
+    "Compliance Basics": "WHAT YOU LEARN\n• Key payroll compliances (PF, ESI, TDS).\n• Filing and payment deadlines.\n• Keeping proper records.\n\nWHY IT MATTERS\nCompliance avoids penalties and legal trouble.\n\nSTEP BY STEP\n1. Know what must be deducted and deposited.\n2. Track due dates for each filing.\n3. Keep registers and proofs.\n4. Review monthly.\n\nQUICK SUMMARY\nDeduct, deposit and file PF/ESI/TDS on time, and keep clean records.\n\nTRY THIS\nList three payroll compliances and why each matters.",
   },
   "accounting-fundamentals": {
-    "What is Accounting": "📌 WHAT YOU LEARN\n• Accounting = recording, classifying and reporting money.\n• Why businesses need it.\n• Basic terms: assets, liabilities, capital.\n\n💡 WHY IT MATTERS\nAccounting tells you if a business is healthy and profitable.\n\n🪜 STEP BY STEP\n1. Understand accounting tracks all money in/out.\n2. Learn assets (own), liabilities (owe), capital (owner's).\n3. See how it leads to reports.\n4. Note honesty and accuracy matter.\n\n✅ QUICK SUMMARY\nAccounting records money to show a business's true position.\n\n✏️ TRY THIS\nGive one example each of an asset, a liability and capital.",
-    "Debit & Credit Rules": "📌 WHAT YOU LEARN\n• The meaning of debit and credit.\n• Golden/modern rules.\n• Every entry has two sides.\n\n💡 WHY IT MATTERS\nDebit/credit is the heart of all accounting entries.\n\n🪜 STEP BY STEP\n1. Learn debit = comes in / expense; credit = goes out / income (simplified).\n2. Remember every transaction has equal debit and credit.\n3. Apply to a cash sale example.\n4. Practise small entries.\n\n✅ QUICK SUMMARY\nEach entry balances debit and credit; mastering this unlocks bookkeeping.\n\n✏️ TRY THIS\nDecide debit and credit for: received cash for a sale.",
-    "Journal & Ledger": "📌 WHAT YOU LEARN\n• Journal = first record of transactions.\n• Ledger = grouped accounts.\n• Posting from journal to ledger.\n\n💡 WHY IT MATTERS\nThese are the basic books every business keeps.\n\n🪜 STEP BY STEP\n1. Record a transaction in the journal.\n2. Identify the accounts involved.\n3. Post entries to ledger accounts.\n4. Balance each ledger.\n\n✅ QUICK SUMMARY\nJournalise first, then post to ledgers to organise accounts.\n\n✏️ TRY THIS\nJournalise: paid rent in cash, then post to ledgers.",
-    "Trial Balance": "📌 WHAT YOU LEARN\n• What a trial balance is.\n• How it checks arithmetic accuracy.\n• Debit total = credit total.\n\n💡 WHY IT MATTERS\nIt confirms your books balance before making final accounts.\n\n🪜 STEP BY STEP\n1. List all ledger balances.\n2. Put them in debit or credit columns.\n3. Total both columns.\n4. Check that totals match.\n\n✅ QUICK SUMMARY\nA trial balance lists balances; matching totals show your books tally.\n\n✏️ TRY THIS\nFrom 4 sample balances, build a trial balance and check totals.",
-    "Final Accounts": "📌 WHAT YOU LEARN\n• Trading and Profit & Loss account.\n• Balance Sheet.\n• How profit and position are shown.\n\n💡 WHY IT MATTERS\nFinal accounts reveal profit and the financial position.\n\n🪜 STEP BY STEP\n1. Prepare Trading A/c for gross profit.\n2. Prepare P&L A/c for net profit.\n3. Prepare the Balance Sheet.\n4. Check assets = liabilities + capital.\n\n✅ QUICK SUMMARY\nFinal accounts show profit (P&L) and position (Balance Sheet).\n\n✏️ TRY THIS\nExplain what the Balance Sheet shows in one line.",
+    "What is Accounting": "WHAT YOU LEARN\n• Accounting = recording, classifying and reporting money.\n• Why businesses need it.\n• Basic terms: assets, liabilities, capital.\n\nWHY IT MATTERS\nAccounting tells you if a business is healthy and profitable.\n\nSTEP BY STEP\n1. Understand accounting tracks all money in/out.\n2. Learn assets (own), liabilities (owe), capital (owner's).\n3. See how it leads to reports.\n4. Note honesty and accuracy matter.\n\nQUICK SUMMARY\nAccounting records money to show a business's true position.\n\nTRY THIS\nGive one example each of an asset, a liability and capital.",
+    "Debit & Credit Rules": "WHAT YOU LEARN\n• The meaning of debit and credit.\n• Golden/modern rules.\n• Every entry has two sides.\n\nWHY IT MATTERS\nDebit/credit is the heart of all accounting entries.\n\nSTEP BY STEP\n1. Learn debit = comes in / expense; credit = goes out / income (simplified).\n2. Remember every transaction has equal debit and credit.\n3. Apply to a cash sale example.\n4. Practise small entries.\n\nQUICK SUMMARY\nEach entry balances debit and credit; mastering this unlocks bookkeeping.\n\nTRY THIS\nDecide debit and credit for: received cash for a sale.",
+    "Journal & Ledger": "WHAT YOU LEARN\n• Journal = first record of transactions.\n• Ledger = grouped accounts.\n• Posting from journal to ledger.\n\nWHY IT MATTERS\nThese are the basic books every business keeps.\n\nSTEP BY STEP\n1. Record a transaction in the journal.\n2. Identify the accounts involved.\n3. Post entries to ledger accounts.\n4. Balance each ledger.\n\nQUICK SUMMARY\nJournalise first, then post to ledgers to organise accounts.\n\nTRY THIS\nJournalise: paid rent in cash, then post to ledgers.",
+    "Trial Balance": "WHAT YOU LEARN\n• What a trial balance is.\n• How it checks arithmetic accuracy.\n• Debit total = credit total.\n\nWHY IT MATTERS\nIt confirms your books balance before making final accounts.\n\nSTEP BY STEP\n1. List all ledger balances.\n2. Put them in debit or credit columns.\n3. Total both columns.\n4. Check that totals match.\n\nQUICK SUMMARY\nA trial balance lists balances; matching totals show your books tally.\n\nTRY THIS\nFrom 4 sample balances, build a trial balance and check totals.",
+    "Final Accounts": "WHAT YOU LEARN\n• Trading and Profit & Loss account.\n• Balance Sheet.\n• How profit and position are shown.\n\nWHY IT MATTERS\nFinal accounts reveal profit and the financial position.\n\nSTEP BY STEP\n1. Prepare Trading A/c for gross profit.\n2. Prepare P&L A/c for net profit.\n3. Prepare the Balance Sheet.\n4. Check assets = liabilities + capital.\n\nQUICK SUMMARY\nFinal accounts show profit (P&L) and position (Balance Sheet).\n\nTRY THIS\nExplain what the Balance Sheet shows in one line.",
   },
   "business-accounting": {
-    "Recording Business Transactions": "📌 WHAT YOU LEARN\n• Identifying transactions to record.\n• Source documents (bills, receipts).\n• Keeping entries dated and accurate.\n\n💡 WHY IT MATTERS\nAccurate records are the base of all business accounting.\n\n🪜 STEP BY STEP\n1. Collect bills and receipts.\n2. Record each with date and amount.\n3. Note the accounts affected.\n4. File the documents.\n\n✅ QUICK SUMMARY\nRecord every transaction from source documents, dated and accurate.\n\n✏️ TRY THIS\nRecord 3 sample transactions with dates and amounts.",
-    "Cash vs Bank Book": "📌 WHAT YOU LEARN\n• Cash book vs bank book.\n• Tracking cash and bank separately.\n• Reconciling with the bank statement.\n\n💡 WHY IT MATTERS\nKnowing exact cash and bank balances prevents shortfalls and errors.\n\n🪜 STEP BY STEP\n1. Record cash receipts/payments in the cash book.\n2. Record bank transactions in the bank book.\n3. Compare bank book with the statement.\n4. Fix any differences.\n\n✅ QUICK SUMMARY\nKeep cash and bank books separate and reconcile bank entries regularly.\n\n✏️ TRY THIS\nList two cash and two bank transactions for a shop.",
-    "Profit & Loss Account": "📌 WHAT YOU LEARN\n• Income minus expenses = profit/loss.\n• Common expense categories.\n• Reading the result.\n\n💡 WHY IT MATTERS\nP&L tells you if the business is actually making money.\n\n🪜 STEP BY STEP\n1. Total all income.\n2. Total all expenses.\n3. Subtract expenses from income.\n4. Interpret profit or loss.\n\n✅ QUICK SUMMARY\nP&L = income − expenses; it shows profitability over a period.\n\n✏️ TRY THIS\nWith sample income and expenses, calculate profit or loss.",
-    "Balance Sheet Basics": "📌 WHAT YOU LEARN\n• Assets, liabilities and capital.\n• The accounting equation.\n• What the balance sheet reveals.\n\n💡 WHY IT MATTERS\nIt shows what the business owns and owes at a point in time.\n\n🪜 STEP BY STEP\n1. List assets (cash, stock, equipment).\n2. List liabilities (loans, dues).\n3. Find capital = assets − liabilities.\n4. Check the equation balances.\n\n✅ QUICK SUMMARY\nBalance Sheet: Assets = Liabilities + Capital, showing financial position.\n\n✏️ TRY THIS\nFrom sample figures, check if assets = liabilities + capital.",
-    "Day-to-day Bookkeeping": "📌 WHAT YOU LEARN\n• Daily habits for clean books.\n• Recording sales, expenses and dues.\n• Simple tools (notebook, Excel, apps).\n\n💡 WHY IT MATTERS\nConsistent daily bookkeeping prevents year-end chaos.\n\n🪜 STEP BY STEP\n1. Record sales and expenses every day.\n2. Note who owes you and whom you owe.\n3. Keep all bills filed.\n4. Review weekly totals.\n\n✅ QUICK SUMMARY\nRecord daily, track dues, file bills, and review weekly for healthy books.\n\n✏️ TRY THIS\nSet up a simple daily sales-and-expense log.",
+    "Recording Business Transactions": "WHAT YOU LEARN\n• Identifying transactions to record.\n• Source documents (bills, receipts).\n• Keeping entries dated and accurate.\n\nWHY IT MATTERS\nAccurate records are the base of all business accounting.\n\nSTEP BY STEP\n1. Collect bills and receipts.\n2. Record each with date and amount.\n3. Note the accounts affected.\n4. File the documents.\n\nQUICK SUMMARY\nRecord every transaction from source documents, dated and accurate.\n\nTRY THIS\nRecord 3 sample transactions with dates and amounts.",
+    "Cash vs Bank Book": "WHAT YOU LEARN\n• Cash book vs bank book.\n• Tracking cash and bank separately.\n• Reconciling with the bank statement.\n\nWHY IT MATTERS\nKnowing exact cash and bank balances prevents shortfalls and errors.\n\nSTEP BY STEP\n1. Record cash receipts/payments in the cash book.\n2. Record bank transactions in the bank book.\n3. Compare bank book with the statement.\n4. Fix any differences.\n\nQUICK SUMMARY\nKeep cash and bank books separate and reconcile bank entries regularly.\n\nTRY THIS\nList two cash and two bank transactions for a shop.",
+    "Profit & Loss Account": "WHAT YOU LEARN\n• Income minus expenses = profit/loss.\n• Common expense categories.\n• Reading the result.\n\nWHY IT MATTERS\nP&L tells you if the business is actually making money.\n\nSTEP BY STEP\n1. Total all income.\n2. Total all expenses.\n3. Subtract expenses from income.\n4. Interpret profit or loss.\n\nQUICK SUMMARY\nP&L = income − expenses; it shows profitability over a period.\n\nTRY THIS\nWith sample income and expenses, calculate profit or loss.",
+    "Balance Sheet Basics": "WHAT YOU LEARN\n• Assets, liabilities and capital.\n• The accounting equation.\n• What the balance sheet reveals.\n\nWHY IT MATTERS\nIt shows what the business owns and owes at a point in time.\n\nSTEP BY STEP\n1. List assets (cash, stock, equipment).\n2. List liabilities (loans, dues).\n3. Find capital = assets − liabilities.\n4. Check the equation balances.\n\nQUICK SUMMARY\nBalance Sheet: Assets = Liabilities + Capital, showing financial position.\n\nTRY THIS\nFrom sample figures, check if assets = liabilities + capital.",
+    "Day-to-day Bookkeeping": "WHAT YOU LEARN\n• Daily habits for clean books.\n• Recording sales, expenses and dues.\n• Simple tools (notebook, Excel, apps).\n\nWHY IT MATTERS\nConsistent daily bookkeeping prevents year-end chaos.\n\nSTEP BY STEP\n1. Record sales and expenses every day.\n2. Note who owes you and whom you owe.\n3. Keep all bills filed.\n4. Review weekly totals.\n\nQUICK SUMMARY\nRecord daily, track dues, file bills, and review weekly for healthy books.\n\nTRY THIS\nSet up a simple daily sales-and-expense log.",
   },
   "java": {
-    "Java Setup & First Program": "📌 WHAT YOU LEARN\n• Installing the JDK and an editor.\n• Writing a 'Hello World' program.\n• Compiling and running it.\n\n💡 WHY IT MATTERS\nJava is widely used for apps and enterprise software; setup is step one.\n\n🪜 STEP BY STEP\n1. Install the JDK.\n2. Write a class with a main method.\n3. Use System.out.println('Hello'); to print.\n4. Compile with javac and run with java.\n\n✅ QUICK SUMMARY\nSet up the JDK and run your first Java program with a main method.\n\n✏️ TRY THIS\nWrite a program that prints your name.",
-    "Variables & Data Types": "📌 WHAT YOU LEARN\n• Variables to store data.\n• Types: int, double, boolean, String.\n• Declaring and using variables.\n\n💡 WHY IT MATTERS\nVariables and types are the building blocks of every program.\n\n🪜 STEP BY STEP\n1. Declare an int age = 18;.\n2. Declare a String name.\n3. Print them with println.\n4. Try arithmetic with numbers.\n\n✅ QUICK SUMMARY\nUse the right type to store data, then use and print it.\n\n✏️ TRY THIS\nStore your name and age in variables and print a sentence.",
-    "Loops & Conditions": "📌 WHAT YOU LEARN\n• if/else for decisions.\n• for and while loops.\n• Combining them.\n\n💡 WHY IT MATTERS\nLogic and repetition let programs make choices and process data.\n\n🪜 STEP BY STEP\n1. Write an if/else for pass/fail marks.\n2. Use a for loop to print 1 to 5.\n3. Use a while loop with a condition.\n4. Combine a loop with an if.\n\n✅ QUICK SUMMARY\nUse if/else to decide and loops to repeat tasks.\n\n✏️ TRY THIS\nPrint numbers 1–10, marking even numbers.",
-    "Methods & OOP Basics": "📌 WHAT YOU LEARN\n• Writing reusable methods.\n• Parameters and return values.\n• What OOP means.\n\n💡 WHY IT MATTERS\nMethods avoid repetition; OOP organises bigger programs.\n\n🪜 STEP BY STEP\n1. Write a method add(a, b) returning a+b.\n2. Call it with values.\n3. Learn OOP = objects with data + behaviour.\n4. See why it scales.\n\n✅ QUICK SUMMARY\nMethods make reusable logic; OOP structures code around objects.\n\n✏️ TRY THIS\nWrite a method that returns the square of a number.",
-    "Classes & Objects": "📌 WHAT YOU LEARN\n• Defining a class.\n• Creating objects.\n• Fields and methods.\n\n💡 WHY IT MATTERS\nClasses and objects are the core of Java programming.\n\n🪜 STEP BY STEP\n1. Define a class Student with name and marks.\n2. Add a method to display details.\n3. Create an object with new.\n4. Call the object's method.\n\n✅ QUICK SUMMARY\nA class is a blueprint; an object is a real instance you use.\n\n✏️ TRY THIS\nMake a Student class and create one student object.",
+    "Java Setup & First Program": "WHAT YOU LEARN\n• Installing the JDK and an editor.\n• Writing a 'Hello World' program.\n• Compiling and running it.\n\nWHY IT MATTERS\nJava is widely used for apps and enterprise software; setup is step one.\n\nSTEP BY STEP\n1. Install the JDK.\n2. Write a class with a main method.\n3. Use System.out.println('Hello'); to print.\n4. Compile with javac and run with java.\n\nQUICK SUMMARY\nSet up the JDK and run your first Java program with a main method.\n\nTRY THIS\nWrite a program that prints your name.",
+    "Variables & Data Types": "WHAT YOU LEARN\n• Variables to store data.\n• Types: int, double, boolean, String.\n• Declaring and using variables.\n\nWHY IT MATTERS\nVariables and types are the building blocks of every program.\n\nSTEP BY STEP\n1. Declare an int age = 18;.\n2. Declare a String name.\n3. Print them with println.\n4. Try arithmetic with numbers.\n\nQUICK SUMMARY\nUse the right type to store data, then use and print it.\n\nTRY THIS\nStore your name and age in variables and print a sentence.",
+    "Loops & Conditions": "WHAT YOU LEARN\n• if/else for decisions.\n• for and while loops.\n• Combining them.\n\nWHY IT MATTERS\nLogic and repetition let programs make choices and process data.\n\nSTEP BY STEP\n1. Write an if/else for pass/fail marks.\n2. Use a for loop to print 1 to 5.\n3. Use a while loop with a condition.\n4. Combine a loop with an if.\n\nQUICK SUMMARY\nUse if/else to decide and loops to repeat tasks.\n\nTRY THIS\nPrint numbers 1–10, marking even numbers.",
+    "Methods & OOP Basics": "WHAT YOU LEARN\n• Writing reusable methods.\n• Parameters and return values.\n• What OOP means.\n\nWHY IT MATTERS\nMethods avoid repetition; OOP organises bigger programs.\n\nSTEP BY STEP\n1. Write a method add(a, b) returning a+b.\n2. Call it with values.\n3. Learn OOP = objects with data + behaviour.\n4. See why it scales.\n\nQUICK SUMMARY\nMethods make reusable logic; OOP structures code around objects.\n\nTRY THIS\nWrite a method that returns the square of a number.",
+    "Classes & Objects": "WHAT YOU LEARN\n• Defining a class.\n• Creating objects.\n• Fields and methods.\n\nWHY IT MATTERS\nClasses and objects are the core of Java programming.\n\nSTEP BY STEP\n1. Define a class Student with name and marks.\n2. Add a method to display details.\n3. Create an object with new.\n4. Call the object's method.\n\nQUICK SUMMARY\nA class is a blueprint; an object is a real instance you use.\n\nTRY THIS\nMake a Student class and create one student object.",
   },
   "javascript": {
-    "JS Basics & Syntax": "📌 WHAT YOU LEARN\n• What JavaScript does on web pages.\n• Running JS in the browser console.\n• Basic syntax and console.log.\n\n💡 WHY IT MATTERS\nJavaScript powers interactivity on almost every website.\n\n🪜 STEP BY STEP\n1. Open the browser console (F12).\n2. Type console.log('Hello').\n3. Try simple maths.\n4. Save code in a .js file linked to HTML.\n\n✅ QUICK SUMMARY\nJS adds interactivity; start in the console with console.log.\n\n✏️ TRY THIS\nPrint 'Hello, JS!' in the browser console.",
-    "Variables & Functions": "📌 WHAT YOU LEARN\n• let and const for variables.\n• Writing functions.\n• Calling functions with arguments.\n\n💡 WHY IT MATTERS\nVariables store data; functions reuse logic — the core of JS.\n\n🪜 STEP BY STEP\n1. Declare let count = 0; and a const.\n2. Write a function greet(name).\n3. Return a message and log it.\n4. Call greet with your name.\n\n✅ QUICK SUMMARY\nUse let/const for data and functions for reusable actions.\n\n✏️ TRY THIS\nWrite a function that returns a greeting with a name.",
-    "DOM & Events": "📌 WHAT YOU LEARN\n• What the DOM is.\n• Selecting and changing elements.\n• Handling clicks.\n\n💡 WHY IT MATTERS\nThe DOM + events make pages interactive and responsive to users.\n\n🪜 STEP BY STEP\n1. Select an element with document.querySelector.\n2. Change its text.\n3. Add a click event listener.\n4. Update the page on click.\n\n✅ QUICK SUMMARY\nUse the DOM to read/change the page and events to react to users.\n\n✏️ TRY THIS\nMake a button that changes a heading's text on click.",
-    "Arrays & Objects": "📌 WHAT YOU LEARN\n• Arrays for lists.\n• Objects for key-value data.\n• Looping through them.\n\n💡 WHY IT MATTERS\nMost real data is stored in arrays and objects.\n\n🪜 STEP BY STEP\n1. Make an array of names.\n2. Loop with forEach to print each.\n3. Make an object with properties.\n4. Access values by key.\n\n✅ QUICK SUMMARY\nArrays hold lists; objects hold labelled data; loop to use them.\n\n✏️ TRY THIS\nCreate an array of 3 fruits and print each one.",
-    "Async & Fetch": "📌 WHAT YOU LEARN\n• What asynchronous code means.\n• Using fetch to get data.\n• Handling responses with then/await.\n\n💡 WHY IT MATTERS\nFetching data from servers powers modern web apps.\n\n🪜 STEP BY STEP\n1. Understand async = doesn't block other code.\n2. Use fetch(url) to request data.\n3. Convert the response to JSON.\n4. Use the data on the page.\n\n✅ QUICK SUMMARY\nAsync + fetch let you load data without freezing the page.\n\n✏️ TRY THIS\nDescribe the steps to fetch and display data from an API.",
+    "JS Basics & Syntax": "WHAT YOU LEARN\n• What JavaScript does on web pages.\n• Running JS in the browser console.\n• Basic syntax and console.log.\n\nWHY IT MATTERS\nJavaScript powers interactivity on almost every website.\n\nSTEP BY STEP\n1. Open the browser console (F12).\n2. Type console.log('Hello').\n3. Try simple maths.\n4. Save code in a .js file linked to HTML.\n\nQUICK SUMMARY\nJS adds interactivity; start in the console with console.log.\n\nTRY THIS\nPrint 'Hello, JS!' in the browser console.",
+    "Variables & Functions": "WHAT YOU LEARN\n• let and const for variables.\n• Writing functions.\n• Calling functions with arguments.\n\nWHY IT MATTERS\nVariables store data; functions reuse logic — the core of JS.\n\nSTEP BY STEP\n1. Declare let count = 0; and a const.\n2. Write a function greet(name).\n3. Return a message and log it.\n4. Call greet with your name.\n\nQUICK SUMMARY\nUse let/const for data and functions for reusable actions.\n\nTRY THIS\nWrite a function that returns a greeting with a name.",
+    "DOM & Events": "WHAT YOU LEARN\n• What the DOM is.\n• Selecting and changing elements.\n• Handling clicks.\n\nWHY IT MATTERS\nThe DOM + events make pages interactive and responsive to users.\n\nSTEP BY STEP\n1. Select an element with document.querySelector.\n2. Change its text.\n3. Add a click event listener.\n4. Update the page on click.\n\nQUICK SUMMARY\nUse the DOM to read/change the page and events to react to users.\n\nTRY THIS\nMake a button that changes a heading's text on click.",
+    "Arrays & Objects": "WHAT YOU LEARN\n• Arrays for lists.\n• Objects for key-value data.\n• Looping through them.\n\nWHY IT MATTERS\nMost real data is stored in arrays and objects.\n\nSTEP BY STEP\n1. Make an array of names.\n2. Loop with forEach to print each.\n3. Make an object with properties.\n4. Access values by key.\n\nQUICK SUMMARY\nArrays hold lists; objects hold labelled data; loop to use them.\n\nTRY THIS\nCreate an array of 3 fruits and print each one.",
+    "Async & Fetch": "WHAT YOU LEARN\n• What asynchronous code means.\n• Using fetch to get data.\n• Handling responses with then/await.\n\nWHY IT MATTERS\nFetching data from servers powers modern web apps.\n\nSTEP BY STEP\n1. Understand async = doesn't block other code.\n2. Use fetch(url) to request data.\n3. Convert the response to JSON.\n4. Use the data on the page.\n\nQUICK SUMMARY\nAsync + fetch let you load data without freezing the page.\n\nTRY THIS\nDescribe the steps to fetch and display data from an API.",
   },
   "c-programming": {
-    "C Setup & First Program": "📌 WHAT YOU LEARN\n• Installing a C compiler (GCC).\n• Writing 'Hello World'.\n• Compiling and running.\n\n💡 WHY IT MATTERS\nC teaches core programming and how computers really work.\n\n🪜 STEP BY STEP\n1. Install GCC or use an online compiler.\n2. Write main() with printf.\n3. Use printf('Hello'); to print.\n4. Compile and run.\n\n✅ QUICK SUMMARY\nSet up GCC and run your first C program using printf.\n\n✏️ TRY THIS\nPrint your name using printf.",
-    "Variables & Operators": "📌 WHAT YOU LEARN\n• Declaring variables (int, float, char).\n• Arithmetic and assignment operators.\n• Reading input with scanf.\n\n💡 WHY IT MATTERS\nVariables and operators handle all data and calculations.\n\n🪜 STEP BY STEP\n1. Declare int a = 5;.\n2. Add, subtract and multiply.\n3. Read a number with scanf.\n4. Print the result.\n\n✅ QUICK SUMMARY\nStore data in typed variables and process it with operators.\n\n✏️ TRY THIS\nRead two numbers and print their sum.",
-    "Loops & Conditions": "📌 WHAT YOU LEARN\n• if/else decisions.\n• for and while loops.\n• Nesting them.\n\n💡 WHY IT MATTERS\nControl flow lets programs decide and repeat.\n\n🪜 STEP BY STEP\n1. Write if/else for even/odd.\n2. Print 1–5 with a for loop.\n3. Use while with a counter.\n4. Combine a loop and a condition.\n\n✅ QUICK SUMMARY\nUse conditions to choose and loops to repeat in C.\n\n✏️ TRY THIS\nPrint whether each number 1–5 is odd or even.",
-    "Functions & Arrays": "📌 WHAT YOU LEARN\n• Writing functions.\n• Passing arguments and returning values.\n• Storing lists in arrays.\n\n💡 WHY IT MATTERS\nFunctions reuse code; arrays handle multiple values.\n\n🪜 STEP BY STEP\n1. Write a function add(a, b).\n2. Call it and print the result.\n3. Make an int array of 5 numbers.\n4. Loop to print the array.\n\n✅ QUICK SUMMARY\nFunctions organise logic; arrays store many values together.\n\n✏️ TRY THIS\nStore 5 marks in an array and print their total.",
-    "Pointers Basics": "📌 WHAT YOU LEARN\n• What a pointer is (stores an address).\n• The & and * operators.\n• Why pointers are powerful.\n\n💡 WHY IT MATTERS\nPointers are central to C and to understanding memory.\n\n🪜 STEP BY STEP\n1. Declare int x and int *p = &x;.\n2. Print the address with &x.\n3. Access the value with *p.\n4. Change x through the pointer.\n\n✅ QUICK SUMMARY\nA pointer holds an address; & gets it and * uses the value.\n\n✏️ TRY THIS\nExplain what & and * do in one line each.",
+    "C Setup & First Program": "WHAT YOU LEARN\n• Installing a C compiler (GCC).\n• Writing 'Hello World'.\n• Compiling and running.\n\nWHY IT MATTERS\nC teaches core programming and how computers really work.\n\nSTEP BY STEP\n1. Install GCC or use an online compiler.\n2. Write main() with printf.\n3. Use printf('Hello'); to print.\n4. Compile and run.\n\nQUICK SUMMARY\nSet up GCC and run your first C program using printf.\n\nTRY THIS\nPrint your name using printf.",
+    "Variables & Operators": "WHAT YOU LEARN\n• Declaring variables (int, float, char).\n• Arithmetic and assignment operators.\n• Reading input with scanf.\n\nWHY IT MATTERS\nVariables and operators handle all data and calculations.\n\nSTEP BY STEP\n1. Declare int a = 5;.\n2. Add, subtract and multiply.\n3. Read a number with scanf.\n4. Print the result.\n\nQUICK SUMMARY\nStore data in typed variables and process it with operators.\n\nTRY THIS\nRead two numbers and print their sum.",
+    "Loops & Conditions": "WHAT YOU LEARN\n• if/else decisions.\n• for and while loops.\n• Nesting them.\n\nWHY IT MATTERS\nControl flow lets programs decide and repeat.\n\nSTEP BY STEP\n1. Write if/else for even/odd.\n2. Print 1–5 with a for loop.\n3. Use while with a counter.\n4. Combine a loop and a condition.\n\nQUICK SUMMARY\nUse conditions to choose and loops to repeat in C.\n\nTRY THIS\nPrint whether each number 1–5 is odd or even.",
+    "Functions & Arrays": "WHAT YOU LEARN\n• Writing functions.\n• Passing arguments and returning values.\n• Storing lists in arrays.\n\nWHY IT MATTERS\nFunctions reuse code; arrays handle multiple values.\n\nSTEP BY STEP\n1. Write a function add(a, b).\n2. Call it and print the result.\n3. Make an int array of 5 numbers.\n4. Loop to print the array.\n\nQUICK SUMMARY\nFunctions organise logic; arrays store many values together.\n\nTRY THIS\nStore 5 marks in an array and print their total.",
+    "Pointers Basics": "WHAT YOU LEARN\n• What a pointer is (stores an address).\n• The & and * operators.\n• Why pointers are powerful.\n\nWHY IT MATTERS\nPointers are central to C and to understanding memory.\n\nSTEP BY STEP\n1. Declare int x and int *p = &x;.\n2. Print the address with &x.\n3. Access the value with *p.\n4. Change x through the pointer.\n\nQUICK SUMMARY\nA pointer holds an address; & gets it and * uses the value.\n\nTRY THIS\nExplain what & and * do in one line each.",
   },
   "c": {
-    "C++ Basics": "📌 WHAT YOU LEARN\n• C++ setup and 'Hello World'.\n• cout for output, cin for input.\n• Variables and types.\n\n💡 WHY IT MATTERS\nC++ is fast and widely used in apps, games and competitive coding.\n\n🪜 STEP BY STEP\n1. Set up a C++ compiler.\n2. Use cout to print a message.\n3. Read input with cin.\n4. Compile and run.\n\n✅ QUICK SUMMARY\nStart C++ with cout/cin and basic variables.\n\n✏️ TRY THIS\nRead your name with cin and greet you with cout.",
-    "Loops & Functions": "📌 WHAT YOU LEARN\n• if/else and loops in C++.\n• Writing functions.\n• Returning values.\n\n💡 WHY IT MATTERS\nLogic, repetition and reusable functions are everyday tools.\n\n🪜 STEP BY STEP\n1. Write if/else for a condition.\n2. Use a for loop to print numbers.\n3. Write a function add(a, b).\n4. Call and print it.\n\n✅ QUICK SUMMARY\nUse conditions, loops and functions to build C++ logic.\n\n✏️ TRY THIS\nWrite a function returning the largest of two numbers.",
-    "OOP: Classes & Objects": "📌 WHAT YOU LEARN\n• Defining a class with data and methods.\n• Creating objects.\n• Access basics (public/private).\n\n💡 WHY IT MATTERS\nOOP organises real-world programs cleanly.\n\n🪜 STEP BY STEP\n1. Define a class Car with brand and speed.\n2. Add a method to show details.\n3. Create an object.\n4. Call its method.\n\n✅ QUICK SUMMARY\nClasses bundle data and behaviour; objects are instances you use.\n\n✏️ TRY THIS\nMake a Car class and create one car object.",
-    "Inheritance & Polymorphism": "📌 WHAT YOU LEARN\n• Inheritance: child classes reuse parent code.\n• Polymorphism: same call, different behaviour.\n• Why they reduce repetition.\n\n💡 WHY IT MATTERS\nThese OOP ideas make code reusable and flexible.\n\n🪜 STEP BY STEP\n1. Create a base class Animal with sound().\n2. Make Dog and Cat inherit it.\n3. Override sound() in each.\n4. Call sound() on different objects.\n\n✅ QUICK SUMMARY\nInheritance reuses code; polymorphism lets one call act differently.\n\n✏️ TRY THIS\nDescribe an Animal base class with Dog and Cat children.",
-    "STL Basics": "📌 WHAT YOU LEARN\n• What the Standard Template Library is.\n• vector, map and common containers.\n• Using ready-made tools.\n\n💡 WHY IT MATTERS\nThe STL saves time with reliable, fast data structures.\n\n🪜 STEP BY STEP\n1. Include and create a vector of ints.\n2. Add elements with push_back.\n3. Loop to print them.\n4. Try a map for key-value data.\n\n✅ QUICK SUMMARY\nThe STL gives ready containers like vector and map to speed coding.\n\n✏️ TRY THIS\nMake a vector of 3 numbers and print their sum.",
+    "C++ Basics": "WHAT YOU LEARN\n• C++ setup and 'Hello World'.\n• cout for output, cin for input.\n• Variables and types.\n\nWHY IT MATTERS\nC++ is fast and widely used in apps, games and competitive coding.\n\nSTEP BY STEP\n1. Set up a C++ compiler.\n2. Use cout to print a message.\n3. Read input with cin.\n4. Compile and run.\n\nQUICK SUMMARY\nStart C++ with cout/cin and basic variables.\n\nTRY THIS\nRead your name with cin and greet you with cout.",
+    "Loops & Functions": "WHAT YOU LEARN\n• if/else and loops in C++.\n• Writing functions.\n• Returning values.\n\nWHY IT MATTERS\nLogic, repetition and reusable functions are everyday tools.\n\nSTEP BY STEP\n1. Write if/else for a condition.\n2. Use a for loop to print numbers.\n3. Write a function add(a, b).\n4. Call and print it.\n\nQUICK SUMMARY\nUse conditions, loops and functions to build C++ logic.\n\nTRY THIS\nWrite a function returning the largest of two numbers.",
+    "OOP: Classes & Objects": "WHAT YOU LEARN\n• Defining a class with data and methods.\n• Creating objects.\n• Access basics (public/private).\n\nWHY IT MATTERS\nOOP organises real-world programs cleanly.\n\nSTEP BY STEP\n1. Define a class Car with brand and speed.\n2. Add a method to show details.\n3. Create an object.\n4. Call its method.\n\nQUICK SUMMARY\nClasses bundle data and behaviour; objects are instances you use.\n\nTRY THIS\nMake a Car class and create one car object.",
+    "Inheritance & Polymorphism": "WHAT YOU LEARN\n• Inheritance: child classes reuse parent code.\n• Polymorphism: same call, different behaviour.\n• Why they reduce repetition.\n\nWHY IT MATTERS\nThese OOP ideas make code reusable and flexible.\n\nSTEP BY STEP\n1. Create a base class Animal with sound().\n2. Make Dog and Cat inherit it.\n3. Override sound() in each.\n4. Call sound() on different objects.\n\nQUICK SUMMARY\nInheritance reuses code; polymorphism lets one call act differently.\n\nTRY THIS\nDescribe an Animal base class with Dog and Cat children.",
+    "STL Basics": "WHAT YOU LEARN\n• What the Standard Template Library is.\n• vector, map and common containers.\n• Using ready-made tools.\n\nWHY IT MATTERS\nThe STL saves time with reliable, fast data structures.\n\nSTEP BY STEP\n1. Include and create a vector of ints.\n2. Add elements with push_back.\n3. Loop to print them.\n4. Try a map for key-value data.\n\nQUICK SUMMARY\nThe STL gives ready containers like vector and map to speed coding.\n\nTRY THIS\nMake a vector of 3 numbers and print their sum.",
   },
   "full-stack-development": {
-    "Frontend vs Backend": "📌 WHAT YOU LEARN\n• Frontend = what users see; backend = server logic.\n• How they work together.\n• Where data is stored.\n\n💡 WHY IT MATTERS\nFull stack means understanding both ends of a web app.\n\n🪜 STEP BY STEP\n1. Learn frontend: HTML/CSS/JS in the browser.\n2. Learn backend: server + database.\n3. See how the frontend calls the backend.\n4. Trace one request end to end.\n\n✅ QUICK SUMMARY\nFrontend shows the UI; backend handles logic and data; they communicate.\n\n✏️ TRY THIS\nDescribe what happens when you submit a login form.",
-    "HTML, CSS, JS Refresher": "📌 WHAT YOU LEARN\n• HTML structure, CSS styling, JS behaviour.\n• Linking them together.\n• Building a simple page.\n\n💡 WHY IT MATTERS\nThese three are the foundation of every website.\n\n🪜 STEP BY STEP\n1. Write HTML with a heading and button.\n2. Style it with CSS.\n3. Add JS for a click action.\n4. Test in the browser.\n\n✅ QUICK SUMMARY\nHTML = structure, CSS = style, JS = behaviour; together they make pages.\n\n✏️ TRY THIS\nBuild a styled page with a button that shows an alert.",
-    "Node.js & Express Basics": "📌 WHAT YOU LEARN\n• Node.js runs JavaScript on the server.\n• Express creates web servers and routes.\n• Sending a response.\n\n💡 WHY IT MATTERS\nNode + Express power the backend of many modern apps.\n\n🪜 STEP BY STEP\n1. Install Node and create a project.\n2. Install Express.\n3. Create a route that returns 'Hello'.\n4. Run the server and visit it.\n\n✅ QUICK SUMMARY\nUse Node + Express to build server routes that respond to requests.\n\n✏️ TRY THIS\nOutline the steps to create a basic Express server.",
-    "Databases Basics": "📌 WHAT YOU LEARN\n• What databases store and why.\n• SQL vs NoSQL idea.\n• Basic operations (create, read, update, delete).\n\n💡 WHY IT MATTERS\nApps need to save and retrieve data reliably.\n\n🪜 STEP BY STEP\n1. Learn tables (SQL) vs documents (NoSQL).\n2. Understand CRUD operations.\n3. Create a simple table/collection.\n4. Add and read a record.\n\n✅ QUICK SUMMARY\nDatabases store data; learn CRUD and the SQL vs NoSQL difference.\n\n✏️ TRY THIS\nList the four CRUD operations with an example each.",
-    "Connecting Front & Back": "📌 WHAT YOU LEARN\n• Using fetch/axios from the frontend.\n• APIs sending JSON.\n• Displaying data in the UI.\n\n💡 WHY IT MATTERS\nConnecting both ends turns parts into a working app.\n\n🪜 STEP BY STEP\n1. Create a backend route returning JSON.\n2. Call it from the frontend with fetch.\n3. Receive and parse the data.\n4. Show it on the page.\n\n✅ QUICK SUMMARY\nThe frontend fetches JSON from backend APIs and displays it.\n\n✏️ TRY THIS\nDescribe how a frontend gets a list of items from the backend.",
+    "Frontend vs Backend": "WHAT YOU LEARN\n• Frontend = what users see; backend = server logic.\n• How they work together.\n• Where data is stored.\n\nWHY IT MATTERS\nFull stack means understanding both ends of a web app.\n\nSTEP BY STEP\n1. Learn frontend: HTML/CSS/JS in the browser.\n2. Learn backend: server + database.\n3. See how the frontend calls the backend.\n4. Trace one request end to end.\n\nQUICK SUMMARY\nFrontend shows the UI; backend handles logic and data; they communicate.\n\nTRY THIS\nDescribe what happens when you submit a login form.",
+    "HTML, CSS, JS Refresher": "WHAT YOU LEARN\n• HTML structure, CSS styling, JS behaviour.\n• Linking them together.\n• Building a simple page.\n\nWHY IT MATTERS\nThese three are the foundation of every website.\n\nSTEP BY STEP\n1. Write HTML with a heading and button.\n2. Style it with CSS.\n3. Add JS for a click action.\n4. Test in the browser.\n\nQUICK SUMMARY\nHTML = structure, CSS = style, JS = behaviour; together they make pages.\n\nTRY THIS\nBuild a styled page with a button that shows an alert.",
+    "Node.js & Express Basics": "WHAT YOU LEARN\n• Node.js runs JavaScript on the server.\n• Express creates web servers and routes.\n• Sending a response.\n\nWHY IT MATTERS\nNode + Express power the backend of many modern apps.\n\nSTEP BY STEP\n1. Install Node and create a project.\n2. Install Express.\n3. Create a route that returns 'Hello'.\n4. Run the server and visit it.\n\nQUICK SUMMARY\nUse Node + Express to build server routes that respond to requests.\n\nTRY THIS\nOutline the steps to create a basic Express server.",
+    "Databases Basics": "WHAT YOU LEARN\n• What databases store and why.\n• SQL vs NoSQL idea.\n• Basic operations (create, read, update, delete).\n\nWHY IT MATTERS\nApps need to save and retrieve data reliably.\n\nSTEP BY STEP\n1. Learn tables (SQL) vs documents (NoSQL).\n2. Understand CRUD operations.\n3. Create a simple table/collection.\n4. Add and read a record.\n\nQUICK SUMMARY\nDatabases store data; learn CRUD and the SQL vs NoSQL difference.\n\nTRY THIS\nList the four CRUD operations with an example each.",
+    "Connecting Front & Back": "WHAT YOU LEARN\n• Using fetch/axios from the frontend.\n• APIs sending JSON.\n• Displaying data in the UI.\n\nWHY IT MATTERS\nConnecting both ends turns parts into a working app.\n\nSTEP BY STEP\n1. Create a backend route returning JSON.\n2. Call it from the frontend with fetch.\n3. Receive and parse the data.\n4. Show it on the page.\n\nQUICK SUMMARY\nThe frontend fetches JSON from backend APIs and displays it.\n\nTRY THIS\nDescribe how a frontend gets a list of items from the backend.",
   },
   "react-js": {
-    "React Setup & JSX": "📌 WHAT YOU LEARN\n• Creating a React app.\n• What JSX is.\n• Rendering your first component.\n\n💡 WHY IT MATTERS\nReact is one of the most in-demand frontend skills.\n\n🪜 STEP BY STEP\n1. Create an app (Vite or CRA).\n2. Open App and see JSX.\n3. Edit the text and save.\n4. View the live change.\n\n✅ QUICK SUMMARY\nSet up React and edit JSX to render UI quickly.\n\n✏️ TRY THIS\nChange the default App text to a welcome message.",
-    "Components & Props": "📌 WHAT YOU LEARN\n• Building reusable components.\n• Passing data with props.\n• Composing components.\n\n💡 WHY IT MATTERS\nComponents make UIs modular and reusable.\n\n🪜 STEP BY STEP\n1. Create a Card component.\n2. Pass a title via props.\n3. Use Card multiple times.\n4. Change props for each.\n\n✅ QUICK SUMMARY\nComponents are reusable UI blocks; props pass data into them.\n\n✏️ TRY THIS\nMake a Greeting component that takes a name prop.",
-    "State & Hooks": "📌 WHAT YOU LEARN\n• What state is.\n• Using the useState hook.\n• Updating the UI on change.\n\n💡 WHY IT MATTERS\nState makes React apps interactive and dynamic.\n\n🪜 STEP BY STEP\n1. Import useState.\n2. Create a count state.\n3. Add a button to increase it.\n4. See the UI update.\n\n✅ QUICK SUMMARY\nuseState stores changing data and re-renders the UI automatically.\n\n✏️ TRY THIS\nBuild a counter with a button using useState.",
-    "Handling Events & Forms": "📌 WHAT YOU LEARN\n• Handling clicks and input changes.\n• Controlled form inputs.\n• Reading user input.\n\n💡 WHY IT MATTERS\nForms and events are how users interact with apps.\n\n🪜 STEP BY STEP\n1. Add an input with value and onChange.\n2. Store input in state.\n3. Add a submit button.\n4. Use the entered value.\n\n✅ QUICK SUMMARY\nUse state + onChange for controlled inputs and handle events.\n\n✏️ TRY THIS\nMake an input that shows what you type below it.",
-    "Fetching Data & Routing": "📌 WHAT YOU LEARN\n• Fetching data with useEffect.\n• Showing it in components.\n• Basic routing between pages.\n\n💡 WHY IT MATTERS\nReal apps load data and have multiple pages.\n\n🪜 STEP BY STEP\n1. Use useEffect to fetch data on load.\n2. Store results in state.\n3. Render a list.\n4. Add routes for two pages.\n\n✅ QUICK SUMMARY\nFetch data in useEffect and use routing for multiple pages.\n\n✏️ TRY THIS\nDescribe how to load and display a list when a page opens.",
+    "React Setup & JSX": "WHAT YOU LEARN\n• Creating a React app.\n• What JSX is.\n• Rendering your first component.\n\nWHY IT MATTERS\nReact is one of the most in-demand frontend skills.\n\nSTEP BY STEP\n1. Create an app (Vite or CRA).\n2. Open App and see JSX.\n3. Edit the text and save.\n4. View the live change.\n\nQUICK SUMMARY\nSet up React and edit JSX to render UI quickly.\n\nTRY THIS\nChange the default App text to a welcome message.",
+    "Components & Props": "WHAT YOU LEARN\n• Building reusable components.\n• Passing data with props.\n• Composing components.\n\nWHY IT MATTERS\nComponents make UIs modular and reusable.\n\nSTEP BY STEP\n1. Create a Card component.\n2. Pass a title via props.\n3. Use Card multiple times.\n4. Change props for each.\n\nQUICK SUMMARY\nComponents are reusable UI blocks; props pass data into them.\n\nTRY THIS\nMake a Greeting component that takes a name prop.",
+    "State & Hooks": "WHAT YOU LEARN\n• What state is.\n• Using the useState hook.\n• Updating the UI on change.\n\nWHY IT MATTERS\nState makes React apps interactive and dynamic.\n\nSTEP BY STEP\n1. Import useState.\n2. Create a count state.\n3. Add a button to increase it.\n4. See the UI update.\n\nQUICK SUMMARY\nuseState stores changing data and re-renders the UI automatically.\n\nTRY THIS\nBuild a counter with a button using useState.",
+    "Handling Events & Forms": "WHAT YOU LEARN\n• Handling clicks and input changes.\n• Controlled form inputs.\n• Reading user input.\n\nWHY IT MATTERS\nForms and events are how users interact with apps.\n\nSTEP BY STEP\n1. Add an input with value and onChange.\n2. Store input in state.\n3. Add a submit button.\n4. Use the entered value.\n\nQUICK SUMMARY\nUse state + onChange for controlled inputs and handle events.\n\nTRY THIS\nMake an input that shows what you type below it.",
+    "Fetching Data & Routing": "WHAT YOU LEARN\n• Fetching data with useEffect.\n• Showing it in components.\n• Basic routing between pages.\n\nWHY IT MATTERS\nReal apps load data and have multiple pages.\n\nSTEP BY STEP\n1. Use useEffect to fetch data on load.\n2. Store results in state.\n3. Render a list.\n4. Add routes for two pages.\n\nQUICK SUMMARY\nFetch data in useEffect and use routing for multiple pages.\n\nTRY THIS\nDescribe how to load and display a list when a page opens.",
   },
   "firebase-development": {
-    "What is Firebase": "📌 WHAT YOU LEARN\n• Firebase as a backend-as-a-service.\n• Its main features (auth, database, hosting).\n• When to use it.\n\n💡 WHY IT MATTERS\nFirebase lets you build full apps fast without managing servers.\n\n🪜 STEP BY STEP\n1. Create a Firebase project.\n2. Explore Auth, Firestore and Hosting.\n3. Add Firebase to a web app.\n4. Note the free tier limits.\n\n✅ QUICK SUMMARY\nFirebase provides ready backend services so you can ship apps quickly.\n\n✏️ TRY THIS\nList three Firebase features and what each does.",
-    "Authentication": "📌 WHAT YOU LEARN\n• Adding user sign-up and login.\n• Email/password and Google sign-in.\n• Protecting user data.\n\n💡 WHY IT MATTERS\nMost apps need secure user accounts.\n\n🪜 STEP BY STEP\n1. Enable a sign-in method in Firebase.\n2. Add sign-up and login in your app.\n3. Track the logged-in user.\n4. Show user-only content.\n\n✅ QUICK SUMMARY\nFirebase Auth adds secure login quickly with several providers.\n\n✏️ TRY THIS\nOutline the steps to add email/password login.",
-    "Firestore Database": "📌 WHAT YOU LEARN\n• Firestore collections and documents.\n• Adding and reading data.\n• Structuring data well.\n\n💡 WHY IT MATTERS\nFirestore stores your app's data in the cloud, in real time.\n\n🪜 STEP BY STEP\n1. Create a collection (e.g., 'tasks').\n2. Add a document with fields.\n3. Read documents in your app.\n4. Update and delete them.\n\n✅ QUICK SUMMARY\nStore data as documents in collections; do CRUD from your app.\n\n✏️ TRY THIS\nDescribe a 'tasks' collection with two sample documents.",
-    "Hosting Your App": "📌 WHAT YOU LEARN\n• Deploying a web app with Firebase Hosting.\n• Using the Firebase CLI.\n• Getting a live URL.\n\n💡 WHY IT MATTERS\nHosting makes your app public and shareable for free.\n\n🪜 STEP BY STEP\n1. Install the Firebase CLI.\n2. Run firebase init for hosting.\n3. Build your app.\n4. Run firebase deploy to go live.\n\n✅ QUICK SUMMARY\nUse the Firebase CLI to deploy and get a free live URL.\n\n✏️ TRY THIS\nList the commands to deploy a site with Firebase Hosting.",
-    "Realtime Data & Rules": "📌 WHAT YOU LEARN\n• Real-time updates in Firestore.\n• Security rules to protect data.\n• Read/write permissions.\n\n💡 WHY IT MATTERS\nReal-time apps feel live, and rules keep data safe.\n\n🪜 STEP BY STEP\n1. Listen for live document changes.\n2. Update the UI automatically.\n3. Write basic security rules.\n4. Restrict access to owners.\n\n✅ QUICK SUMMARY\nFirestore updates in real time; security rules control who can read/write.\n\n✏️ TRY THIS\nExplain why security rules matter in one or two lines.",
+    "What is Firebase": "WHAT YOU LEARN\n• Firebase as a backend-as-a-service.\n• Its main features (auth, database, hosting).\n• When to use it.\n\nWHY IT MATTERS\nFirebase lets you build full apps fast without managing servers.\n\nSTEP BY STEP\n1. Create a Firebase project.\n2. Explore Auth, Firestore and Hosting.\n3. Add Firebase to a web app.\n4. Note the free tier limits.\n\nQUICK SUMMARY\nFirebase provides ready backend services so you can ship apps quickly.\n\nTRY THIS\nList three Firebase features and what each does.",
+    "Authentication": "WHAT YOU LEARN\n• Adding user sign-up and login.\n• Email/password and Google sign-in.\n• Protecting user data.\n\nWHY IT MATTERS\nMost apps need secure user accounts.\n\nSTEP BY STEP\n1. Enable a sign-in method in Firebase.\n2. Add sign-up and login in your app.\n3. Track the logged-in user.\n4. Show user-only content.\n\nQUICK SUMMARY\nFirebase Auth adds secure login quickly with several providers.\n\nTRY THIS\nOutline the steps to add email/password login.",
+    "Firestore Database": "WHAT YOU LEARN\n• Firestore collections and documents.\n• Adding and reading data.\n• Structuring data well.\n\nWHY IT MATTERS\nFirestore stores your app's data in the cloud, in real time.\n\nSTEP BY STEP\n1. Create a collection (e.g., 'tasks').\n2. Add a document with fields.\n3. Read documents in your app.\n4. Update and delete them.\n\nQUICK SUMMARY\nStore data as documents in collections; do CRUD from your app.\n\nTRY THIS\nDescribe a 'tasks' collection with two sample documents.",
+    "Hosting Your App": "WHAT YOU LEARN\n• Deploying a web app with Firebase Hosting.\n• Using the Firebase CLI.\n• Getting a live URL.\n\nWHY IT MATTERS\nHosting makes your app public and shareable for free.\n\nSTEP BY STEP\n1. Install the Firebase CLI.\n2. Run firebase init for hosting.\n3. Build your app.\n4. Run firebase deploy to go live.\n\nQUICK SUMMARY\nUse the Firebase CLI to deploy and get a free live URL.\n\nTRY THIS\nList the commands to deploy a site with Firebase Hosting.",
+    "Realtime Data & Rules": "WHAT YOU LEARN\n• Real-time updates in Firestore.\n• Security rules to protect data.\n• Read/write permissions.\n\nWHY IT MATTERS\nReal-time apps feel live, and rules keep data safe.\n\nSTEP BY STEP\n1. Listen for live document changes.\n2. Update the UI automatically.\n3. Write basic security rules.\n4. Restrict access to owners.\n\nQUICK SUMMARY\nFirestore updates in real time; security rules control who can read/write.\n\nTRY THIS\nExplain why security rules matter in one or two lines.",
   },
   "ai-tools-for-business-owners": {
-    "AI for Customer Replies": "📌 WHAT YOU LEARN\n• Use AI to write quick, polite replies to customer messages and reviews.\n• Make ready-made reply templates for common questions (price, timing, delivery).\n• Keep your brand's friendly tone every time.\n\n💡 WHY IT MATTERS\nFast, polite replies keep customers happy and bring repeat business — even when you are busy running the shop.\n\n🪜 STEP BY STEP\n1. Paste a customer message into a chat AI.\n2. Ask: \"Reply politely and ask for their order details.\"\n3. Save good replies as templates you can reuse.\n4. Edit lightly so it sounds like you.\n\n✅ QUICK SUMMARY\nAI drafts the reply in seconds; you add a personal touch and send. Great for WhatsApp, Instagram and Google reviews.\n\n✏️ TRY THIS\nTake a real customer question and ask AI for 2 polite reply versions — one short, one detailed.",
-    "AI for Social Media Posts": "📌 WHAT YOU LEARN\n• Generate post captions, offers and festival greetings in seconds.\n• Get 5–10 ideas at once so you never run out of content.\n• Add the right hashtags for your business.\n\n💡 WHY IT MATTERS\nRegular posting grows your shop's reach for free. AI removes the \"what should I post?\" problem.\n\n🪜 STEP BY STEP\n1. Tell AI your business type and today's offer.\n2. Ask: \"Give me 5 Instagram captions with hashtags.\"\n3. Pick one, tweak it, and add a photo.\n4. Plan a week of posts in one sitting.\n\n✅ QUICK SUMMARY\nDescribe your business, ask for several caption ideas, choose and post. Consistency becomes easy.\n\n✏️ TRY THIS\nAsk AI for 5 captions for a weekend discount at your business.",
-    "AI for Sales & Leads": "📌 WHAT YOU LEARN\n• Write follow-up messages that turn enquiries into sales.\n• Create simple sales scripts for calls and chats.\n• Use AI to suggest upsell and offer ideas.\n\n💡 WHY IT MATTERS\nMost sales are lost from no follow-up. AI helps you follow up fast and sound confident.\n\n🪜 STEP BY STEP\n1. Ask AI: \"Write a polite follow-up for a customer who asked about price 2 days ago.\"\n2. Create a short call script for new leads.\n3. Ask for 3 offer ideas to close undecided buyers.\n4. Track who replied and follow up again.\n\n✅ QUICK SUMMARY\nUse AI for quick follow-ups and simple scripts so no lead goes cold.\n\n✏️ TRY THIS\nWrite a 3-message follow-up sequence for a customer who didn't reply.",
-    "AI Data & Reports": "📌 WHAT YOU LEARN\n• Turn your sales numbers into simple summaries.\n• Ask AI to spot best-selling items and slow days.\n• Make a short weekly business report.\n\n💡 WHY IT MATTERS\nKnowing your numbers helps you stock the right items and grow profit — without an accountant.\n\n🪜 STEP BY STEP\n1. List your week's sales (item and amount).\n2. Paste it and ask: \"Summarise top sellers and total sales.\"\n3. Ask: \"What patterns do you see?\"\n4. Save it as your weekly report.\n\n✅ QUICK SUMMARY\nGive AI your basic numbers; get a clear summary and simple insights to make better decisions.\n\n✏️ TRY THIS\nPaste 10 sales entries and ask AI for the top 3 items and total revenue.",
-    "Saving Time with AI": "📌 WHAT YOU LEARN\n• Find the daily tasks AI can do for you (replies, posts, lists, notes).\n• Build a small set of go-to prompts you reuse.\n• Free up time for customers and growth.\n\n💡 WHY IT MATTERS\nTime is the one thing every business owner lacks. AI gives back hours every week.\n\n🪜 STEP BY STEP\n1. List 5 repeating tasks you do weekly.\n2. For each, ask AI to do or draft it once.\n3. Save the prompts that worked.\n4. Reuse them daily — no need to start fresh.\n\n✅ QUICK SUMMARY\nSpot repeating tasks, hand them to AI with saved prompts, and reclaim your time.\n\n✏️ TRY THIS\nPick one boring task you did today and ask AI to do it for you.",
+    "AI for Customer Replies": "WHAT YOU LEARN\n• Use AI to write quick, polite replies to customer messages and reviews.\n• Make ready-made reply templates for common questions (price, timing, delivery).\n• Keep your brand's friendly tone every time.\n\nWHY IT MATTERS\nFast, polite replies keep customers happy and bring repeat business — even when you are busy running the shop.\n\nSTEP BY STEP\n1. Paste a customer message into a chat AI.\n2. Ask: \"Reply politely and ask for their order details.\"\n3. Save good replies as templates you can reuse.\n4. Edit lightly so it sounds like you.\n\nQUICK SUMMARY\nAI drafts the reply in seconds; you add a personal touch and send. Great for WhatsApp, Instagram and Google reviews.\n\nTRY THIS\nTake a real customer question and ask AI for 2 polite reply versions — one short, one detailed.",
+    "AI for Social Media Posts": "WHAT YOU LEARN\n• Generate post captions, offers and festival greetings in seconds.\n• Get 5–10 ideas at once so you never run out of content.\n• Add the right hashtags for your business.\n\nWHY IT MATTERS\nRegular posting grows your shop's reach for free. AI removes the \"what should I post?\" problem.\n\nSTEP BY STEP\n1. Tell AI your business type and today's offer.\n2. Ask: \"Give me 5 Instagram captions with hashtags.\"\n3. Pick one, tweak it, and add a photo.\n4. Plan a week of posts in one sitting.\n\nQUICK SUMMARY\nDescribe your business, ask for several caption ideas, choose and post. Consistency becomes easy.\n\nTRY THIS\nAsk AI for 5 captions for a weekend discount at your business.",
+    "AI for Sales & Leads": "WHAT YOU LEARN\n• Write follow-up messages that turn enquiries into sales.\n• Create simple sales scripts for calls and chats.\n• Use AI to suggest upsell and offer ideas.\n\nWHY IT MATTERS\nMost sales are lost from no follow-up. AI helps you follow up fast and sound confident.\n\nSTEP BY STEP\n1. Ask AI: \"Write a polite follow-up for a customer who asked about price 2 days ago.\"\n2. Create a short call script for new leads.\n3. Ask for 3 offer ideas to close undecided buyers.\n4. Track who replied and follow up again.\n\nQUICK SUMMARY\nUse AI for quick follow-ups and simple scripts so no lead goes cold.\n\nTRY THIS\nWrite a 3-message follow-up sequence for a customer who didn't reply.",
+    "AI Data & Reports": "WHAT YOU LEARN\n• Turn your sales numbers into simple summaries.\n• Ask AI to spot best-selling items and slow days.\n• Make a short weekly business report.\n\nWHY IT MATTERS\nKnowing your numbers helps you stock the right items and grow profit — without an accountant.\n\nSTEP BY STEP\n1. List your week's sales (item and amount).\n2. Paste it and ask: \"Summarise top sellers and total sales.\"\n3. Ask: \"What patterns do you see?\"\n4. Save it as your weekly report.\n\nQUICK SUMMARY\nGive AI your basic numbers; get a clear summary and simple insights to make better decisions.\n\nTRY THIS\nPaste 10 sales entries and ask AI for the top 3 items and total revenue.",
+    "Saving Time with AI": "WHAT YOU LEARN\n• Find the daily tasks AI can do for you (replies, posts, lists, notes).\n• Build a small set of go-to prompts you reuse.\n• Free up time for customers and growth.\n\nWHY IT MATTERS\nTime is the one thing every business owner lacks. AI gives back hours every week.\n\nSTEP BY STEP\n1. List 5 repeating tasks you do weekly.\n2. For each, ask AI to do or draft it once.\n3. Save the prompts that worked.\n4. Reuse them daily — no need to start fresh.\n\nQUICK SUMMARY\nSpot repeating tasks, hand them to AI with saved prompts, and reclaim your time.\n\nTRY THIS\nPick one boring task you did today and ask AI to do it for you.",
   },
   "ai-content-creation": {
-    "AI Blog & Article Writing": "📌 WHAT YOU LEARN\n• Plan and draft blog posts with AI help.\n• Create titles, outlines and full sections.\n• Keep it in your own voice and check facts.\n\n💡 WHY IT MATTERS\nBlogs build trust and bring free traffic. AI makes writing fast even if English feels hard.\n\n🪜 STEP BY STEP\n1. Ask: \"Give me a blog outline on [topic].\"\n2. Then: \"Write the intro in simple English.\"\n3. Build section by section.\n4. Edit, verify facts, and add your own examples.\n\n✅ QUICK SUMMARY\nOutline first, then draft each part with AI, then polish in your words. Always fact-check.\n\n✏️ TRY THIS\nGet an outline for a 600-word blog on a topic you know well.",
-    "AI Captions & Hashtags": "📌 WHAT YOU LEARN\n• Write scroll-stopping captions for any platform.\n• Match tone: fun, professional or emotional.\n• Add relevant, trending hashtags.\n\n💡 WHY IT MATTERS\nA good caption decides if people stop, read and follow. AI gives many options fast.\n\n🪜 STEP BY STEP\n1. Describe the photo/video and the goal.\n2. Ask: \"Give 5 captions + 10 hashtags.\"\n3. Pick the best and shorten if needed.\n4. Test different styles over a week.\n\n✅ QUICK SUMMARY\nDescribe your post, request several captions with hashtags, and pick what fits your brand.\n\n✏️ TRY THIS\nAsk AI for 5 captions for a \"behind the scenes\" reel.",
-    "AI Scripts for Videos": "📌 WHAT YOU LEARN\n• Write short video and reel scripts with a strong hook.\n• Structure: hook → value → call to action.\n• Keep it natural and easy to speak.\n\n💡 WHY IT MATTERS\nThe first 3 seconds decide if viewers stay. A clear script makes recording stress-free.\n\n🪜 STEP BY STEP\n1. Give the topic and video length.\n2. Ask: \"Write a 30-second reel script with a strong hook.\"\n3. Read it aloud and adjust to your style.\n4. Add a clear ending action (\"Follow for more\").\n\n✅ QUICK SUMMARY\nTell AI the topic and length; get a hook-driven script you can speak naturally.\n\n✏️ TRY THIS\nWrite a 30-second script teaching one quick tip in your field.",
-    "Repurposing Content with AI": "📌 WHAT YOU LEARN\n• Turn one piece of content into many (blog → reel → caption → tweet).\n• Save time by reusing what you already made.\n• Reach people on every platform.\n\n💡 WHY IT MATTERS\nSmart creators make once and post everywhere. AI handles the rewriting for each format.\n\n🪜 STEP BY STEP\n1. Paste a blog or long caption.\n2. Ask: \"Turn this into a reel script, 3 tweets and an Instagram caption.\"\n3. Adjust each for the platform.\n4. Schedule them across the week.\n\n✅ QUICK SUMMARY\nOne idea, many formats. AI repurposes content so a little work goes a long way.\n\n✏️ TRY THIS\nTake an old post and ask AI to turn it into 3 short social posts.",
-    "Editing AI Content Well": "📌 WHAT YOU LEARN\n• Why raw AI text needs a human edit.\n• Remove robotic lines and add your personality.\n• Fact-check and keep it honest.\n\n💡 WHY IT MATTERS\nEdited content sounds real and builds trust; copy-paste AI text feels generic and can be wrong.\n\n🪜 STEP BY STEP\n1. Read the AI draft fully.\n2. Cut repetition and over-formal words.\n3. Add a personal story or local example.\n4. Check any facts, names and numbers.\n\n✅ QUICK SUMMARY\nTreat AI output as a first draft. Your edit makes it human, accurate and uniquely yours.\n\n✏️ TRY THIS\nTake any AI caption and rewrite 2 lines in your own natural voice.",
+    "AI Blog & Article Writing": "WHAT YOU LEARN\n• Plan and draft blog posts with AI help.\n• Create titles, outlines and full sections.\n• Keep it in your own voice and check facts.\n\nWHY IT MATTERS\nBlogs build trust and bring free traffic. AI makes writing fast even if English feels hard.\n\nSTEP BY STEP\n1. Ask: \"Give me a blog outline on [topic].\"\n2. Then: \"Write the intro in simple English.\"\n3. Build section by section.\n4. Edit, verify facts, and add your own examples.\n\nQUICK SUMMARY\nOutline first, then draft each part with AI, then polish in your words. Always fact-check.\n\nTRY THIS\nGet an outline for a 600-word blog on a topic you know well.",
+    "AI Captions & Hashtags": "WHAT YOU LEARN\n• Write scroll-stopping captions for any platform.\n• Match tone: fun, professional or emotional.\n• Add relevant, trending hashtags.\n\nWHY IT MATTERS\nA good caption decides if people stop, read and follow. AI gives many options fast.\n\nSTEP BY STEP\n1. Describe the photo/video and the goal.\n2. Ask: \"Give 5 captions + 10 hashtags.\"\n3. Pick the best and shorten if needed.\n4. Test different styles over a week.\n\nQUICK SUMMARY\nDescribe your post, request several captions with hashtags, and pick what fits your brand.\n\nTRY THIS\nAsk AI for 5 captions for a \"behind the scenes\" reel.",
+    "AI Scripts for Videos": "WHAT YOU LEARN\n• Write short video and reel scripts with a strong hook.\n• Structure: hook → value → call to action.\n• Keep it natural and easy to speak.\n\nWHY IT MATTERS\nThe first 3 seconds decide if viewers stay. A clear script makes recording stress-free.\n\nSTEP BY STEP\n1. Give the topic and video length.\n2. Ask: \"Write a 30-second reel script with a strong hook.\"\n3. Read it aloud and adjust to your style.\n4. Add a clear ending action (\"Follow for more\").\n\nQUICK SUMMARY\nTell AI the topic and length; get a hook-driven script you can speak naturally.\n\nTRY THIS\nWrite a 30-second script teaching one quick tip in your field.",
+    "Repurposing Content with AI": "WHAT YOU LEARN\n• Turn one piece of content into many (blog → reel → caption → tweet).\n• Save time by reusing what you already made.\n• Reach people on every platform.\n\nWHY IT MATTERS\nSmart creators make once and post everywhere. AI handles the rewriting for each format.\n\nSTEP BY STEP\n1. Paste a blog or long caption.\n2. Ask: \"Turn this into a reel script, 3 tweets and an Instagram caption.\"\n3. Adjust each for the platform.\n4. Schedule them across the week.\n\nQUICK SUMMARY\nOne idea, many formats. AI repurposes content so a little work goes a long way.\n\nTRY THIS\nTake an old post and ask AI to turn it into 3 short social posts.",
+    "Editing AI Content Well": "WHAT YOU LEARN\n• Why raw AI text needs a human edit.\n• Remove robotic lines and add your personality.\n• Fact-check and keep it honest.\n\nWHY IT MATTERS\nEdited content sounds real and builds trust; copy-paste AI text feels generic and can be wrong.\n\nSTEP BY STEP\n1. Read the AI draft fully.\n2. Cut repetition and over-formal words.\n3. Add a personal story or local example.\n4. Check any facts, names and numbers.\n\nQUICK SUMMARY\nTreat AI output as a first draft. Your edit makes it human, accurate and uniquely yours.\n\nTRY THIS\nTake any AI caption and rewrite 2 lines in your own natural voice.",
   },
   "ai-image-generation": {
-    "Intro to AI Image Tools": "📌 WHAT YOU LEARN\n• What AI image generation is (text → picture).\n• Popular free/easy tools: Bing Image Creator, Canva AI, Leonardo.\n• What these tools can and can't do.\n\n💡 WHY IT MATTERS\nYou can make posters, thumbnails and product images without a designer or camera.\n\n🪜 STEP BY STEP\n1. Open a free tool like Bing Image Creator.\n2. Type a simple description and generate.\n3. Try changing words to change the result.\n4. Download your favourite image.\n\n✅ QUICK SUMMARY\nAI image tools create pictures from your words. Start free, experiment, and download.\n\n✏️ TRY THIS\nGenerate: a cute cartoon bee holding a book, colourful, simple style.",
-    "Writing Image Prompts": "📌 WHAT YOU LEARN\n• The recipe: subject + style + colours + mood + details.\n• How small word changes change the image.\n• Adding quality words (\"high detail, vector, minimal\").\n\n💡 WHY IT MATTERS\nA clear prompt is the difference between a messy image and a professional one.\n\n🪜 STEP BY STEP\n1. Name the subject clearly.\n2. Add a style (cartoon, realistic, vector).\n3. Add colours and mood.\n4. Add details and generate; refine.\n\n✅ QUICK SUMMARY\nDescribe subject, style, colours and mood. Specific prompts = better images.\n\n✏️ TRY THIS\nWrite a prompt for a festival greeting poster with your shop name idea.",
-    "Midjourney Basics": "📌 WHAT YOU LEARN\n• What Midjourney is and that it works inside Discord.\n• Basic /imagine command and prompt style.\n• Choosing and upscaling your favourite result.\n\n💡 WHY IT MATTERS\nMidjourney makes some of the most beautiful AI art — great for premium designs.\n\n🪜 STEP BY STEP\n1. Join Midjourney via Discord and a subscription.\n2. Type: /imagine prompt: your description.\n3. Wait for 4 options; pick one with U buttons.\n4. Upscale and download.\n\n✅ QUICK SUMMARY\nUse /imagine in Discord, describe clearly, then upscale the best of 4 images.\n\n✏️ TRY THIS\nDraft a Midjourney prompt for a modern logo concept (you can practise the wording).",
-    "Leonardo AI Basics": "📌 WHAT YOU LEARN\n• Leonardo AI is a free-friendly image tool with daily credits.\n• Choosing models and image size.\n• Generating and saving images.\n\n💡 WHY IT MATTERS\nIt's a beginner-friendly, low-cost way to make lots of images for content and ads.\n\n🪜 STEP BY STEP\n1. Sign up at Leonardo and open Image Generation.\n2. Pick a model and enter your prompt.\n3. Set the number of images and generate.\n4. Download or refine the best one.\n\n✅ QUICK SUMMARY\nLeonardo gives free daily image credits — pick a model, prompt clearly, and download.\n\n✏️ TRY THIS\nGenerate 4 versions of a product photo idea and compare them.",
-    "Editing & Upscaling Images": "📌 WHAT YOU LEARN\n• Fix and improve AI images (upscale, remove background, retouch).\n• Free tools: Canva, remove.bg, upscale features.\n• Prepare images for web and print.\n\n💡 WHY IT MATTERS\nA quick edit turns a good AI image into a ready-to-use, professional one.\n\n🪜 STEP BY STEP\n1. Upscale to make the image sharp and larger.\n2. Remove or change the background if needed.\n3. Add text or your logo in Canva.\n4. Export in the right size for the platform.\n\n✅ QUICK SUMMARY\nUpscale, clean the background, brand it, and export. Small edits, big polish.\n\n✏️ TRY THIS\nTake any image, remove its background with remove.bg, and place it on a colour.",
+    "Intro to AI Image Tools": "WHAT YOU LEARN\n• What AI image generation is (text → picture).\n• Popular free/easy tools: Bing Image Creator, Canva AI, Leonardo.\n• What these tools can and can't do.\n\nWHY IT MATTERS\nYou can make posters, thumbnails and product images without a designer or camera.\n\nSTEP BY STEP\n1. Open a free tool like Bing Image Creator.\n2. Type a simple description and generate.\n3. Try changing words to change the result.\n4. Download your favourite image.\n\nQUICK SUMMARY\nAI image tools create pictures from your words. Start free, experiment, and download.\n\nTRY THIS\nGenerate: a cute cartoon bee holding a book, colourful, simple style.",
+    "Writing Image Prompts": "WHAT YOU LEARN\n• The recipe: subject + style + colours + mood + details.\n• How small word changes change the image.\n• Adding quality words (\"high detail, vector, minimal\").\n\nWHY IT MATTERS\nA clear prompt is the difference between a messy image and a professional one.\n\nSTEP BY STEP\n1. Name the subject clearly.\n2. Add a style (cartoon, realistic, vector).\n3. Add colours and mood.\n4. Add details and generate; refine.\n\nQUICK SUMMARY\nDescribe subject, style, colours and mood. Specific prompts = better images.\n\nTRY THIS\nWrite a prompt for a festival greeting poster with your shop name idea.",
+    "Midjourney Basics": "WHAT YOU LEARN\n• What Midjourney is and that it works inside Discord.\n• Basic /imagine command and prompt style.\n• Choosing and upscaling your favourite result.\n\nWHY IT MATTERS\nMidjourney makes some of the most beautiful AI art — great for premium designs.\n\nSTEP BY STEP\n1. Join Midjourney via Discord and a subscription.\n2. Type: /imagine prompt: your description.\n3. Wait for 4 options; pick one with U buttons.\n4. Upscale and download.\n\nQUICK SUMMARY\nUse /imagine in Discord, describe clearly, then upscale the best of 4 images.\n\nTRY THIS\nDraft a Midjourney prompt for a modern logo concept (you can practise the wording).",
+    "Leonardo AI Basics": "WHAT YOU LEARN\n• Leonardo AI is a free-friendly image tool with daily credits.\n• Choosing models and image size.\n• Generating and saving images.\n\nWHY IT MATTERS\nIt's a beginner-friendly, low-cost way to make lots of images for content and ads.\n\nSTEP BY STEP\n1. Sign up at Leonardo and open Image Generation.\n2. Pick a model and enter your prompt.\n3. Set the number of images and generate.\n4. Download or refine the best one.\n\nQUICK SUMMARY\nLeonardo gives free daily image credits — pick a model, prompt clearly, and download.\n\nTRY THIS\nGenerate 4 versions of a product photo idea and compare them.",
+    "Editing & Upscaling Images": "WHAT YOU LEARN\n• Fix and improve AI images (upscale, remove background, retouch).\n• Free tools: Canva, remove.bg, upscale features.\n• Prepare images for web and print.\n\nWHY IT MATTERS\nA quick edit turns a good AI image into a ready-to-use, professional one.\n\nSTEP BY STEP\n1. Upscale to make the image sharp and larger.\n2. Remove or change the background if needed.\n3. Add text or your logo in Canva.\n4. Export in the right size for the platform.\n\nQUICK SUMMARY\nUpscale, clean the background, brand it, and export. Small edits, big polish.\n\nTRY THIS\nTake any image, remove its background with remove.bg, and place it on a colour.",
   },
   "ai-video-creation": {
-    "AI Video Tools Overview": "📌 WHAT YOU LEARN\n• Types of AI video tools: text-to-video, avatars, editors.\n• Popular ones: CapCut AI, Pika, Runway, HeyGen.\n• What each is best for.\n\n💡 WHY IT MATTERS\nAI lets you make videos without a camera or editing skills — perfect for reels and ads.\n\n🪜 STEP BY STEP\n1. Decide your goal (reel, ad, talking-head).\n2. Pick a matching tool.\n3. Try its free plan with one short clip.\n4. Build your favourite toolkit.\n\n✅ QUICK SUMMARY\nMatch the tool to the video type and start free. AI video is now beginner-friendly.\n\n✏️ TRY THIS\nList 2 videos you want to make and the tool that fits each.",
-    "Text-to-Video Basics": "📌 WHAT YOU LEARN\n• Turning a script or prompt into a video clip.\n• Writing clear scene descriptions.\n• Combining clips into a short video.\n\n💡 WHY IT MATTERS\nYou can create eye-catching video from just words — great for stories and ads.\n\n🪜 STEP BY STEP\n1. Write a short prompt or script.\n2. Generate scene-by-scene clips.\n3. Pick the best takes.\n4. Stitch them together with music.\n\n✅ QUICK SUMMARY\nDescribe scenes clearly, generate clips, and combine into one short video.\n\n✏️ TRY THIS\nWrite a 3-scene prompt for a 15-second product teaser.",
-    "AI Avatars & Talking Heads": "📌 WHAT YOU LEARN\n• Create a digital presenter that speaks your script.\n• Tools like HeyGen and Synthesia.\n• Choosing avatar, voice and language.\n\n💡 WHY IT MATTERS\nYou can make professional explainer videos without filming yourself.\n\n🪜 STEP BY STEP\n1. Choose an avatar and voice.\n2. Paste your script.\n3. Pick the language (English/Tamil where available).\n4. Generate and download the video.\n\n✅ QUICK SUMMARY\nPick an avatar, add your script and voice, and get a talking-head video instantly.\n\n✏️ TRY THIS\nWrite a 5-line script an avatar could present about your service.",
-    "AI Voiceovers for Video": "📌 WHAT YOU LEARN\n• Add natural AI voiceovers to videos.\n• Choose voice, tone and pace.\n• Sync voice with your clips.\n\n💡 WHY IT MATTERS\nA clear voiceover makes videos feel professional, even with no microphone or recording shyness.\n\n🪜 STEP BY STEP\n1. Write your voiceover script.\n2. Generate audio in a text-to-speech tool.\n3. Import it into your editor.\n4. Match the audio to the visuals.\n\n✅ QUICK SUMMARY\nGenerate a natural AI voice from your script and lay it over your video.\n\n✏️ TRY THIS\nCreate a 20-second voiceover script and imagine the visuals for each line.",
-    "Editing AI Videos": "📌 WHAT YOU LEARN\n• Trim, arrange and polish AI-made clips.\n• Add text, music, captions and transitions.\n• Export for Reels, Shorts and YouTube.\n\n💡 WHY IT MATTERS\nEditing ties everything together and keeps viewers watching to the end.\n\n🪜 STEP BY STEP\n1. Import clips into CapCut or similar.\n2. Trim and order them to the script.\n3. Add captions, music and simple transitions.\n4. Export in the platform's size.\n\n✅ QUICK SUMMARY\nArrange clips, add captions and music, then export in the right format.\n\n✏️ TRY THIS\nPlan the caption text for a 15-second video, line by line.",
+    "AI Video Tools Overview": "WHAT YOU LEARN\n• Types of AI video tools: text-to-video, avatars, editors.\n• Popular ones: CapCut AI, Pika, Runway, HeyGen.\n• What each is best for.\n\nWHY IT MATTERS\nAI lets you make videos without a camera or editing skills — perfect for reels and ads.\n\nSTEP BY STEP\n1. Decide your goal (reel, ad, talking-head).\n2. Pick a matching tool.\n3. Try its free plan with one short clip.\n4. Build your favourite toolkit.\n\nQUICK SUMMARY\nMatch the tool to the video type and start free. AI video is now beginner-friendly.\n\nTRY THIS\nList 2 videos you want to make and the tool that fits each.",
+    "Text-to-Video Basics": "WHAT YOU LEARN\n• Turning a script or prompt into a video clip.\n• Writing clear scene descriptions.\n• Combining clips into a short video.\n\nWHY IT MATTERS\nYou can create eye-catching video from just words — great for stories and ads.\n\nSTEP BY STEP\n1. Write a short prompt or script.\n2. Generate scene-by-scene clips.\n3. Pick the best takes.\n4. Stitch them together with music.\n\nQUICK SUMMARY\nDescribe scenes clearly, generate clips, and combine into one short video.\n\nTRY THIS\nWrite a 3-scene prompt for a 15-second product teaser.",
+    "AI Avatars & Talking Heads": "WHAT YOU LEARN\n• Create a digital presenter that speaks your script.\n• Tools like HeyGen and Synthesia.\n• Choosing avatar, voice and language.\n\nWHY IT MATTERS\nYou can make professional explainer videos without filming yourself.\n\nSTEP BY STEP\n1. Choose an avatar and voice.\n2. Paste your script.\n3. Pick the language (English/Tamil where available).\n4. Generate and download the video.\n\nQUICK SUMMARY\nPick an avatar, add your script and voice, and get a talking-head video instantly.\n\nTRY THIS\nWrite a 5-line script an avatar could present about your service.",
+    "AI Voiceovers for Video": "WHAT YOU LEARN\n• Add natural AI voiceovers to videos.\n• Choose voice, tone and pace.\n• Sync voice with your clips.\n\nWHY IT MATTERS\nA clear voiceover makes videos feel professional, even with no microphone or recording shyness.\n\nSTEP BY STEP\n1. Write your voiceover script.\n2. Generate audio in a text-to-speech tool.\n3. Import it into your editor.\n4. Match the audio to the visuals.\n\nQUICK SUMMARY\nGenerate a natural AI voice from your script and lay it over your video.\n\nTRY THIS\nCreate a 20-second voiceover script and imagine the visuals for each line.",
+    "Editing AI Videos": "WHAT YOU LEARN\n• Trim, arrange and polish AI-made clips.\n• Add text, music, captions and transitions.\n• Export for Reels, Shorts and YouTube.\n\nWHY IT MATTERS\nEditing ties everything together and keeps viewers watching to the end.\n\nSTEP BY STEP\n1. Import clips into CapCut or similar.\n2. Trim and order them to the script.\n3. Add captions, music and simple transitions.\n4. Export in the platform's size.\n\nQUICK SUMMARY\nArrange clips, add captions and music, then export in the right format.\n\nTRY THIS\nPlan the caption text for a 15-second video, line by line.",
   },
   "ai-voice-generation": {
-    "What is AI Voice": "📌 WHAT YOU LEARN\n• AI voice = computer-generated speech that sounds human.\n• Uses: voiceovers, narration, accessibility, IVR.\n• Why it's so realistic now.\n\n💡 WHY IT MATTERS\nYou can create professional audio in any voice without recording — saving time and money.\n\n🪜 STEP BY STEP\n1. Understand text-to-speech (TTS) basics.\n2. Try one free TTS tool with a sentence.\n3. Compare different voices.\n4. Pick a voice that fits your brand.\n\n✅ QUICK SUMMARY\nAI voice turns text into lifelike speech. Try a few voices and choose your favourite.\n\n✏️ TRY THIS\nGenerate the same sentence in 3 different AI voices and compare.",
-    "Text-to-Speech Tools": "📌 WHAT YOU LEARN\n• Popular tools: ElevenLabs, Murf, Google TTS.\n• Free vs paid limits.\n• Controlling speed, tone and pauses.\n\n💡 WHY IT MATTERS\nThe right tool gives natural voiceovers for videos, ads and audiobooks.\n\n🪜 STEP BY STEP\n1. Sign up for a free TTS tool.\n2. Paste your text.\n3. Choose voice and adjust speed/tone.\n4. Generate and download the audio.\n\n✅ QUICK SUMMARY\nPick a TTS tool, paste text, tune the voice, and export your audio.\n\n✏️ TRY THIS\nMake a 15-second narration of a product intro.",
-    "Cloning & Custom Voices": "📌 WHAT YOU LEARN\n• What voice cloning is and how it works.\n• Creating a custom voice from a short sample.\n• Using it ethically and with permission.\n\n💡 WHY IT MATTERS\nA consistent custom voice builds a recognisable brand for your content.\n\n🪜 STEP BY STEP\n1. Record a clear voice sample (with consent).\n2. Upload to a cloning tool like ElevenLabs.\n3. Generate speech in that voice.\n4. Use only voices you're allowed to use.\n\n✅ QUICK SUMMARY\nClone a voice from a sample for consistent narration — always with permission and honesty.\n\n✏️ TRY THIS\nWrite a short script your \"brand voice\" would narrate.",
-    "Voiceovers for Reels/YouTube": "📌 WHAT YOU LEARN\n• Make engaging voiceovers for short and long videos.\n• Match energy to the platform.\n• Sync voice with on-screen action.\n\n💡 WHY IT MATTERS\nStrong voiceovers boost watch time and make content feel professional.\n\n🪜 STEP BY STEP\n1. Write a tight, spoken-style script.\n2. Generate an energetic AI voiceover.\n3. Add it to your video editor.\n4. Time it with cuts and captions.\n\n✅ QUICK SUMMARY\nWrite for the ear, generate a lively voiceover, and sync it to your edits.\n\n✏️ TRY THIS\nScript a punchy 20-second reel voiceover with a hook and CTA.",
-    "Voice in Tamil & English": "📌 WHAT YOU LEARN\n• Generate voiceovers in Tamil, English or a mix.\n• Choosing tools that support Indian languages.\n• Keeping pronunciation natural.\n\n💡 WHY IT MATTERS\nLocal-language audio connects better with Tamil Nadu audiences and widens your reach.\n\n🪜 STEP BY STEP\n1. Pick a tool that supports Tamil.\n2. Paste Tamil or Tanglish text.\n3. Test pronunciation and fix tricky words.\n4. Export and use in your content.\n\n✅ QUICK SUMMARY\nUse language-friendly tools to make natural Tamil/English voiceovers for local audiences.\n\n✏️ TRY THIS\nGenerate one line in Tamil and the same line in English; compare clarity.",
+    "What is AI Voice": "WHAT YOU LEARN\n• AI voice = computer-generated speech that sounds human.\n• Uses: voiceovers, narration, accessibility, IVR.\n• Why it's so realistic now.\n\nWHY IT MATTERS\nYou can create professional audio in any voice without recording — saving time and money.\n\nSTEP BY STEP\n1. Understand text-to-speech (TTS) basics.\n2. Try one free TTS tool with a sentence.\n3. Compare different voices.\n4. Pick a voice that fits your brand.\n\nQUICK SUMMARY\nAI voice turns text into lifelike speech. Try a few voices and choose your favourite.\n\nTRY THIS\nGenerate the same sentence in 3 different AI voices and compare.",
+    "Text-to-Speech Tools": "WHAT YOU LEARN\n• Popular tools: ElevenLabs, Murf, Google TTS.\n• Free vs paid limits.\n• Controlling speed, tone and pauses.\n\nWHY IT MATTERS\nThe right tool gives natural voiceovers for videos, ads and audiobooks.\n\nSTEP BY STEP\n1. Sign up for a free TTS tool.\n2. Paste your text.\n3. Choose voice and adjust speed/tone.\n4. Generate and download the audio.\n\nQUICK SUMMARY\nPick a TTS tool, paste text, tune the voice, and export your audio.\n\nTRY THIS\nMake a 15-second narration of a product intro.",
+    "Cloning & Custom Voices": "WHAT YOU LEARN\n• What voice cloning is and how it works.\n• Creating a custom voice from a short sample.\n• Using it ethically and with permission.\n\nWHY IT MATTERS\nA consistent custom voice builds a recognisable brand for your content.\n\nSTEP BY STEP\n1. Record a clear voice sample (with consent).\n2. Upload to a cloning tool like ElevenLabs.\n3. Generate speech in that voice.\n4. Use only voices you're allowed to use.\n\nQUICK SUMMARY\nClone a voice from a sample for consistent narration — always with permission and honesty.\n\nTRY THIS\nWrite a short script your \"brand voice\" would narrate.",
+    "Voiceovers for Reels/YouTube": "WHAT YOU LEARN\n• Make engaging voiceovers for short and long videos.\n• Match energy to the platform.\n• Sync voice with on-screen action.\n\nWHY IT MATTERS\nStrong voiceovers boost watch time and make content feel professional.\n\nSTEP BY STEP\n1. Write a tight, spoken-style script.\n2. Generate an energetic AI voiceover.\n3. Add it to your video editor.\n4. Time it with cuts and captions.\n\nQUICK SUMMARY\nWrite for the ear, generate a lively voiceover, and sync it to your edits.\n\nTRY THIS\nScript a punchy 20-second reel voiceover with a hook and CTA.",
+    "Voice in Tamil & English": "WHAT YOU LEARN\n• Generate voiceovers in Tamil, English or a mix.\n• Choosing tools that support Indian languages.\n• Keeping pronunciation natural.\n\nWHY IT MATTERS\nLocal-language audio connects better with Tamil Nadu audiences and widens your reach.\n\nSTEP BY STEP\n1. Pick a tool that supports Tamil.\n2. Paste Tamil or Tanglish text.\n3. Test pronunciation and fix tricky words.\n4. Export and use in your content.\n\nQUICK SUMMARY\nUse language-friendly tools to make natural Tamil/English voiceovers for local audiences.\n\nTRY THIS\nGenerate one line in Tamil and the same line in English; compare clarity.",
   },
   "ai-for-digital-marketing": {
-    "AI for Ad Copy": "📌 WHAT YOU LEARN\n• Write headlines and ad text that sell.\n• Create multiple versions to test.\n• Match copy to the platform (FB, Google, Insta).\n\n💡 WHY IT MATTERS\nGreat ad copy lowers cost and raises sales. AI gives many options to test fast.\n\n🪜 STEP BY STEP\n1. Tell AI the product, offer and audience.\n2. Ask: \"Write 5 ad headlines and 3 descriptions.\"\n3. Pick the strongest and shorten.\n4. Test 2 versions against each other.\n\n✅ QUICK SUMMARY\nDescribe product and audience; get many ad variations to test and improve.\n\n✏️ TRY THIS\nGenerate 5 headlines for a discount on your top product.",
-    "AI for SEO Content": "📌 WHAT YOU LEARN\n• Use AI to plan keyword-friendly content.\n• Generate titles, headings and meta descriptions.\n• Write helpful articles that rank.\n\n💡 WHY IT MATTERS\nSEO brings free, long-term traffic. AI speeds up research and writing.\n\n🪜 STEP BY STEP\n1. Ask AI for keyword ideas on your topic.\n2. Get an SEO-friendly title and outline.\n3. Draft sections naturally around keywords.\n4. Add a meta description and edit.\n\n✅ QUICK SUMMARY\nPlan keywords and structure with AI, then write genuinely helpful, optimised content.\n\n✏️ TRY THIS\nAsk AI for 10 keywords and a blog title for your niche.",
-    "AI Social Media Planning": "📌 WHAT YOU LEARN\n• Build a weekly/monthly content calendar with AI.\n• Mix post types: tips, offers, stories, reels.\n• Batch-create captions in advance.\n\n💡 WHY IT MATTERS\nA plan keeps you consistent, and consistency is what grows accounts.\n\n🪜 STEP BY STEP\n1. Tell AI your niche and posting days.\n2. Ask: \"Make a 1-week content calendar.\"\n3. Generate captions for each day.\n4. Schedule them in advance.\n\n✅ QUICK SUMMARY\nLet AI plan a balanced calendar and draft captions so posting becomes effortless.\n\n✏️ TRY THIS\nGet a 7-day content plan with one caption for each day.",
-    "AI Image & Creative Ads": "📌 WHAT YOU LEARN\n• Make ad visuals with AI image tools + Canva.\n• Combine strong image with strong copy.\n• Keep brand colours and clear offers.\n\n💡 WHY IT MATTERS\nScroll-stopping creatives get clicks. AI makes pro visuals without a designer.\n\n🪜 STEP BY STEP\n1. Generate or pick a strong image.\n2. Add headline and offer in Canva.\n3. Use brand colours and a clear button text.\n4. Export in the ad's required size.\n\n✅ QUICK SUMMARY\nPair an AI image with sharp copy and brand styling for click-worthy ads.\n\n✏️ TRY THIS\nDesign one ad creative concept: image idea + headline + offer.",
-    "AI Analytics Insights": "📌 WHAT YOU LEARN\n• Use AI to make sense of your marketing numbers.\n• Spot what's working and what to stop.\n• Get next-step suggestions.\n\n💡 WHY IT MATTERS\nData tells you where to spend time and money for the best results.\n\n🪜 STEP BY STEP\n1. Copy your post/ad results (reach, clicks, sales).\n2. Paste and ask: \"What's working and what should I improve?\"\n3. Ask for 3 action steps.\n4. Apply and re-check next week.\n\n✅ QUICK SUMMARY\nFeed AI your numbers; get clear insights and concrete next actions.\n\n✏️ TRY THIS\nPaste last week's post stats and ask AI which post performed best and why.",
+    "AI for Ad Copy": "WHAT YOU LEARN\n• Write headlines and ad text that sell.\n• Create multiple versions to test.\n• Match copy to the platform (FB, Google, Insta).\n\nWHY IT MATTERS\nGreat ad copy lowers cost and raises sales. AI gives many options to test fast.\n\nSTEP BY STEP\n1. Tell AI the product, offer and audience.\n2. Ask: \"Write 5 ad headlines and 3 descriptions.\"\n3. Pick the strongest and shorten.\n4. Test 2 versions against each other.\n\nQUICK SUMMARY\nDescribe product and audience; get many ad variations to test and improve.\n\nTRY THIS\nGenerate 5 headlines for a discount on your top product.",
+    "AI for SEO Content": "WHAT YOU LEARN\n• Use AI to plan keyword-friendly content.\n• Generate titles, headings and meta descriptions.\n• Write helpful articles that rank.\n\nWHY IT MATTERS\nSEO brings free, long-term traffic. AI speeds up research and writing.\n\nSTEP BY STEP\n1. Ask AI for keyword ideas on your topic.\n2. Get an SEO-friendly title and outline.\n3. Draft sections naturally around keywords.\n4. Add a meta description and edit.\n\nQUICK SUMMARY\nPlan keywords and structure with AI, then write genuinely helpful, optimised content.\n\nTRY THIS\nAsk AI for 10 keywords and a blog title for your niche.",
+    "AI Social Media Planning": "WHAT YOU LEARN\n• Build a weekly/monthly content calendar with AI.\n• Mix post types: tips, offers, stories, reels.\n• Batch-create captions in advance.\n\nWHY IT MATTERS\nA plan keeps you consistent, and consistency is what grows accounts.\n\nSTEP BY STEP\n1. Tell AI your niche and posting days.\n2. Ask: \"Make a 1-week content calendar.\"\n3. Generate captions for each day.\n4. Schedule them in advance.\n\nQUICK SUMMARY\nLet AI plan a balanced calendar and draft captions so posting becomes effortless.\n\nTRY THIS\nGet a 7-day content plan with one caption for each day.",
+    "AI Image & Creative Ads": "WHAT YOU LEARN\n• Make ad visuals with AI image tools + Canva.\n• Combine strong image with strong copy.\n• Keep brand colours and clear offers.\n\nWHY IT MATTERS\nScroll-stopping creatives get clicks. AI makes pro visuals without a designer.\n\nSTEP BY STEP\n1. Generate or pick a strong image.\n2. Add headline and offer in Canva.\n3. Use brand colours and a clear button text.\n4. Export in the ad's required size.\n\nQUICK SUMMARY\nPair an AI image with sharp copy and brand styling for click-worthy ads.\n\nTRY THIS\nDesign one ad creative concept: image idea + headline + offer.",
+    "AI Analytics Insights": "WHAT YOU LEARN\n• Use AI to make sense of your marketing numbers.\n• Spot what's working and what to stop.\n• Get next-step suggestions.\n\nWHY IT MATTERS\nData tells you where to spend time and money for the best results.\n\nSTEP BY STEP\n1. Copy your post/ad results (reach, clicks, sales).\n2. Paste and ask: \"What's working and what should I improve?\"\n3. Ask for 3 action steps.\n4. Apply and re-check next week.\n\nQUICK SUMMARY\nFeed AI your numbers; get clear insights and concrete next actions.\n\nTRY THIS\nPaste last week's post stats and ask AI which post performed best and why.",
   },
   "ai-for-teachers": {
-    "AI Lesson Planning": "📌 WHAT YOU LEARN\n• Create lesson plans for any topic and grade.\n• Set objectives, activities and time splits.\n• Adapt for different student levels.\n\n💡 WHY IT MATTERS\nPlanning takes hours weekly. AI gives a strong first draft in minutes.\n\n🪜 STEP BY STEP\n1. Tell AI the subject, grade and topic.\n2. Ask: \"Make a 40-minute lesson plan with objectives and an activity.\"\n3. Adjust to your class and resources.\n4. Save it to reuse and improve.\n\n✅ QUICK SUMMARY\nDescribe topic and grade; get a ready lesson plan you can tailor quickly.\n\n✏️ TRY THIS\nGenerate a 40-minute lesson plan for a topic you teach.",
-    "AI Question Paper Maker": "📌 WHAT YOU LEARN\n• Create question papers and worksheets fast.\n• Mix MCQs, short and long questions.\n• Add an answer key.\n\n💡 WHY IT MATTERS\nQuality assessments take time. AI builds them and the key together.\n\n🪜 STEP BY STEP\n1. Give the chapter and difficulty level.\n2. Ask: \"Make 10 MCQs, 5 short, 2 long, with answers.\"\n3. Review for correctness.\n4. Format and print.\n\n✅ QUICK SUMMARY\nSpecify chapter and format; get a complete paper plus answer key to review.\n\n✏️ TRY THIS\nMake a 10-question quiz with answers for one chapter.",
-    "AI for Grading Help": "📌 WHAT YOU LEARN\n• Use AI to draft feedback and rubrics.\n• Speed up checking written answers.\n• Keep grading fair and consistent.\n\n💡 WHY IT MATTERS\nHelpful, consistent feedback improves learning — and AI cuts the time it takes.\n\n🪜 STEP BY STEP\n1. Create a rubric with AI for the task.\n2. Paste a sample answer for feedback ideas.\n3. Personalise the feedback for each student.\n4. Always make the final judgement yourself.\n\n✅ QUICK SUMMARY\nAI drafts rubrics and feedback; you verify and personalise. Faster, fairer grading.\n\n✏️ TRY THIS\nBuild a simple 4-point rubric for an essay question.",
-    "AI Teaching Materials": "📌 WHAT YOU LEARN\n• Generate notes, examples, analogies and slides.\n• Make content simpler or more advanced on demand.\n• Create handouts and revision sheets.\n\n💡 WHY IT MATTERS\nRich materials help students understand — AI produces them in minutes.\n\n🪜 STEP BY STEP\n1. Ask for notes on a topic at your students' level.\n2. Request real-life examples and analogies.\n3. Turn key points into a one-page handout.\n4. Review and add local context.\n\n✅ QUICK SUMMARY\nUse AI to create clear notes, examples and handouts tailored to your class.\n\n✏️ TRY THIS\nAsk AI for 3 everyday analogies to explain a tricky concept.",
-    "Explaining Topics with AI": "📌 WHAT YOU LEARN\n• Get multiple ways to explain one idea.\n• Simplify hard concepts for weak students.\n• Prepare answers to likely doubts.\n\n💡 WHY IT MATTERS\nDifferent students need different explanations. AI offers many on demand.\n\n🪜 STEP BY STEP\n1. Ask: \"Explain [topic] in 3 different simple ways.\"\n2. Ask: \"Explain it to a 10-year-old.\"\n3. List common doubts and answers.\n4. Use the best version in class.\n\n✅ QUICK SUMMARY\nAI gives several explanations and anticipates doubts, so every student can follow.\n\n✏️ TRY THIS\nGet 3 simple explanations of a concept your students struggle with.",
+    "AI Lesson Planning": "WHAT YOU LEARN\n• Create lesson plans for any topic and grade.\n• Set objectives, activities and time splits.\n• Adapt for different student levels.\n\nWHY IT MATTERS\nPlanning takes hours weekly. AI gives a strong first draft in minutes.\n\nSTEP BY STEP\n1. Tell AI the subject, grade and topic.\n2. Ask: \"Make a 40-minute lesson plan with objectives and an activity.\"\n3. Adjust to your class and resources.\n4. Save it to reuse and improve.\n\nQUICK SUMMARY\nDescribe topic and grade; get a ready lesson plan you can tailor quickly.\n\nTRY THIS\nGenerate a 40-minute lesson plan for a topic you teach.",
+    "AI Question Paper Maker": "WHAT YOU LEARN\n• Create question papers and worksheets fast.\n• Mix MCQs, short and long questions.\n• Add an answer key.\n\nWHY IT MATTERS\nQuality assessments take time. AI builds them and the key together.\n\nSTEP BY STEP\n1. Give the chapter and difficulty level.\n2. Ask: \"Make 10 MCQs, 5 short, 2 long, with answers.\"\n3. Review for correctness.\n4. Format and print.\n\nQUICK SUMMARY\nSpecify chapter and format; get a complete paper plus answer key to review.\n\nTRY THIS\nMake a 10-question quiz with answers for one chapter.",
+    "AI for Grading Help": "WHAT YOU LEARN\n• Use AI to draft feedback and rubrics.\n• Speed up checking written answers.\n• Keep grading fair and consistent.\n\nWHY IT MATTERS\nHelpful, consistent feedback improves learning — and AI cuts the time it takes.\n\nSTEP BY STEP\n1. Create a rubric with AI for the task.\n2. Paste a sample answer for feedback ideas.\n3. Personalise the feedback for each student.\n4. Always make the final judgement yourself.\n\nQUICK SUMMARY\nAI drafts rubrics and feedback; you verify and personalise. Faster, fairer grading.\n\nTRY THIS\nBuild a simple 4-point rubric for an essay question.",
+    "AI Teaching Materials": "WHAT YOU LEARN\n• Generate notes, examples, analogies and slides.\n• Make content simpler or more advanced on demand.\n• Create handouts and revision sheets.\n\nWHY IT MATTERS\nRich materials help students understand — AI produces them in minutes.\n\nSTEP BY STEP\n1. Ask for notes on a topic at your students' level.\n2. Request real-life examples and analogies.\n3. Turn key points into a one-page handout.\n4. Review and add local context.\n\nQUICK SUMMARY\nUse AI to create clear notes, examples and handouts tailored to your class.\n\nTRY THIS\nAsk AI for 3 everyday analogies to explain a tricky concept.",
+    "Explaining Topics with AI": "WHAT YOU LEARN\n• Get multiple ways to explain one idea.\n• Simplify hard concepts for weak students.\n• Prepare answers to likely doubts.\n\nWHY IT MATTERS\nDifferent students need different explanations. AI offers many on demand.\n\nSTEP BY STEP\n1. Ask: \"Explain [topic] in 3 different simple ways.\"\n2. Ask: \"Explain it to a 10-year-old.\"\n3. List common doubts and answers.\n4. Use the best version in class.\n\nQUICK SUMMARY\nAI gives several explanations and anticipates doubts, so every student can follow.\n\nTRY THIS\nGet 3 simple explanations of a concept your students struggle with.",
   },
   "ai-for-accountants": {
-    "AI for Data Entry": "📌 WHAT YOU LEARN\n• Speed up repetitive data entry and clean-up.\n• Convert messy text into neat tables.\n• Reduce typing errors.\n\n💡 WHY IT MATTERS\nData entry eats hours. AI organises and checks it far faster.\n\n🪜 STEP BY STEP\n1. Paste messy data into a chat AI.\n2. Ask: \"Organise this into a clean table with columns.\"\n3. Copy it into Excel/Tally.\n4. Spot-check for accuracy.\n\n✅ QUICK SUMMARY\nLet AI structure and tidy raw data; you paste and verify. Less typing, fewer mistakes.\n\n✏️ TRY THIS\nPaste 5 unstructured entries and ask AI to make a clean table.",
-    "AI Excel Formula Helper": "📌 WHAT YOU LEARN\n• Get the right formula by describing your goal.\n• Understand and fix formula errors.\n• Learn functions like VLOOKUP, IF, SUMIF.\n\n💡 WHY IT MATTERS\nYou no longer get stuck on formulas — just describe what you need.\n\n🪜 STEP BY STEP\n1. Describe your columns and goal to AI.\n2. Ask: \"Give me the Excel formula for this.\"\n3. Paste it and test.\n4. If error, paste it back and ask why.\n\n✅ QUICK SUMMARY\nExplain the task; AI writes and debugs the formula and teaches you how it works.\n\n✏️ TRY THIS\nAsk AI for a formula to sum sales only for \"Madurai\" branch.",
-    "AI for GST/Tax Queries": "📌 WHAT YOU LEARN\n• Use AI to understand GST and tax concepts.\n• Get plain-language explanations of rules.\n• Always verify with official sources.\n\n💡 WHY IT MATTERS\nTax rules are confusing; AI explains them simply — but you must confirm before filing.\n\n🪜 STEP BY STEP\n1. Ask: \"Explain GST input tax credit simply.\"\n2. Ask for an example calculation.\n3. Note the official rule to verify.\n4. Confirm on the GST portal or with a CA.\n\n✅ QUICK SUMMARY\nAI clarifies tax concepts fast; always cross-check official rules before acting.\n\n✏️ TRY THIS\nAsk AI to explain the difference between GSTR-1 and GSTR-3B.",
-    "AI Report Writing": "📌 WHAT YOU LEARN\n• Turn numbers into clear written summaries.\n• Draft financial notes and client updates.\n• Keep tone professional.\n\n💡 WHY IT MATTERS\nClients value clear reports. AI drafts them so you focus on the numbers.\n\n🪜 STEP BY STEP\n1. Give AI the key figures and period.\n2. Ask: \"Write a short financial summary for a client.\"\n3. Add specifics and verify numbers.\n4. Format neatly and send.\n\n✅ QUICK SUMMARY\nProvide the figures; AI drafts a clean report you verify and finalise.\n\n✏️ TRY THIS\nPaste 4 monthly totals and ask AI for a 5-line summary.",
-    "AI Bookkeeping Tools": "📌 WHAT YOU LEARN\n• AI features inside modern bookkeeping apps.\n• Auto-categorising expenses and receipts.\n• When to trust automation vs check manually.\n\n💡 WHY IT MATTERS\nAI bookkeeping cuts routine work and reduces errors, freeing time for advice.\n\n🪜 STEP BY STEP\n1. Explore AI features in tools like Zoho Books.\n2. Let it auto-categorise sample expenses.\n3. Review the suggestions.\n4. Correct and approve final entries.\n\n✅ QUICK SUMMARY\nUse AI to auto-sort entries, then review. Faster books with a human final check.\n\n✏️ TRY THIS\nList 5 expenses and ask AI to suggest an account category for each.",
+    "AI for Data Entry": "WHAT YOU LEARN\n• Speed up repetitive data entry and clean-up.\n• Convert messy text into neat tables.\n• Reduce typing errors.\n\nWHY IT MATTERS\nData entry eats hours. AI organises and checks it far faster.\n\nSTEP BY STEP\n1. Paste messy data into a chat AI.\n2. Ask: \"Organise this into a clean table with columns.\"\n3. Copy it into Excel/Tally.\n4. Spot-check for accuracy.\n\nQUICK SUMMARY\nLet AI structure and tidy raw data; you paste and verify. Less typing, fewer mistakes.\n\nTRY THIS\nPaste 5 unstructured entries and ask AI to make a clean table.",
+    "AI Excel Formula Helper": "WHAT YOU LEARN\n• Get the right formula by describing your goal.\n• Understand and fix formula errors.\n• Learn functions like VLOOKUP, IF, SUMIF.\n\nWHY IT MATTERS\nYou no longer get stuck on formulas — just describe what you need.\n\nSTEP BY STEP\n1. Describe your columns and goal to AI.\n2. Ask: \"Give me the Excel formula for this.\"\n3. Paste it and test.\n4. If error, paste it back and ask why.\n\nQUICK SUMMARY\nExplain the task; AI writes and debugs the formula and teaches you how it works.\n\nTRY THIS\nAsk AI for a formula to sum sales only for \"Madurai\" branch.",
+    "AI for GST/Tax Queries": "WHAT YOU LEARN\n• Use AI to understand GST and tax concepts.\n• Get plain-language explanations of rules.\n• Always verify with official sources.\n\nWHY IT MATTERS\nTax rules are confusing; AI explains them simply — but you must confirm before filing.\n\nSTEP BY STEP\n1. Ask: \"Explain GST input tax credit simply.\"\n2. Ask for an example calculation.\n3. Note the official rule to verify.\n4. Confirm on the GST portal or with a CA.\n\nQUICK SUMMARY\nAI clarifies tax concepts fast; always cross-check official rules before acting.\n\nTRY THIS\nAsk AI to explain the difference between GSTR-1 and GSTR-3B.",
+    "AI Report Writing": "WHAT YOU LEARN\n• Turn numbers into clear written summaries.\n• Draft financial notes and client updates.\n• Keep tone professional.\n\nWHY IT MATTERS\nClients value clear reports. AI drafts them so you focus on the numbers.\n\nSTEP BY STEP\n1. Give AI the key figures and period.\n2. Ask: \"Write a short financial summary for a client.\"\n3. Add specifics and verify numbers.\n4. Format neatly and send.\n\nQUICK SUMMARY\nProvide the figures; AI drafts a clean report you verify and finalise.\n\nTRY THIS\nPaste 4 monthly totals and ask AI for a 5-line summary.",
+    "AI Bookkeeping Tools": "WHAT YOU LEARN\n• AI features inside modern bookkeeping apps.\n• Auto-categorising expenses and receipts.\n• When to trust automation vs check manually.\n\nWHY IT MATTERS\nAI bookkeeping cuts routine work and reduces errors, freeing time for advice.\n\nSTEP BY STEP\n1. Explore AI features in tools like Zoho Books.\n2. Let it auto-categorise sample expenses.\n3. Review the suggestions.\n4. Correct and approve final entries.\n\nQUICK SUMMARY\nUse AI to auto-sort entries, then review. Faster books with a human final check.\n\nTRY THIS\nList 5 expenses and ask AI to suggest an account category for each.",
   },
   "ai-for-freelancers": {
-    "AI for Proposals & Pitches": "📌 WHAT YOU LEARN\n• Write winning project proposals fast.\n• Tailor each pitch to the client's need.\n• Sound confident and professional.\n\n💡 WHY IT MATTERS\nBetter proposals win more projects. AI helps you reply quickly and stand out.\n\n🪜 STEP BY STEP\n1. Paste the job description.\n2. Ask: \"Write a short proposal showing I understand their need.\"\n3. Add your relevant work and price.\n4. Personalise the greeting.\n\n✅ QUICK SUMMARY\nFeed the job post; AI drafts a tailored proposal you personalise and send.\n\n✏️ TRY THIS\nTake a sample job post and generate a 6-line proposal.",
-    "AI Client Communication": "📌 WHAT YOU LEARN\n• Write clear, polite client messages and updates.\n• Handle tricky situations calmly.\n• Set expectations professionally.\n\n💡 WHY IT MATTERS\nGood communication earns trust, repeat work and referrals.\n\n🪜 STEP BY STEP\n1. Describe the situation to AI.\n2. Ask: \"Write a polite, professional message.\"\n3. Adjust tone to friendly or formal.\n4. Keep it short and clear.\n\n✅ QUICK SUMMARY\nAI helps you reply professionally to any client situation in seconds.\n\n✏️ TRY THIS\nDraft a polite message asking a client for delayed feedback.",
-    "AI to Deliver Work Faster": "📌 WHAT YOU LEARN\n• Use AI to speed up writing, design and coding tasks.\n• Keep quality with a human review.\n• Take on more clients without burnout.\n\n💡 WHY IT MATTERS\nFaster delivery means more income and happier clients.\n\n🪜 STEP BY STEP\n1. Identify the slow part of your work.\n2. Use the right AI tool to assist that step.\n3. Review and refine the output.\n4. Deliver early and impress.\n\n✅ QUICK SUMMARY\nLet AI handle the heavy lifting; your review keeps quality high and delivery quick.\n\n✏️ TRY THIS\nPick one task you do for clients and try doing it 50% faster with AI.",
-    "AI Portfolio & Branding": "📌 WHAT YOU LEARN\n• Build a strong freelancer profile and bio.\n• Showcase work with clear descriptions.\n• Create a simple brand look.\n\n💡 WHY IT MATTERS\nA polished profile and brand attract better clients and higher rates.\n\n🪜 STEP BY STEP\n1. Ask AI to write a confident bio from your skills.\n2. Write project descriptions that show results.\n3. Pick brand colours and a clean layout (Canva).\n4. Keep it consistent everywhere.\n\n✅ QUICK SUMMARY\nAI helps craft your bio and project write-ups; consistent branding seals the deal.\n\n✏️ TRY THIS\nGenerate a 3-line freelancer bio highlighting your top skill.",
-    "Pricing Your AI Skills": "📌 WHAT YOU LEARN\n• Set fair prices for AI-assisted services.\n• Charge for value, not just time.\n• Create simple packages.\n\n💡 WHY IT MATTERS\nRight pricing means good income without scaring clients away.\n\n🪜 STEP BY STEP\n1. List the outcome you deliver, not hours.\n2. Ask AI to suggest pricing tiers for your service.\n3. Create Basic/Standard/Premium packages.\n4. Test and adjust based on demand.\n\n✅ QUICK SUMMARY\nPrice by value and offer clear packages; AI can help you structure and explain them.\n\n✏️ TRY THIS\nDraft 3 service packages with prices for a skill you offer.",
+    "AI for Proposals & Pitches": "WHAT YOU LEARN\n• Write winning project proposals fast.\n• Tailor each pitch to the client's need.\n• Sound confident and professional.\n\nWHY IT MATTERS\nBetter proposals win more projects. AI helps you reply quickly and stand out.\n\nSTEP BY STEP\n1. Paste the job description.\n2. Ask: \"Write a short proposal showing I understand their need.\"\n3. Add your relevant work and price.\n4. Personalise the greeting.\n\nQUICK SUMMARY\nFeed the job post; AI drafts a tailored proposal you personalise and send.\n\nTRY THIS\nTake a sample job post and generate a 6-line proposal.",
+    "AI Client Communication": "WHAT YOU LEARN\n• Write clear, polite client messages and updates.\n• Handle tricky situations calmly.\n• Set expectations professionally.\n\nWHY IT MATTERS\nGood communication earns trust, repeat work and referrals.\n\nSTEP BY STEP\n1. Describe the situation to AI.\n2. Ask: \"Write a polite, professional message.\"\n3. Adjust tone to friendly or formal.\n4. Keep it short and clear.\n\nQUICK SUMMARY\nAI helps you reply professionally to any client situation in seconds.\n\nTRY THIS\nDraft a polite message asking a client for delayed feedback.",
+    "AI to Deliver Work Faster": "WHAT YOU LEARN\n• Use AI to speed up writing, design and coding tasks.\n• Keep quality with a human review.\n• Take on more clients without burnout.\n\nWHY IT MATTERS\nFaster delivery means more income and happier clients.\n\nSTEP BY STEP\n1. Identify the slow part of your work.\n2. Use the right AI tool to assist that step.\n3. Review and refine the output.\n4. Deliver early and impress.\n\nQUICK SUMMARY\nLet AI handle the heavy lifting; your review keeps quality high and delivery quick.\n\nTRY THIS\nPick one task you do for clients and try doing it 50% faster with AI.",
+    "AI Portfolio & Branding": "WHAT YOU LEARN\n• Build a strong freelancer profile and bio.\n• Showcase work with clear descriptions.\n• Create a simple brand look.\n\nWHY IT MATTERS\nA polished profile and brand attract better clients and higher rates.\n\nSTEP BY STEP\n1. Ask AI to write a confident bio from your skills.\n2. Write project descriptions that show results.\n3. Pick brand colours and a clean layout (Canva).\n4. Keep it consistent everywhere.\n\nQUICK SUMMARY\nAI helps craft your bio and project write-ups; consistent branding seals the deal.\n\nTRY THIS\nGenerate a 3-line freelancer bio highlighting your top skill.",
+    "Pricing Your AI Skills": "WHAT YOU LEARN\n• Set fair prices for AI-assisted services.\n• Charge for value, not just time.\n• Create simple packages.\n\nWHY IT MATTERS\nRight pricing means good income without scaring clients away.\n\nSTEP BY STEP\n1. List the outcome you deliver, not hours.\n2. Ask AI to suggest pricing tiers for your service.\n3. Create Basic/Standard/Premium packages.\n4. Test and adjust based on demand.\n\nQUICK SUMMARY\nPrice by value and offer clear packages; AI can help you structure and explain them.\n\nTRY THIS\nDraft 3 service packages with prices for a skill you offer.",
   },
   "ai-excel-expert": {
-    "Excel Foundations": "📌 WHAT YOU LEARN\n• Core Excel: cells, rows, columns, basic formulas.\n• Sorting, filtering and simple formatting.\n• Saving and sharing workbooks.\n\n💡 WHY IT MATTERS\nStrong Excel basics are the base for AI-powered analysis later in this program.\n\n🪜 STEP BY STEP\n1. Enter data and use =SUM, =AVERAGE.\n2. Sort and filter a list.\n3. Format numbers and headings.\n4. Save and reopen confidently.\n\n✅ QUICK SUMMARY\nMaster the Excel basics first — formulas, sorting and formatting — before adding AI.\n\n✏️ TRY THIS\nMake a 10-row sales sheet with totals and averages.",
-    "AI Formula Assistant": "📌 WHAT YOU LEARN\n• Get any Excel formula by describing the goal.\n• Fix errors with AI explanations.\n• Learn powerful functions step by step.\n\n💡 WHY IT MATTERS\nFormulas stop being scary — describe what you want and AI writes it.\n\n🪜 STEP BY STEP\n1. Describe your data and goal to AI.\n2. Paste the formula it gives and test.\n3. If it errors, ask AI to fix and explain.\n4. Note the function for next time.\n\n✅ QUICK SUMMARY\nUse AI as a formula helper that writes, fixes and teaches Excel functions.\n\n✏️ TRY THIS\nAsk AI for a formula to count students who scored above 50.",
-    "Automating Reports with AI": "📌 WHAT YOU LEARN\n• Build reusable report templates.\n• Use AI to summarise data and write notes.\n• Save hours on repeated reports.\n\n💡 WHY IT MATTERS\nAutomating routine reports frees time and reduces errors.\n\n🪜 STEP BY STEP\n1. Set up a clean data table.\n2. Add summary formulas (totals, %).\n3. Ask AI to write a short summary of the numbers.\n4. Reuse the template each period.\n\n✅ QUICK SUMMARY\nTemplate + formulas + AI summary = fast, repeatable reports.\n\n✏️ TRY THIS\nCreate a monthly report template with totals and an AI-written summary line.",
-    "AI Data Analysis": "📌 WHAT YOU LEARN\n• Find trends and insights in your data with AI.\n• Spot top items, gaps and patterns.\n• Turn analysis into decisions.\n\n💡 WHY IT MATTERS\nAnalysis turns raw numbers into smart business and study decisions.\n\n🪜 STEP BY STEP\n1. Paste a data summary into AI.\n2. Ask: \"What trends and outliers do you see?\"\n3. Ask for 3 recommended actions.\n4. Verify against the actual numbers.\n\n✅ QUICK SUMMARY\nAI highlights patterns and suggests actions; you confirm with the data.\n\n✏️ TRY THIS\nPaste a small dataset and ask AI for the top 3 insights.",
-    "Job-Ready Excel + AI": "📌 WHAT YOU LEARN\n• Combine Excel + AI skills for real jobs.\n• Build a small portfolio of sample reports.\n• Speak about these skills in interviews.\n\n💡 WHY IT MATTERS\nExcel + AI is a hot, hireable combination for many office roles.\n\n🪜 STEP BY STEP\n1. Create 2–3 sample dashboards/reports.\n2. Add AI-written summaries to each.\n3. Save them as a portfolio.\n4. Practise explaining your process.\n\n✅ QUICK SUMMARY\nShow real Excel+AI samples and explain your workflow to stand out for jobs.\n\n✏️ TRY THIS\nBuild one sample report you could show an employer.",
+    "Excel Foundations": "WHAT YOU LEARN\n• Core Excel: cells, rows, columns, basic formulas.\n• Sorting, filtering and simple formatting.\n• Saving and sharing workbooks.\n\nWHY IT MATTERS\nStrong Excel basics are the base for AI-powered analysis later in this program.\n\nSTEP BY STEP\n1. Enter data and use =SUM, =AVERAGE.\n2. Sort and filter a list.\n3. Format numbers and headings.\n4. Save and reopen confidently.\n\nQUICK SUMMARY\nMaster the Excel basics first — formulas, sorting and formatting — before adding AI.\n\nTRY THIS\nMake a 10-row sales sheet with totals and averages.",
+    "AI Formula Assistant": "WHAT YOU LEARN\n• Get any Excel formula by describing the goal.\n• Fix errors with AI explanations.\n• Learn powerful functions step by step.\n\nWHY IT MATTERS\nFormulas stop being scary — describe what you want and AI writes it.\n\nSTEP BY STEP\n1. Describe your data and goal to AI.\n2. Paste the formula it gives and test.\n3. If it errors, ask AI to fix and explain.\n4. Note the function for next time.\n\nQUICK SUMMARY\nUse AI as a formula helper that writes, fixes and teaches Excel functions.\n\nTRY THIS\nAsk AI for a formula to count students who scored above 50.",
+    "Automating Reports with AI": "WHAT YOU LEARN\n• Build reusable report templates.\n• Use AI to summarise data and write notes.\n• Save hours on repeated reports.\n\nWHY IT MATTERS\nAutomating routine reports frees time and reduces errors.\n\nSTEP BY STEP\n1. Set up a clean data table.\n2. Add summary formulas (totals, %).\n3. Ask AI to write a short summary of the numbers.\n4. Reuse the template each period.\n\nQUICK SUMMARY\nTemplate + formulas + AI summary = fast, repeatable reports.\n\nTRY THIS\nCreate a monthly report template with totals and an AI-written summary line.",
+    "AI Data Analysis": "WHAT YOU LEARN\n• Find trends and insights in your data with AI.\n• Spot top items, gaps and patterns.\n• Turn analysis into decisions.\n\nWHY IT MATTERS\nAnalysis turns raw numbers into smart business and study decisions.\n\nSTEP BY STEP\n1. Paste a data summary into AI.\n2. Ask: \"What trends and outliers do you see?\"\n3. Ask for 3 recommended actions.\n4. Verify against the actual numbers.\n\nQUICK SUMMARY\nAI highlights patterns and suggests actions; you confirm with the data.\n\nTRY THIS\nPaste a small dataset and ask AI for the top 3 insights.",
+    "Job-Ready Excel + AI": "WHAT YOU LEARN\n• Combine Excel + AI skills for real jobs.\n• Build a small portfolio of sample reports.\n• Speak about these skills in interviews.\n\nWHY IT MATTERS\nExcel + AI is a hot, hireable combination for many office roles.\n\nSTEP BY STEP\n1. Create 2–3 sample dashboards/reports.\n2. Add AI-written summaries to each.\n3. Save them as a portfolio.\n4. Practise explaining your process.\n\nQUICK SUMMARY\nShow real Excel+AI samples and explain your workflow to stand out for jobs.\n\nTRY THIS\nBuild one sample report you could show an employer.",
   },
   "ai-tally-professional": {
-    "Tally Foundations": "📌 WHAT YOU LEARN\n• Tally basics: company creation, ledgers, vouchers.\n• Recording common transactions.\n• Viewing key reports.\n\n💡 WHY IT MATTERS\nSolid Tally basics are essential before adding AI assistance for accounting.\n\n🪜 STEP BY STEP\n1. Create a company in Tally.\n2. Make a few ledgers and groups.\n3. Record sales and purchase vouchers.\n4. Open the Day Book and reports.\n\n✅ QUICK SUMMARY\nLearn core Tally entry and reports first; AI support comes next.\n\n✏️ TRY THIS\nCreate a company and record 3 sample transactions.",
-    "AI for Accounting Queries": "📌 WHAT YOU LEARN\n• Ask AI to explain accounting entries and concepts.\n• Get help choosing the right ledger/voucher.\n• Verify before posting.\n\n💡 WHY IT MATTERS\nAI clears doubts instantly so you record entries correctly.\n\n🪜 STEP BY STEP\n1. Describe the transaction to AI.\n2. Ask: \"Which voucher and ledgers should I use?\"\n3. Confirm the logic.\n4. Post in Tally and review.\n\n✅ QUICK SUMMARY\nUse AI to decide and understand entries, then post confidently in Tally.\n\n✏️ TRY THIS\nAsk AI how to record a cash purchase of stock.",
-    "GST & Tax with AI Help": "📌 WHAT YOU LEARN\n• Handle GST entries and queries with AI guidance.\n• Understand tax treatment of transactions.\n• Cross-check official rules.\n\n💡 WHY IT MATTERS\nCorrect GST handling avoids penalties; AI explains it in simple words.\n\n🪜 STEP BY STEP\n1. Set up GST details in Tally.\n2. Ask AI to explain a GST scenario.\n3. Record the GST transaction.\n4. Verify with official guidance.\n\n✅ QUICK SUMMARY\nAI simplifies GST decisions; you record in Tally and confirm with official sources.\n\n✏️ TRY THIS\nAsk AI to explain how to enter a GST sales invoice in Tally.",
-    "AI Report Insights": "📌 WHAT YOU LEARN\n• Turn Tally reports into plain-language insights.\n• Spot profit, cash and outstanding issues.\n• Advise clients better.\n\n💡 WHY IT MATTERS\nInsights add value beyond data entry and impress clients.\n\n🪜 STEP BY STEP\n1. Export key report figures.\n2. Paste and ask AI: \"What do these numbers mean?\"\n3. Ask for client-friendly notes.\n4. Verify and present.\n\n✅ QUICK SUMMARY\nAI explains report numbers in simple terms you can share with clients.\n\n✏️ TRY THIS\nPaste a small P&L summary and ask AI for 3 insights.",
-    "Accountant + AI Workflow": "📌 WHAT YOU LEARN\n• Build a daily workflow combining Tally and AI.\n• Decide what to automate vs do manually.\n• Work faster with fewer errors.\n\n💡 WHY IT MATTERS\nA smart workflow handles more clients with the same effort.\n\n🪜 STEP BY STEP\n1. List your daily accounting tasks.\n2. Mark which AI can assist (queries, reports, notes).\n3. Keep posting and verification manual.\n4. Refine the routine weekly.\n\n✅ QUICK SUMMARY\nBlend Tally + AI: automate explanations and reports, verify the critical steps yourself.\n\n✏️ TRY THIS\nMap your accounting day and mark 3 AI-assist points.",
+    "Tally Foundations": "WHAT YOU LEARN\n• Tally basics: company creation, ledgers, vouchers.\n• Recording common transactions.\n• Viewing key reports.\n\nWHY IT MATTERS\nSolid Tally basics are essential before adding AI assistance for accounting.\n\nSTEP BY STEP\n1. Create a company in Tally.\n2. Make a few ledgers and groups.\n3. Record sales and purchase vouchers.\n4. Open the Day Book and reports.\n\nQUICK SUMMARY\nLearn core Tally entry and reports first; AI support comes next.\n\nTRY THIS\nCreate a company and record 3 sample transactions.",
+    "AI for Accounting Queries": "WHAT YOU LEARN\n• Ask AI to explain accounting entries and concepts.\n• Get help choosing the right ledger/voucher.\n• Verify before posting.\n\nWHY IT MATTERS\nAI clears doubts instantly so you record entries correctly.\n\nSTEP BY STEP\n1. Describe the transaction to AI.\n2. Ask: \"Which voucher and ledgers should I use?\"\n3. Confirm the logic.\n4. Post in Tally and review.\n\nQUICK SUMMARY\nUse AI to decide and understand entries, then post confidently in Tally.\n\nTRY THIS\nAsk AI how to record a cash purchase of stock.",
+    "GST & Tax with AI Help": "WHAT YOU LEARN\n• Handle GST entries and queries with AI guidance.\n• Understand tax treatment of transactions.\n• Cross-check official rules.\n\nWHY IT MATTERS\nCorrect GST handling avoids penalties; AI explains it in simple words.\n\nSTEP BY STEP\n1. Set up GST details in Tally.\n2. Ask AI to explain a GST scenario.\n3. Record the GST transaction.\n4. Verify with official guidance.\n\nQUICK SUMMARY\nAI simplifies GST decisions; you record in Tally and confirm with official sources.\n\nTRY THIS\nAsk AI to explain how to enter a GST sales invoice in Tally.",
+    "AI Report Insights": "WHAT YOU LEARN\n• Turn Tally reports into plain-language insights.\n• Spot profit, cash and outstanding issues.\n• Advise clients better.\n\nWHY IT MATTERS\nInsights add value beyond data entry and impress clients.\n\nSTEP BY STEP\n1. Export key report figures.\n2. Paste and ask AI: \"What do these numbers mean?\"\n3. Ask for client-friendly notes.\n4. Verify and present.\n\nQUICK SUMMARY\nAI explains report numbers in simple terms you can share with clients.\n\nTRY THIS\nPaste a small P&L summary and ask AI for 3 insights.",
+    "Accountant + AI Workflow": "WHAT YOU LEARN\n• Build a daily workflow combining Tally and AI.\n• Decide what to automate vs do manually.\n• Work faster with fewer errors.\n\nWHY IT MATTERS\nA smart workflow handles more clients with the same effort.\n\nSTEP BY STEP\n1. List your daily accounting tasks.\n2. Mark which AI can assist (queries, reports, notes).\n3. Keep posting and verification manual.\n4. Refine the routine weekly.\n\nQUICK SUMMARY\nBlend Tally + AI: automate explanations and reports, verify the critical steps yourself.\n\nTRY THIS\nMap your accounting day and mark 3 AI-assist points.",
   },
   "ai-digital-marketing": {
-    "Marketing Foundations": "📌 WHAT YOU LEARN\n• Core marketing: audience, message, channels.\n• The customer journey (awareness → action).\n• Setting simple goals.\n\n💡 WHY IT MATTERS\nFundamentals make every AI marketing tool far more effective.\n\n🪜 STEP BY STEP\n1. Define your ideal customer.\n2. Write your core message.\n3. Pick 1–2 channels to focus on.\n4. Set one clear goal.\n\n✅ QUICK SUMMARY\nKnow your audience, message and channel before adding AI power.\n\n✏️ TRY THIS\nWrite a one-line description of your ideal customer.",
-    "AI Content & Ads": "📌 WHAT YOU LEARN\n• Generate posts, captions and ad copy with AI.\n• Create multiple variations to test.\n• Keep brand voice consistent.\n\n💡 WHY IT MATTERS\nAI fills your content calendar and ad ideas fast and cheap.\n\n🪜 STEP BY STEP\n1. Give AI your product and audience.\n2. Ask for posts and ad copy variations.\n3. Pick the best and brand them.\n4. Test and keep the winners.\n\n✅ QUICK SUMMARY\nUse AI to mass-produce on-brand content and ads, then test what works.\n\n✏️ TRY THIS\nGenerate 3 posts and 3 ad headlines for one offer.",
-    "AI SEO Strategy": "📌 WHAT YOU LEARN\n• Plan an SEO content strategy with AI.\n• Find keywords and content gaps.\n• Build a publishing plan.\n\n💡 WHY IT MATTERS\nSEO compounds into free traffic over time; AI speeds the research.\n\n🪜 STEP BY STEP\n1. Ask AI for keyword clusters in your niche.\n2. Map topics to each cluster.\n3. Create a content calendar.\n4. Track rankings monthly.\n\n✅ QUICK SUMMARY\nAI maps keywords and topics into a clear SEO plan you publish steadily.\n\n✏️ TRY THIS\nGet 3 keyword clusters and a topic for each.",
-    "AI Social Media Planning": "📌 WHAT YOU LEARN\n• Build full social calendars with AI.\n• Balance content types and posting times.\n• Batch captions and ideas.\n\n💡 WHY IT MATTERS\nPlanning ahead keeps you consistent and stress-free.\n\n🪜 STEP BY STEP\n1. Tell AI your platforms and frequency.\n2. Generate a monthly calendar.\n3. Batch-create captions.\n4. Schedule with a free tool.\n\n✅ QUICK SUMMARY\nLet AI plan and draft a month of social content in one sitting.\n\n✏️ TRY THIS\nCreate a 2-week posting plan with captions.",
-    "Full AI Marketing Workflow": "📌 WHAT YOU LEARN\n• Connect content, ads, SEO and analytics into one flow.\n• Reuse outputs across channels.\n• Review results and improve.\n\n💡 WHY IT MATTERS\nA connected workflow gets more done and compounds results.\n\n🪜 STEP BY STEP\n1. Plan strategy and calendar with AI.\n2. Create content and ads.\n3. Publish across channels (repurpose).\n4. Analyse and refine monthly.\n\n✅ QUICK SUMMARY\nRun a full AI-assisted marketing cycle: plan, create, publish, analyse, improve.\n\n✏️ TRY THIS\nSketch your own 4-step monthly marketing workflow.",
+    "Marketing Foundations": "WHAT YOU LEARN\n• Core marketing: audience, message, channels.\n• The customer journey (awareness → action).\n• Setting simple goals.\n\nWHY IT MATTERS\nFundamentals make every AI marketing tool far more effective.\n\nSTEP BY STEP\n1. Define your ideal customer.\n2. Write your core message.\n3. Pick 1–2 channels to focus on.\n4. Set one clear goal.\n\nQUICK SUMMARY\nKnow your audience, message and channel before adding AI power.\n\nTRY THIS\nWrite a one-line description of your ideal customer.",
+    "AI Content & Ads": "WHAT YOU LEARN\n• Generate posts, captions and ad copy with AI.\n• Create multiple variations to test.\n• Keep brand voice consistent.\n\nWHY IT MATTERS\nAI fills your content calendar and ad ideas fast and cheap.\n\nSTEP BY STEP\n1. Give AI your product and audience.\n2. Ask for posts and ad copy variations.\n3. Pick the best and brand them.\n4. Test and keep the winners.\n\nQUICK SUMMARY\nUse AI to mass-produce on-brand content and ads, then test what works.\n\nTRY THIS\nGenerate 3 posts and 3 ad headlines for one offer.",
+    "AI SEO Strategy": "WHAT YOU LEARN\n• Plan an SEO content strategy with AI.\n• Find keywords and content gaps.\n• Build a publishing plan.\n\nWHY IT MATTERS\nSEO compounds into free traffic over time; AI speeds the research.\n\nSTEP BY STEP\n1. Ask AI for keyword clusters in your niche.\n2. Map topics to each cluster.\n3. Create a content calendar.\n4. Track rankings monthly.\n\nQUICK SUMMARY\nAI maps keywords and topics into a clear SEO plan you publish steadily.\n\nTRY THIS\nGet 3 keyword clusters and a topic for each.",
+    "AI Social Media Planning": "WHAT YOU LEARN\n• Build full social calendars with AI.\n• Balance content types and posting times.\n• Batch captions and ideas.\n\nWHY IT MATTERS\nPlanning ahead keeps you consistent and stress-free.\n\nSTEP BY STEP\n1. Tell AI your platforms and frequency.\n2. Generate a monthly calendar.\n3. Batch-create captions.\n4. Schedule with a free tool.\n\nQUICK SUMMARY\nLet AI plan and draft a month of social content in one sitting.\n\nTRY THIS\nCreate a 2-week posting plan with captions.",
+    "Full AI Marketing Workflow": "WHAT YOU LEARN\n• Connect content, ads, SEO and analytics into one flow.\n• Reuse outputs across channels.\n• Review results and improve.\n\nWHY IT MATTERS\nA connected workflow gets more done and compounds results.\n\nSTEP BY STEP\n1. Plan strategy and calendar with AI.\n2. Create content and ads.\n3. Publish across channels (repurpose).\n4. Analyse and refine monthly.\n\nQUICK SUMMARY\nRun a full AI-assisted marketing cycle: plan, create, publish, analyse, improve.\n\nTRY THIS\nSketch your own 4-step monthly marketing workflow.",
   },
   "ai-web-development": {
-    "Web Dev Foundations": "📌 WHAT YOU LEARN\n• How websites work: HTML, CSS, JavaScript.\n• Frontend vs backend in simple terms.\n• What you need to start.\n\n💡 WHY IT MATTERS\nUnderstanding the basics lets AI coding tools 10x your speed safely.\n\n🪜 STEP BY STEP\n1. Learn what HTML, CSS and JS each do.\n2. Build a tiny page with a heading and button.\n3. Add a little style.\n4. Understand how a browser runs it.\n\n✅ QUICK SUMMARY\nGrasp HTML/CSS/JS basics first; then AI assistants accelerate everything.\n\n✏️ TRY THIS\nMake a one-page site with your name and a styled button.",
-    "AI Coding Assistants": "📌 WHAT YOU LEARN\n• Use tools like ChatGPT and Copilot to write code.\n• Ask for code, explanations and bug fixes.\n• Always understand what the code does.\n\n💡 WHY IT MATTERS\nAI assistants speed up coding and teach you as you build.\n\n🪜 STEP BY STEP\n1. Describe the feature you want.\n2. Ask AI for the code with comments.\n3. Test it and read the explanation.\n4. Ask AI to fix any errors.\n\n✅ QUICK SUMMARY\nDescribe, generate, test and understand — AI is your coding partner, not a black box.\n\n✏️ TRY THIS\nAsk AI for a simple contact form and read each line.",
-    "Building Sites Faster with AI": "📌 WHAT YOU LEARN\n• Scaffold pages and components quickly.\n• Generate layouts, styles and content.\n• Iterate by describing changes.\n\n💡 WHY IT MATTERS\nYou can ship real sites in days instead of weeks.\n\n🪜 STEP BY STEP\n1. Describe the page and sections you need.\n2. Let AI generate the structure.\n3. Refine by asking for specific changes.\n4. Test on mobile and desktop.\n\n✅ QUICK SUMMARY\nDescribe what you want, let AI build the skeleton, then refine through conversation.\n\n✏️ TRY THIS\nAsk AI to build a simple landing page layout for a product.",
-    "AI for Design & Content": "📌 WHAT YOU LEARN\n• Generate images, icons and copy for your site.\n• Keep a consistent look and tone.\n• Fill placeholders with real content.\n\n💡 WHY IT MATTERS\nA site needs both code and content; AI helps with both.\n\n🪜 STEP BY STEP\n1. Generate hero images and icons.\n2. Ask AI for headline and section copy.\n3. Match colours and fonts.\n4. Replace all placeholder text.\n\n✅ QUICK SUMMARY\nUse AI for visuals and words so your site looks finished and professional.\n\n✏️ TRY THIS\nGenerate a hero image idea and a headline for a bakery site.",
-    "Deploy & Launch": "📌 WHAT YOU LEARN\n• Put your site online for free (Vercel, Netlify, GitHub Pages).\n• Connect a domain.\n• Basic checks before launch.\n\n💡 WHY IT MATTERS\nA site only helps once it's live and shareable.\n\n🪜 STEP BY STEP\n1. Push your code to GitHub.\n2. Connect it to Vercel/Netlify.\n3. Deploy with one click.\n4. Add a custom domain and test links.\n\n✅ QUICK SUMMARY\nHost on a free platform, connect a domain, and check everything works live.\n\n✏️ TRY THIS\nList the steps to deploy a simple site to Vercel.",
+    "Web Dev Foundations": "WHAT YOU LEARN\n• How websites work: HTML, CSS, JavaScript.\n• Frontend vs backend in simple terms.\n• What you need to start.\n\nWHY IT MATTERS\nUnderstanding the basics lets AI coding tools 10x your speed safely.\n\nSTEP BY STEP\n1. Learn what HTML, CSS and JS each do.\n2. Build a tiny page with a heading and button.\n3. Add a little style.\n4. Understand how a browser runs it.\n\nQUICK SUMMARY\nGrasp HTML/CSS/JS basics first; then AI assistants accelerate everything.\n\nTRY THIS\nMake a one-page site with your name and a styled button.",
+    "AI Coding Assistants": "WHAT YOU LEARN\n• Use tools like ChatGPT and Copilot to write code.\n• Ask for code, explanations and bug fixes.\n• Always understand what the code does.\n\nWHY IT MATTERS\nAI assistants speed up coding and teach you as you build.\n\nSTEP BY STEP\n1. Describe the feature you want.\n2. Ask AI for the code with comments.\n3. Test it and read the explanation.\n4. Ask AI to fix any errors.\n\nQUICK SUMMARY\nDescribe, generate, test and understand — AI is your coding partner, not a black box.\n\nTRY THIS\nAsk AI for a simple contact form and read each line.",
+    "Building Sites Faster with AI": "WHAT YOU LEARN\n• Scaffold pages and components quickly.\n• Generate layouts, styles and content.\n• Iterate by describing changes.\n\nWHY IT MATTERS\nYou can ship real sites in days instead of weeks.\n\nSTEP BY STEP\n1. Describe the page and sections you need.\n2. Let AI generate the structure.\n3. Refine by asking for specific changes.\n4. Test on mobile and desktop.\n\nQUICK SUMMARY\nDescribe what you want, let AI build the skeleton, then refine through conversation.\n\nTRY THIS\nAsk AI to build a simple landing page layout for a product.",
+    "AI for Design & Content": "WHAT YOU LEARN\n• Generate images, icons and copy for your site.\n• Keep a consistent look and tone.\n• Fill placeholders with real content.\n\nWHY IT MATTERS\nA site needs both code and content; AI helps with both.\n\nSTEP BY STEP\n1. Generate hero images and icons.\n2. Ask AI for headline and section copy.\n3. Match colours and fonts.\n4. Replace all placeholder text.\n\nQUICK SUMMARY\nUse AI for visuals and words so your site looks finished and professional.\n\nTRY THIS\nGenerate a hero image idea and a headline for a bakery site.",
+    "Deploy & Launch": "WHAT YOU LEARN\n• Put your site online for free (Vercel, Netlify, GitHub Pages).\n• Connect a domain.\n• Basic checks before launch.\n\nWHY IT MATTERS\nA site only helps once it's live and shareable.\n\nSTEP BY STEP\n1. Push your code to GitHub.\n2. Connect it to Vercel/Netlify.\n3. Deploy with one click.\n4. Add a custom domain and test links.\n\nQUICK SUMMARY\nHost on a free platform, connect a domain, and check everything works live.\n\nTRY THIS\nList the steps to deploy a simple site to Vercel.",
   },
   "ai-business-automation": {
-    "Business Process Basics": "📌 WHAT YOU LEARN\n• What a \"process\" is and how to map one.\n• Spot repetitive, automatable tasks.\n• Set goals for automation.\n\n💡 WHY IT MATTERS\nYou can't automate what you can't see; mapping reveals easy wins.\n\n🪜 STEP BY STEP\n1. Pick one routine task (e.g., new enquiry).\n2. Write each step it takes.\n3. Mark steps that are repetitive.\n4. Choose one to automate first.\n\n✅ QUICK SUMMARY\nMap a process, find repetitive steps, and target the best one for automation.\n\n✏️ TRY THIS\nMap the steps from a customer enquiry to an order placed.",
-    "No-Code Automation": "📌 WHAT YOU LEARN\n• Connect apps with tools like Zapier/Make.\n• Trigger → action automations (no coding).\n• Common useful automations.\n\n💡 WHY IT MATTERS\nNo-code tools save hours by linking your apps automatically.\n\n🪜 STEP BY STEP\n1. Pick a trigger (e.g., new form entry).\n2. Pick an action (e.g., add to sheet + send WhatsApp).\n3. Connect them in Zapier/Make.\n4. Test and turn it on.\n\n✅ QUICK SUMMARY\nSet \"when this happens, do that\" automations between apps — no code needed.\n\n✏️ TRY THIS\nDesign one automation: form submission → save to a sheet.",
-    "AI Chatbots & Replies": "📌 WHAT YOU LEARN\n• Build a simple AI chatbot for FAQs.\n• Auto-reply to common questions 24/7.\n• Hand off to a human when needed.\n\n💡 WHY IT MATTERS\nChatbots answer instantly, capture leads and never sleep.\n\n🪜 STEP BY STEP\n1. List your top 10 customer questions.\n2. Add them to a chatbot tool.\n3. Set a \"talk to human\" option.\n4. Test and refine answers.\n\n✅ QUICK SUMMARY\nA simple FAQ chatbot handles routine questions and forwards the rest to you.\n\n✏️ TRY THIS\nWrite 10 FAQs your chatbot should answer.",
-    "Connecting Your Tools": "📌 WHAT YOU LEARN\n• Link forms, sheets, email, WhatsApp and CRM.\n• Keep data flowing without manual copy-paste.\n• Avoid common integration mistakes.\n\n💡 WHY IT MATTERS\nConnected tools mean less manual work and fewer errors.\n\n🪜 STEP BY STEP\n1. List the tools you use daily.\n2. Decide what data should move between them.\n3. Connect them with a no-code tool.\n4. Test the full flow end to end.\n\n✅ QUICK SUMMARY\nConnect your everyday apps so information moves automatically and accurately.\n\n✏️ TRY THIS\nPick 2 tools you use and plan how data should pass between them.",
-    "Scaling with Automation": "📌 WHAT YOU LEARN\n• Use automation to handle more without more staff.\n• Monitor and improve your automations.\n• Know automation's limits.\n\n💡 WHY IT MATTERS\nAutomation lets a small team serve many customers smoothly.\n\n🪜 STEP BY STEP\n1. Track which automations save the most time.\n2. Add more around your busiest processes.\n3. Review errors and fix them.\n4. Keep a human check on key steps.\n\n✅ QUICK SUMMARY\nExpand automations around your busiest work, monitor them, and scale calmly.\n\n✏️ TRY THIS\nIdentify the one task whose automation would help you grow most.",
+    "Business Process Basics": "WHAT YOU LEARN\n• What a \"process\" is and how to map one.\n• Spot repetitive, automatable tasks.\n• Set goals for automation.\n\nWHY IT MATTERS\nYou can't automate what you can't see; mapping reveals easy wins.\n\nSTEP BY STEP\n1. Pick one routine task (e.g., new enquiry).\n2. Write each step it takes.\n3. Mark steps that are repetitive.\n4. Choose one to automate first.\n\nQUICK SUMMARY\nMap a process, find repetitive steps, and target the best one for automation.\n\nTRY THIS\nMap the steps from a customer enquiry to an order placed.",
+    "No-Code Automation": "WHAT YOU LEARN\n• Connect apps with tools like Zapier/Make.\n• Trigger → action automations (no coding).\n• Common useful automations.\n\nWHY IT MATTERS\nNo-code tools save hours by linking your apps automatically.\n\nSTEP BY STEP\n1. Pick a trigger (e.g., new form entry).\n2. Pick an action (e.g., add to sheet + send WhatsApp).\n3. Connect them in Zapier/Make.\n4. Test and turn it on.\n\nQUICK SUMMARY\nSet \"when this happens, do that\" automations between apps — no code needed.\n\nTRY THIS\nDesign one automation: form submission → save to a sheet.",
+    "AI Chatbots & Replies": "WHAT YOU LEARN\n• Build a simple AI chatbot for FAQs.\n• Auto-reply to common questions 24/7.\n• Hand off to a human when needed.\n\nWHY IT MATTERS\nChatbots answer instantly, capture leads and never sleep.\n\nSTEP BY STEP\n1. List your top 10 customer questions.\n2. Add them to a chatbot tool.\n3. Set a \"talk to human\" option.\n4. Test and refine answers.\n\nQUICK SUMMARY\nA simple FAQ chatbot handles routine questions and forwards the rest to you.\n\nTRY THIS\nWrite 10 FAQs your chatbot should answer.",
+    "Connecting Your Tools": "WHAT YOU LEARN\n• Link forms, sheets, email, WhatsApp and CRM.\n• Keep data flowing without manual copy-paste.\n• Avoid common integration mistakes.\n\nWHY IT MATTERS\nConnected tools mean less manual work and fewer errors.\n\nSTEP BY STEP\n1. List the tools you use daily.\n2. Decide what data should move between them.\n3. Connect them with a no-code tool.\n4. Test the full flow end to end.\n\nQUICK SUMMARY\nConnect your everyday apps so information moves automatically and accurately.\n\nTRY THIS\nPick 2 tools you use and plan how data should pass between them.",
+    "Scaling with Automation": "WHAT YOU LEARN\n• Use automation to handle more without more staff.\n• Monitor and improve your automations.\n• Know automation's limits.\n\nWHY IT MATTERS\nAutomation lets a small team serve many customers smoothly.\n\nSTEP BY STEP\n1. Track which automations save the most time.\n2. Add more around your busiest processes.\n3. Review errors and fix them.\n4. Keep a human check on key steps.\n\nQUICK SUMMARY\nExpand automations around your busiest work, monitor them, and scale calmly.\n\nTRY THIS\nIdentify the one task whose automation would help you grow most.",
   },
   "ai-entrepreneur-program": {
-    "AI Business Ideas": "📌 WHAT YOU LEARN\n• Find business ideas using AI brainstorming.\n• Match ideas to your skills and market.\n• Spot real problems worth solving.\n\n💡 WHY IT MATTERS\nA good idea solving a real problem is the start of every business.\n\n🪜 STEP BY STEP\n1. List your skills and interests.\n2. Ask AI: \"Suggest 10 small business ideas using these.\"\n3. Pick ideas that solve a real local problem.\n4. Shortlist 2 to explore.\n\n✅ QUICK SUMMARY\nUse AI to brainstorm, then choose ideas matching your skills and a real need.\n\n✏️ TRY THIS\nAsk AI for 10 business ideas based on your top skill.",
-    "Building an AI Product/Service": "📌 WHAT YOU LEARN\n• Shape an AI-powered product or service.\n• Start small with an MVP (simplest version).\n• Get early feedback.\n\n💡 WHY IT MATTERS\nStarting small and learning fast beats building big and guessing.\n\n🪜 STEP BY STEP\n1. Define the one problem you solve.\n2. Build the simplest version (even manual + AI).\n3. Show it to 5 potential customers.\n4. Improve from their feedback.\n\n✅ QUICK SUMMARY\nLaunch a tiny first version, get real feedback, and improve step by step.\n\n✏️ TRY THIS\nDescribe the simplest version of your idea you could offer this week.",
-    "AI Tools to Run a Business": "📌 WHAT YOU LEARN\n• Pick AI tools for content, support, admin and sales.\n• Build a lean, low-cost tool stack.\n• Avoid tool overload.\n\n💡 WHY IT MATTERS\nThe right few tools run your business efficiently and cheaply.\n\n🪜 STEP BY STEP\n1. List your business's main jobs.\n2. Choose one AI tool per job.\n3. Learn each well before adding more.\n4. Review the stack monthly.\n\n✅ QUICK SUMMARY\nBuild a small, effective AI toolkit — one tool per core job.\n\n✏️ TRY THIS\nList 4 business jobs and one AI tool for each.",
-    "Marketing with AI": "📌 WHAT YOU LEARN\n• Promote your business using AI content and ads.\n• Build awareness on a small budget.\n• Track what's working.\n\n💡 WHY IT MATTERS\nMarketing brings customers; AI makes it affordable for new founders.\n\n🪜 STEP BY STEP\n1. Define your audience and message.\n2. Generate content and ads with AI.\n3. Post consistently and run a small ad test.\n4. Measure and double down on winners.\n\n✅ QUICK SUMMARY\nUse AI to create and test marketing cheaply, then invest in what works.\n\n✏️ TRY THIS\nDraft a one-week launch promo plan using AI content.",
-    "Launch & Grow": "📌 WHAT YOU LEARN\n• Plan a simple launch.\n• Gather reviews and referrals.\n• Grow step by step.\n\n💡 WHY IT MATTERS\nA clear launch and happy first customers fuel steady growth.\n\n🪜 STEP BY STEP\n1. Set a launch date and offer.\n2. Tell your network and post about it.\n3. Deliver well and ask for reviews.\n4. Reinvest profit to grow.\n\n✅ QUICK SUMMARY\nLaunch with a clear offer, delight early customers, collect reviews, and scale.\n\n✏️ TRY THIS\nWrite your launch announcement message in 4 lines.",
+    "AI Business Ideas": "WHAT YOU LEARN\n• Find business ideas using AI brainstorming.\n• Match ideas to your skills and market.\n• Spot real problems worth solving.\n\nWHY IT MATTERS\nA good idea solving a real problem is the start of every business.\n\nSTEP BY STEP\n1. List your skills and interests.\n2. Ask AI: \"Suggest 10 small business ideas using these.\"\n3. Pick ideas that solve a real local problem.\n4. Shortlist 2 to explore.\n\nQUICK SUMMARY\nUse AI to brainstorm, then choose ideas matching your skills and a real need.\n\nTRY THIS\nAsk AI for 10 business ideas based on your top skill.",
+    "Building an AI Product/Service": "WHAT YOU LEARN\n• Shape an AI-powered product or service.\n• Start small with an MVP (simplest version).\n• Get early feedback.\n\nWHY IT MATTERS\nStarting small and learning fast beats building big and guessing.\n\nSTEP BY STEP\n1. Define the one problem you solve.\n2. Build the simplest version (even manual + AI).\n3. Show it to 5 potential customers.\n4. Improve from their feedback.\n\nQUICK SUMMARY\nLaunch a tiny first version, get real feedback, and improve step by step.\n\nTRY THIS\nDescribe the simplest version of your idea you could offer this week.",
+    "AI Tools to Run a Business": "WHAT YOU LEARN\n• Pick AI tools for content, support, admin and sales.\n• Build a lean, low-cost tool stack.\n• Avoid tool overload.\n\nWHY IT MATTERS\nThe right few tools run your business efficiently and cheaply.\n\nSTEP BY STEP\n1. List your business's main jobs.\n2. Choose one AI tool per job.\n3. Learn each well before adding more.\n4. Review the stack monthly.\n\nQUICK SUMMARY\nBuild a small, effective AI toolkit — one tool per core job.\n\nTRY THIS\nList 4 business jobs and one AI tool for each.",
+    "Marketing with AI": "WHAT YOU LEARN\n• Promote your business using AI content and ads.\n• Build awareness on a small budget.\n• Track what's working.\n\nWHY IT MATTERS\nMarketing brings customers; AI makes it affordable for new founders.\n\nSTEP BY STEP\n1. Define your audience and message.\n2. Generate content and ads with AI.\n3. Post consistently and run a small ad test.\n4. Measure and double down on winners.\n\nQUICK SUMMARY\nUse AI to create and test marketing cheaply, then invest in what works.\n\nTRY THIS\nDraft a one-week launch promo plan using AI content.",
+    "Launch & Grow": "WHAT YOU LEARN\n• Plan a simple launch.\n• Gather reviews and referrals.\n• Grow step by step.\n\nWHY IT MATTERS\nA clear launch and happy first customers fuel steady growth.\n\nSTEP BY STEP\n1. Set a launch date and offer.\n2. Tell your network and post about it.\n3. Deliver well and ask for reviews.\n4. Reinvest profit to grow.\n\nQUICK SUMMARY\nLaunch with a clear offer, delight early customers, collect reviews, and scale.\n\nTRY THIS\nWrite your launch announcement message in 4 lines.",
   },
   "ai-for-beginners": {
     "What is AI & How It Works": `AI (Artificial Intelligence) means making a computer do things that normally need a human brain — like understanding language, answering questions, or recognising a photo.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • AI is software that learns patterns from huge amounts of data (text, images, sound).
 • It does not "think" like a human — it predicts the most likely answer based on what it has seen before.
 • Tools like ChatGPT, Google Gemini and Google Translate are all AI.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 AI is now in your phone, bank, YouTube and exams. People who know how to use it finish work faster and stand out for jobs. You don't need coding to use it.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Think of AI like a very well-read student who read the whole internet.
 2. You give it an instruction (a "prompt") in plain words.
 3. It guesses the best reply, word by word.
 4. You read, check, and ask again if needed.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 AI = computer that learns from data and predicts answers. It is a helper, not magic, and you control it with simple instructions.
 
-✏️ TRY THIS
+TRY THIS
 Open any free AI chat tool and ask: "Explain photosynthesis to a 10-year-old." Notice how it answers in simple words instantly.`,
 
     "Everyday AI Tools You Can Use": `You are probably already using AI without noticing. Let's see the free tools you can start with today.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Chat AI: ChatGPT, Google Gemini, Microsoft Copilot — ask anything in words.
 • Writing & study: Grammarly (fixes English), QuillBot (rephrasing).
 • Images: Canva AI, Bing Image Creator (make posters & pictures from text).
 • Daily life: Google Translate, Google Maps, YouTube recommendations.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 These tools save hours on homework, messages, resumes and small business work — all for free from a normal phone.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Pick ONE chat AI and create a free account.
 2. Use it for one real task today (a message, a doubt, a summary).
 3. Add one image tool when you need a poster or photo.
 4. Slowly build your own "toolkit" of 3–4 favourites.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Start with one chat AI + one image tool. You don't need ten apps — you need a few you use well.
 
-✏️ TRY THIS
+TRY THIS
 Use Canva or Bing Image Creator and type: "a colourful birthday poster with balloons." Download the result.`,
 
     "Writing Good AI Prompts": `A "prompt" is the instruction you give AI. Better prompt = better answer. This single skill decides how useful AI is for you.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Be clear about WHAT you want and WHO it is for.
 • Give context: your level, language, length, and style.
 • Ask for a format (points, table, steps) when you need one.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Most people get weak answers because they type two words. A good prompt turns AI into a personal tutor, writer or designer.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Role: "You are a friendly English teacher."
 2. Task: "Explain present perfect tense."
 3. Details: "in simple Tamil-English, with 3 examples."
 4. Format: "as short bullet points."
 Put them together in one message.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Great prompt = Role + Task + Details + Format. The more clearly you ask, the better you get.
 
-✏️ TRY THIS
+TRY THIS
 Compare two prompts: "essay on pollution" vs "Write a 150-word essay on water pollution for a class 9 student, with a title and 3 simple points." See the difference.`,
 
     "AI for Studies & Work": `AI can be your free study partner and office assistant — if you use it the right way.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Studies: summarise chapters, make notes, create quizzes, explain hard doubts.
 • Work: write emails, fix English, make lists, plan tasks, prepare for meetings.
 • Always check important facts — AI can sometimes be wrong (called "hallucination").
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 You can revise faster, write more confidently, and look professional at work — even as a beginner or fresher.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Paste your chapter and ask: "Summarise in 10 simple points."
 2. Then ask: "Make 5 quiz questions with answers."
 3. For work: "Write a polite leave-request email to my manager."
 4. Read, edit in your own words, and verify any numbers or names.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Use AI to summarise, quiz, draft and plan — then add your own checking. It speeds you up, but you stay in charge.
 
-✏️ TRY THIS
+TRY THIS
 Take today's class notes, paste them, and ask AI for a 5-point summary plus 3 practice questions.`,
 
     "AI Safety & Smart Use": `AI is powerful, but smart users follow a few safety rules to stay private, honest and accurate.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Privacy: never share passwords, OTPs, Aadhaar, or bank details with AI.
 • Accuracy: AI can sound confident but be wrong — verify facts before trusting.
 • Honesty: don't copy AI answers blindly in exams or jobs; learn and rewrite.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Using AI wrongly can leak your data or spread false info. Using it wisely makes you faster AND trustworthy.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Before typing, ask: "Is this private info?" If yes, don't share it.
 2. For facts/numbers, double-check with a second source.
 3. Treat AI text as a first draft, then make it your own.
 4. Be respectful — don't use AI to harm or cheat others.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Protect your data, verify facts, and stay honest. AI is a tool — your judgement keeps it safe.
 
-✏️ TRY THIS
+TRY THIS
 Ask AI a factual question about your town, then check the answer on Google. Notice where it was right or wrong.`,
   },
 
   "chatgpt-mastery": {
     "ChatGPT Basics & Setup": `ChatGPT is a free AI chat tool by OpenAI. You type a question and it replies like a knowledgeable assistant.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • How to create a free account and start a chat.
 • The chat box, "New chat", and chat history on the side.
 • Free vs paid: the free version is enough for most students.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 ChatGPT is the most popular AI in the world. Knowing it well helps in studies, writing, coding and many jobs.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Go to chat.openai.com (or the app) and sign up with email/Google.
 2. Click "New chat" and type a simple question.
 3. Press Enter and read the reply.
 4. Ask a follow-up — ChatGPT remembers the conversation.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Sign up free, open a new chat, ask in plain words, and continue the conversation with follow-ups.
 
-✏️ TRY THIS
+TRY THIS
 Ask: "Give me 5 interesting facts about Tamil Nadu." Then follow up with: "Make them shorter for an Instagram caption."`,
 
     "Prompting Like a Pro": `The secret to ChatGPT is HOW you ask. A clear prompt gives a clear, useful answer.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Give a role, task, details and format in one message.
 • Tell it your level and language (e.g. simple English/Tanglish).
 • Ask it to "ask me questions first" when the task is big.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Pro prompting turns ChatGPT into a tutor, editor, planner or coder instead of a basic search box.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Start with: "You are an expert resume writer."
 2. Add the task: "Write a fresher resume summary."
 3. Add details: "for a B.Com graduate applying for accounting jobs."
 4. Add format: "in 3 lines, simple and confident."
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Role + Task + Details + Format = strong answers. Be specific, and refine with follow-ups.
 
-✏️ TRY THIS
+TRY THIS
 Write one detailed prompt to plan your week of exam revision, including subjects and daily hours.`,
 
     "ChatGPT for Writing & Email": `ChatGPT is excellent for writing clearly and quickly — messages, emails, essays and applications.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Draft emails, leave letters, and WhatsApp messages politely.
 • Improve grammar and tone of something you already wrote.
 • Change length and style: shorter, formal, friendly, etc.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Good writing builds a professional image. Freshers especially win interviews and clients with clear emails.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Type: "Write a polite email to my manager asking for 2 days leave for a function."
 2. Read it, then say: "Make it shorter and more formal."
 3. Paste your own draft and ask: "Fix grammar and make it polite."
 4. Copy the final version where you need it.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Draft, refine, and adjust tone with ChatGPT — then send in your own voice.
 
-✏️ TRY THIS
+TRY THIS
 Write a thank-you email to an interviewer using ChatGPT, then shorten it to 4 lines.`,
 
     "ChatGPT for Study & Coding": `ChatGPT can explain tough topics and help you learn coding step by step.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Explain any concept simply, with examples and analogies.
 • Make summaries, flashcards and practice questions from your notes.
 • For coding: explain code line-by-line, find errors, and suggest fixes.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 It is like a 24×7 free tutor and coding buddy — great for revision and for beginners learning programming.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Ask: "Explain Newton's second law with a daily-life example."
 2. Paste your notes: "Make 5 MCQs with answers from this."
 3. For code: paste it and ask "Explain each line in simple words."
 4. If there's an error, paste it and ask "Why this error and how to fix?"
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Use ChatGPT to understand, revise and debug. Always try the problem yourself first, then learn from its help.
 
-✏️ TRY THIS
+TRY THIS
 Paste a small Python program and ask ChatGPT to explain what each line does.`,
 
     "Custom GPTs & Advanced Tricks": `Once you know the basics, a few advanced tricks make ChatGPT far more powerful.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Custom instructions: tell ChatGPT once how you like answers (language, length).
 • "Act as" prompts: turn it into a tutor, interviewer or career coach.
 • Step-by-step + examples to get higher-quality, structured answers.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 These tricks save repeating yourself and give consistent, expert-level help for your specific needs.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. In Settings, add custom instructions like "Always answer in simple English with examples."
 2. Try: "Act as my interviewer for an accounting job and ask me 5 questions one by one."
 3. Add "Think step by step" for maths or logic problems.
 4. Give 1–2 examples of what a good answer looks like, then ask for more.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Set custom instructions, use role-play prompts, and give examples. Small tweaks → big improvement.
 
-✏️ TRY THIS
+TRY THIS
 Ask ChatGPT to "act as a friendly English speaking partner" and have a 5-message conversation.`,
   },
 
   "prompt-engineering": {
     "What is a Prompt": `A prompt is simply the instruction or question you give an AI. Prompt engineering is the skill of writing prompts that get great results.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • A prompt can be a question, a command, or a full set of instructions.
 • Clear prompts = clear answers; vague prompts = vague answers.
 • This is a real, in-demand skill — no coding required.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 The same AI gives a weak or brilliant answer depending on the prompt. Good prompting is the difference-maker.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Decide the exact outcome you want.
 2. Put it in plain, specific words.
 3. Add who it's for and how long it should be.
 4. Read the answer and improve the prompt if needed.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 A prompt is your instruction to AI. Writing it clearly and specifically is the whole game.
 
-✏️ TRY THIS
+TRY THIS
 Turn "tell me about India" into a sharper prompt: "List 5 key facts about India's economy for a class 10 student."`,
 
     "Prompt Structure & Roles": `A strong prompt usually has four parts. Giving the AI a "role" makes answers more expert and focused.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Role: who the AI should act as ("You are a career coach").
 • Task: what to do ("review my resume").
 • Context: details ("I'm a fresher in marketing").
 • Format: how to reply ("give 5 bullet points").
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Roles + structure remove confusion, so you get answers that fit your exact situation.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Write the role line first.
 2. Add the task clearly.
 3. Add context about you and your goal.
 4. End with the format you want.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Role + Task + Context + Format = a professional prompt. Always set the role.
 
-✏️ TRY THIS
+TRY THIS
 Write one prompt with all four parts to get feedback on a cover letter.`,
 
     "Few-shot & Examples": `"Few-shot" prompting means giving the AI 1–3 examples of what you want, so it copies the pattern.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Zero-shot = no example; few-shot = you show examples first.
 • Examples teach the AI your exact style, tone and format.
 • Great for repetitive tasks like captions, titles or replies.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Examples are the fastest way to get consistent, on-brand results without long explanations.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Show 2 examples: "Input: ... → Output: ..."
 2. Keep the examples in the style you want.
 3. Then give a new input and ask for the output.
 4. Adjust examples if results drift.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Show, don't just tell. A couple of good examples beats a long instruction.
 
-✏️ TRY THIS
+TRY THIS
 Give AI 2 sample product captions, then ask it to write 5 more in the same style.`,
 
     "Step-by-Step Reasoning Prompts": `For maths, logic and planning, asking the AI to think step by step gives more accurate answers.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Adding "think step by step" makes AI show its working.
 • Breaking a big task into steps reduces mistakes.
 • You can ask it to check its own answer at the end.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 AI rushes to an answer by default. Step-by-step prompting catches errors and improves quality.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Add: "Solve this step by step and explain each step."
 2. For projects: "First give me an outline, then we'll do each part."
 3. Ask: "Now double-check your answer for mistakes."
 4. Combine the verified steps.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Tell AI to slow down and reason in steps. It thinks better and you learn the method.
 
-✏️ TRY THIS
+TRY THIS
 Ask AI to solve a word problem "step by step", then ask it to verify the final answer.`,
 
     "Prompts for Images & Code": `The same skill works for AI image tools and coding helpers — you just describe clearly.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Image prompts: subject + style + colours + mood + details.
 • Code prompts: say the language, what it should do, and the level.
 • Always ask for comments/explanations in code so you learn.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Clear creative and technical prompts let you make posters and small programs even as a beginner.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Image: "A modern logo for a bakery, warm colours, minimal, vector style."
 2. Adjust: add or remove details until it looks right.
 3. Code: "Write a Python program to add two numbers, with comments, for a beginner."
 4. Ask: "Explain how this code works."
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Describe images with style details and code with language + goal + level. Clarity wins everywhere.
 
-✏️ TRY THIS
+TRY THIS
 Write an image prompt for a festival greeting poster, then a code prompt for a simple calculator.`,
   },
 
   "ai-tools-for-students": {
     "AI Note-taking & Summaries": `AI can turn long chapters and videos into short, clear notes in seconds.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Paste text and get a summary in points.
 • Summarise YouTube lectures using their transcript.
 • Make notes at the right level: simple, medium or detailed.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Faster revision means more time to practise and understand — perfect before exams.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Paste a chapter and ask: "Summarise in 10 simple bullet points."
 2. Then: "Make a 1-page revision sheet from this."
 3. Ask for a "quick recap in 5 lines" the night before an exam.
 4. Save the notes in one document.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Use AI to compress big content into clean notes — then review and memorise.
 
-✏️ TRY THIS
+TRY THIS
 Paste any chapter and ask for a 10-point summary plus 5 key terms with meanings.`,
 
     "AI for Assignments (the right way)": `AI can help you do assignments better and faster — without cheating or copying.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Use AI to understand the topic, brainstorm and outline.
 • Write in your OWN words; use AI only to improve clarity.
 • Always check facts and follow your college's rules.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 The right way builds real skills and avoids plagiarism trouble. Copying blindly hurts your learning and marks.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Ask: "Explain this assignment topic and give me an outline."
 2. Write each section yourself using the outline.
 3. Paste your draft: "Improve grammar and flow, keep my meaning."
 4. Verify any data and add your own examples.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 AI helps you understand, outline and polish — you do the actual writing and checking.
 
-✏️ TRY THIS
+TRY THIS
 Pick an assignment topic and ask AI only for an outline. Then write the intro yourself.`,
 
     "AI Research Helpers": `AI can speed up research — finding ideas, explaining sources and organising information.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Use AI to explain difficult articles in simple words.
 • Ask for different viewpoints on a topic.
 • Always verify facts; AI can invent references ("hallucinate").
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 You research faster and understand deeper — but staying accurate keeps your work trustworthy.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Ask: "Explain this topic and the main arguments simply."
 2. Ask: "What are the pros and cons / different views?"
 3. Get keywords to search on Google Scholar yourself.
 4. Cross-check any fact or quote before using it.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Let AI guide and simplify research, but confirm facts from real sources.
 
-✏️ TRY THIS
+TRY THIS
 Pick a topic and ask AI for 5 search keywords plus a simple explanation of each.`,
 
     "AI for Exam Prep": `AI is a powerful free tutor for revision, practice tests and clearing doubts.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Generate practice questions and MCQs from your syllabus.
 • Get step-by-step solutions and explanations.
 • Make a revision timetable based on your weak topics.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Active practice and instant doubt-clearing improve marks more than just re-reading notes.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Paste a topic: "Make 10 exam questions with answers."
 2. Try them yourself, then ask AI to check and explain.
 3. Ask: "Explain the questions I got wrong, simply."
 4. Request a revision plan for the last week before the exam.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Use AI to quiz you, explain mistakes and plan revision — practise actively, don't just read.
 
-✏️ TRY THIS
+TRY THIS
 Ask AI to create a 10-question test on your toughest subject and grade your answers.`,
 
     "Best Free AI Tools": `There are many free AI tools for students. Here are the most useful to start with.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Chat & study: ChatGPT, Google Gemini, Microsoft Copilot.
 • Writing: Grammarly, QuillBot.
 • Design: Canva AI; Images: Bing Image Creator.
 • Most are free and work on a basic phone.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Knowing the right tool for each task saves time and money — all without paying for premium apps.
 
-🪜 STEP BY STEP
+STEP BY STEP
 1. Pick one chat AI for doubts and notes.
 2. Add Grammarly/QuillBot for English.
 3. Use Canva for posters and presentations.
 4. Build a small, reliable toolkit you actually use.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Start with one chat AI + one writing tool + Canva. Add more only when you truly need them.
 
-✏️ TRY THIS
+TRY THIS
 Create free accounts on one chat AI and Canva today, and make one note and one poster.`,
   },
   excel: {
     "Excel Basics to Advanced": `Excel is a spreadsheet — a giant grid of boxes called "cells" where you store numbers, text and dates in rows and columns.
 
-📌 WHAT YOU LEARN
+WHAT YOU LEARN
 • Cells, rows (1,2,3...) and columns (A,B,C...). Cell "B3" means column B, row 3.
 • Typing data, selecting cells, and copy/paste (Ctrl+C, Ctrl+V).
 • Saving your file (Ctrl+S) and using multiple sheets (tabs at the bottom).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Almost every office job uses Excel for bills, attendance, marks, stock and reports. Strong basics make everything else easy.
 
-🪜 FIRST STEPS
+FIRST STEPS
 1. Open Excel and type your name in cell A1.
 2. Press Enter — the box below (A2) gets selected.
 3. Type numbers down a column, then select them and look at the bottom bar — Excel auto-shows the Sum and Average.
 4. Use Ctrl+Z to undo any mistake.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Excel = rows + columns of cells. Master typing, selecting, saving and undo first — these are used in every advanced topic.
 
-✏️ TRY THIS
+TRY THIS
 Make a small table of 5 friends with their marks, then find the highest mark by eye. Next lesson you'll do it with a formula!`,
 
     "Formulas & Functions": `A formula is an instruction that calculates a result for you. Every formula starts with the "=" sign.
 
-📌 KEY ONES TO KNOW
+KEY ONES TO KNOW
 • =SUM(A1:A10) → adds all values from A1 to A10.
 • =AVERAGE(A1:A10) → finds the average.
 • =MAX / =MIN → highest / lowest value.
 • =IF(A1>=35,"Pass","Fail") → makes a decision.
 • =VLOOKUP(value, table, column, FALSE) → finds matching data, like searching a price list.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Formulas turn Excel from a notebook into a calculator that updates automatically. Change one number and every result recalculates.
 
-🪜 HOW TO USE
+HOW TO USE
 1. Click an empty cell.
 2. Type = then the function name and brackets, e.g. =SUM(
 3. Drag-select the cells you want, close the bracket ), press Enter.
 4. Copy a formula down a column to apply it to every row.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Start with "=", pick a function (SUM, AVERAGE, IF, VLOOKUP), give it the cells, press Enter. Results update by themselves.
 
-✏️ TRY THIS
+TRY THIS
 Make a marks column and use =IF(B2>=35,"Pass","Fail") to auto-grade each student.`,
 
     "Pivot Tables": `A Pivot Table summarises a big messy table into a clean report in seconds — without any formula.
 
-📌 WHAT IT DOES
+WHAT IT DOES
 If you have 1,000 sales rows, a pivot can instantly show "total sales per city" or "total per month". You just drag fields around.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Managers want summaries, not raw data. Pivot tables are the fastest way to answer "how much / how many per group" and they impress in interviews.
 
-🪜 HOW TO MAKE ONE
+HOW TO MAKE ONE
 1. Click any cell inside your data table.
 2. Go to Insert → PivotTable → OK.
 3. A side panel opens with your column names.
@@ -2333,135 +2350,135 @@ Managers want summaries, not raw data. Pivot tables are the fastest way to answe
 5. Drag a number (e.g. Amount) into VALUES — it auto-totals.
 6. Drag another field into COLUMNS or FILTERS to slice further.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Insert → PivotTable, then drag fields into Rows, Columns and Values. Excel builds the summary automatically and updates when you refresh.
 
-✏️ TRY THIS
+TRY THIS
 Take a sales sheet and build a pivot showing total amount for each salesperson.`,
 
     "Dashboards": `A dashboard is a single screen of charts and key numbers that tells a story at a glance — like a car's dashboard shows speed and fuel.
 
-📌 WHAT GOES IN ONE
+WHAT GOES IN ONE
 • Big "KPI" numbers (Total Sales, Total Orders).
 • A few charts (bar, line, pie).
 • Slicers/buttons so the viewer can filter by month or region.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Bosses don't read 5,000 rows. A clean dashboard shows the health of a business in 5 seconds. This is a high-value office skill.
 
-🪜 HOW TO BUILD
+HOW TO BUILD
 1. First make pivot tables for each summary you need.
 2. Select a pivot → Insert → Chart (PivotChart).
 3. Repeat for 2–3 charts and arrange them neatly on one sheet.
 4. Add Slicers (PivotTable Analyze → Insert Slicer) so one click filters all charts.
 5. Add titles and use matching colours.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Dashboard = KPIs + charts + slicers on one tidy screen. Build pivots first, turn them into charts, connect slicers.
 
-✏️ TRY THIS
+TRY THIS
 Create a 2-chart dashboard: a bar chart of sales by city and a line chart of sales by month, with a slicer for the month.`,
 
     "Data Cleaning": `Real data is messy — extra spaces, mixed CAPS, duplicates, blanks. Cleaning means fixing it so formulas and pivots work correctly.
 
-📌 COMMON FIXES
+COMMON FIXES
 • Remove Duplicates: Data → Remove Duplicates.
 • Trim spaces: =TRIM(A2) removes extra blank spaces.
 • Fix case: =PROPER(A2), =UPPER(A2), =LOWER(A2).
 • Split a column: Data → Text to Columns (e.g. split "Name City").
 • Find & Replace: Ctrl+H to fix repeated mistakes.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Dirty data gives wrong totals and broken VLOOKUPs. "Garbage in, garbage out." Clean data is the foundation of every report.
 
-🪜 A SIMPLE ROUTINE
+A SIMPLE ROUTINE
 1. Make a copy of the sheet first (safety).
 2. Remove duplicates.
 3. TRIM and fix the case of text columns.
 4. Check for blanks and fill or remove them.
 5. Make sure dates and numbers are real numbers, not text.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Clean = no duplicates, no extra spaces, consistent case, correct data types. Always work on a copy.
 
-✏️ TRY THIS
+TRY THIS
 Take a name list with messy spacing and use =TRIM(PROPER(A2)) to clean it.`,
 
     "Excel Automation Tips": `Automation means letting Excel repeat boring work for you, so you finish in seconds instead of hours.
 
-📌 EASY WAYS TO AUTOMATE
+EASY WAYS TO AUTOMATE
 • Flash Fill (Ctrl+E): type one example, Excel fills the pattern (e.g. extract first names).
 • Tables (Ctrl+T): formulas auto-copy to new rows.
 • Templates: save a ready-made format and reuse it.
 • Macros: record your clicks once and replay them with a button (View → Macros → Record Macro).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Office reports are often the same every day/week. Automation saves time and removes human mistakes — a skill bosses love.
 
-🪜 RECORD YOUR FIRST MACRO
+RECORD YOUR FIRST MACRO
 1. View → Macros → Record Macro, give it a name.
 2. Do your steps (format, sort, etc.).
 3. Stop Recording.
 4. Run it next time from Macros → Run. Save the file as .xlsm to keep macros.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Use Flash Fill and Tables for quick wins; record Macros for repeated multi-step jobs. Save as .xlsm for macros.
 
-✏️ TRY THIS
+TRY THIS
 Record a macro that adds bold headers and a colour to a table, then run it on a new sheet.`,
 
     "Real-world Business Reports": `A business report combines everything — clean data, formulas, pivots and charts — into a document that helps people make decisions.
 
-📌 WHAT A GOOD REPORT HAS
+WHAT A GOOD REPORT HAS
 • A clear title and date.
 • Summary numbers at the top (totals, growth %).
 • Supporting tables and 1–2 charts.
 • A short note on what the numbers mean.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 This is the actual job — companies pay for people who can turn raw data into clear answers like "sales grew 12% this month, mostly from Chennai."
 
-🪜 BUILD A MONTHLY SALES REPORT
+BUILD A MONTHLY SALES REPORT
 1. Clean the raw sales data.
 2. Make pivots: total per month, per product, per city.
 3. Add a chart for the trend.
 4. Put a summary line at the top: total, best product, growth %.
 5. Format neatly and save/print as PDF (File → Save As → PDF).
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Report = clean data → summaries → charts → a plain-English insight, all on a neat page exported to PDF.
 
-✏️ TRY THIS
+TRY THIS
 Build a one-page monthly sales report with a total, a top-product line, and one trend chart.`,
   },
 
   python: {
     "Python Basics": `Python is a programming language famous for reading almost like English, which makes it the best first language to learn.
 
-📌 FIRST THINGS
+FIRST THINGS
 • print("Hello") → shows text on screen.
 • Python runs your file line by line, top to bottom.
 • You write code in a file ending with .py (e.g. test.py).
 • Comments start with # and are ignored by Python (notes for humans).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Python powers websites, data analysis, AI and automation. Learn it once and many doors open.
 
-🪜 YOUR FIRST PROGRAM
+YOUR FIRST PROGRAM
 1. Install Python from python.org (or use an online editor like replit.com).
 2. Create a file hello.py.
 3. Type: print("Hello, I am learning Python")
 4. Run it — your message appears.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Python reads like English. Use print() to show output, # for comments, and run .py files top to bottom.
 
-✏️ TRY THIS
+TRY THIS
 Write a program that prints your name on one line and your goal on the next using two print() statements.`,
 
     "Variables, Loops, Functions": `These three ideas are the heart of all programming.
 
-📌 THE THREE BUILDING BLOCKS
+THE THREE BUILDING BLOCKS
 • VARIABLE = a labelled box that stores a value:  name = "Alim"   age = 20
 • LOOP = repeat something without copy-pasting:
     for i in range(3):
@@ -2471,23 +2488,23 @@ Write a program that prints your name on one line and your goal on the next usin
         print("Hello " + person)
     greet("Alim")
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Variables remember data, loops handle repetition, and functions keep code short and reusable. Every real program is made of these.
 
-🪜 HOW THEY WORK TOGETHER
+HOW THEY WORK TOGETHER
 1. Store data in variables.
 2. Use a loop to go through many items.
 3. Put repeated logic inside a function and call it whenever needed.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Variables store, loops repeat, functions reuse. Master these and you can build almost anything.
 
-✏️ TRY THIS
+TRY THIS
 Write a function add(a, b) that returns a+b, then use a loop to print add(i, 10) for i from 1 to 5.`,
 
     "File Handling": `File handling lets your program read from and write to files — so data is saved even after the program closes.
 
-📌 THE BASICS
+THE BASICS
 • Write to a file:
     f = open("notes.txt", "w")
     f.write("Hello file")
@@ -2498,23 +2515,23 @@ Write a function add(a, b) that returns a+b, then use a loop to print add(i, 10)
     f.close()
 • Modes: "w" = write (overwrites), "a" = add to end, "r" = read.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Without files, data disappears when the program ends. Files let you save reports, logs, and results — the basis of real apps.
 
-🪜 SAFE WAY (recommended)
+SAFE WAY (recommended)
     with open("notes.txt", "w") as f:
         f.write("Saved safely")
 The "with" block closes the file automatically.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 open() a file in mode w/a/r, then write() or read(), then close — or use "with" to auto-close.
 
-✏️ TRY THIS
+TRY THIS
 Write a program that saves 3 of your favourite movies into movies.txt, then reads and prints them.`,
 
     "Error Handling": `Errors happen — wrong input, missing files, dividing by zero. Error handling stops your program from crashing and shows a friendly message instead.
 
-📌 THE TRY/EXCEPT TOOL
+THE TRY/EXCEPT TOOL
     try:
         number = int(input("Enter a number: "))
         print(10 / number)
@@ -2523,190 +2540,190 @@ Write a program that saves 3 of your favourite movies into movies.txt, then read
     except ZeroDivisionError:
         print("Cannot divide by zero!")
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Real users type wrong things. Good programs expect mistakes and handle them calmly instead of crashing.
 
-🪜 HOW IT WORKS
+HOW IT WORKS
 1. Put risky code inside try:
 2. Put the "what to do if it fails" inside except:
 3. You can catch specific errors (ValueError, ZeroDivisionError) or a general one.
 4. Optional: finally: runs no matter what (good for cleanup).
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Wrap risky code in try, catch problems in except, keep the program alive with a clear message.
 
-✏️ TRY THIS
+TRY THIS
 Write a mini calculator that divides two numbers and uses try/except to handle dividing by zero.`,
 
     "Working with APIs & JSON": `An API is a way for your program to get data from the internet (weather, prices, etc.). That data usually comes back as JSON — a simple text format of key:value pairs.
 
-📌 THE TOOLS
+THE TOOLS
 • import requests → lets Python call the internet.
 • response = requests.get("https://api...") → fetches data.
 • data = response.json() → turns JSON into a Python dictionary.
 • Read it like: data["temperature"]
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 APIs let your small program use the power of huge services. Almost every modern app talks to APIs.
 
-🪜 STEPS
+STEPS
 1. pip install requests (one-time install).
 2. import requests
 3. r = requests.get("the API link")
 4. info = r.json()
 5. print the part you need, e.g. info["name"]
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 API = data source online. Use requests.get(), call .json(), then read values by their keys like a dictionary.
 
-✏️ TRY THIS
+TRY THIS
 Use a free public API (like a joke or quote API), fetch it with requests, and print one field from the JSON.`,
 
     "Basic Automation Projects": `Automation projects use Python to do real chores for you — renaming files, sending reports, filling data.
 
-📌 BEGINNER PROJECT IDEAS
+BEGINNER PROJECT IDEAS
 • Rename 100 photos in a folder in one run.
 • Read a CSV and create a summary text file.
 • Auto-fill a form or message template with names from a list.
 • Combine many text files into one.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 This is where learning becomes useful. A 20-line script can replace an hour of manual clicking — exactly what freelance clients pay for.
 
-🪜 PROJECT RECIPE
+PROJECT RECIPE
 1. Pick one boring task you do by hand.
 2. Break it into clear steps.
 3. Use loops + file handling (and maybe the os module for folders).
 4. Test on a few sample files first.
 5. Run on the real files.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Find a repetitive task, break it into steps, use loops and files to automate it. Start tiny, then grow.
 
-✏️ TRY THIS
+TRY THIS
 Write a script that loops through a list of names and creates a personalised "Dear NAME" greeting for each.`,
   },
 
   powerbi: {
     "Data Import & Transformation": `Power BI is a free Microsoft tool that turns raw data into interactive dashboards. The first step is importing data and cleaning it in "Power Query".
 
-📌 WHAT HAPPENS HERE
+WHAT HAPPENS HERE
 • Get Data → connect to Excel, CSV, a database, or the web.
 • Power Query Editor opens — this is where you clean before loading.
 • Common steps: remove columns, change data types, filter rows, replace values, split columns.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Clean, well-shaped data is the foundation. Power Query records every step, so when new data arrives you just click Refresh and it cleans itself.
 
-🪜 STEPS
+STEPS
 1. Home → Get Data → Excel/CSV.
 2. Select your table → Transform Data.
 3. Fix types (text/number/date), remove junk columns, filter bad rows.
 4. Click Close & Apply to load it in.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Get Data → Transform in Power Query → clean and shape → Close & Apply. Steps auto-repeat on refresh.
 
-✏️ TRY THIS
+TRY THIS
 Import a sales Excel file and, in Power Query, remove one unwanted column and set the date column to a Date type.`,
 
     "Data Modeling": `A data model connects multiple tables so they work together — like linking a Sales table to a Products table using a common column.
 
-📌 KEY IDEAS
+KEY IDEAS
 • Tables are linked by a shared key column (e.g. ProductID).
 • "One-to-many": one product has many sales rows.
 • The Model view shows tables as boxes with lines (relationships) between them.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Real data lives in several tables. Modeling lets one chart pull from all of them — e.g. show sales (Sales table) by category (Products table) together.
 
-🪜 STEPS
+STEPS
 1. Go to the Model view (left side icons).
 2. Drag the key column from one table onto the matching column in another.
 3. A line appears = a relationship.
 4. Check the direction (usually one-to-many).
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Modeling = linking tables by a shared key so charts can combine data from all of them. Build relationships in Model view.
 
-✏️ TRY THIS
+TRY THIS
 Link a Sales table and a Products table using ProductID, then confirm the relationship line appears.`,
 
     "DAX Basics": `DAX (Data Analysis Expressions) is Power BI's formula language — similar feel to Excel formulas, used to create new calculations.
 
-📌 TWO MAIN TYPES
+TWO MAIN TYPES
 • MEASURE = a calculation that reacts to filters, e.g.
     Total Sales = SUM(Sales[Amount])
 • CALCULATED COLUMN = a new column in a table, e.g.
     Profit = Sales[Price] - Sales[Cost]
 Other handy ones: COUNT, AVERAGE, CALCULATE (for filtered totals).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Charts can only show what exists. DAX creates the business numbers you actually need — totals, profit, growth %, running totals.
 
-🪜 MAKE A MEASURE
+MAKE A MEASURE
 1. Right-click your table → New Measure.
 2. Type:  Total Sales = SUM(Sales[Amount])
 3. Press Enter, then drag the measure onto a chart.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 DAX = formulas for Power BI. Measures react to filters; calculated columns add fixed values. Start with SUM, AVERAGE, COUNT.
 
-✏️ TRY THIS
+TRY THIS
 Create a measure Total Sales = SUM(Sales[Amount]) and show it as a card visual.`,
 
     "Interactive Dashboards": `An interactive dashboard lets the viewer click and explore — click a city and every chart updates to show only that city.
 
-📌 BUILDING BLOCKS
+BUILDING BLOCKS
 • Visuals: bar, line, pie, map, and "card" for a single big number.
 • Slicers: clickable filter buttons (e.g. Year, Region).
 • Cross-filtering: clicking one chart filters the others automatically.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Interactivity is Power BI's superpower over static Excel. One dashboard answers hundreds of questions because users filter it themselves.
 
-🪜 STEPS
+STEPS
 1. In Report view, pick a visual from the Visualizations panel.
 2. Drag fields into it (e.g. City + Sales for a bar chart).
 3. Add a Slicer visual and put Year in it.
 4. Arrange visuals neatly; click around to test the filtering.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Drag fields into visuals, add slicers, and let cross-filtering connect everything. Users explore by clicking.
 
-✏️ TRY THIS
+TRY THIS
 Build a bar chart of Sales by City plus a Year slicer, then click a year and watch the chart change.`,
 
     "Business Reports": `A Power BI business report is the polished final product — a clean, branded page (or pages) that leaders use to track the business.
 
-📌 WHAT MAKES IT PROFESSIONAL
+WHAT MAKES IT PROFESSIONAL
 • A title bar and company colours.
 • Top-row KPI cards: Total Sales, Orders, Growth %.
 • A few clear charts below, not a crowded mess.
 • Slicers placed neatly on one side.
 • Published online so others can view it.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 This is the deliverable companies pay for. A clear report that updates with one Refresh saves managers hours every week.
 
-🪜 STEPS
+STEPS
 1. Lay out KPI cards along the top.
 2. Add 2–3 key charts below.
 3. Apply a consistent colour theme (View → Themes).
 4. Add a title and tidy spacing.
 5. Publish → share the link (File → Publish).
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 A business report = KPI cards + a few clean charts + slicers + branding, then publish to share. Keep it simple and readable.
 
-✏️ TRY THIS
+TRY THIS
 Design a one-page report with three KPI cards on top and two charts below using a single colour theme.`,
   },
 
   webdev: {
     "HTML Basics": `HTML is the skeleton of every web page. It uses "tags" to label parts of the page like headings, paragraphs and images.
 
-📌 CORE TAGS
+CORE TAGS
 • <h1>Big Heading</h1>
 • <p>A paragraph of text.</p>
 • <a href="https://...">a link</a>
@@ -2714,25 +2731,25 @@ Design a one-page report with three KPI cards on top and two charts below using 
 • <ul><li>list item</li></ul> for bullet lists
 Most tags come in pairs: an opening <tag> and a closing </tag>.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Every website on earth is built on HTML. It's the easiest first step into tech and freelancing.
 
-🪜 YOUR FIRST PAGE
+YOUR FIRST PAGE
 1. Create a file index.html.
 2. Add:
     <h1>My First Website</h1>
     <p>Hello, I am learning web development.</p>
 3. Double-click the file — it opens in your browser.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 HTML = content with tags. Headings, paragraphs, links, images. Save as .html and open in a browser.
 
-✏️ TRY THIS
+TRY THIS
 Make an index.html with your name as an <h1>, a short <p> about you, and one <a> link to a site you like.`,
 
     "CSS & Styling": `If HTML is the skeleton, CSS is the clothing and colour — it controls how the page looks (colours, fonts, spacing, layout).
 
-📌 HOW CSS WORKS
+HOW CSS WORKS
 You pick an element and give it style rules:
     h1 {
       color: green;
@@ -2743,239 +2760,239 @@ You pick an element and give it style rules:
     }
 Add CSS inside a <style> tag in your HTML, or in a separate styles.css file.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Plain HTML looks boring. CSS makes sites attractive and professional — the difference between "school project" and "real website".
 
-🪜 STEPS
+STEPS
 1. In your HTML <head>, add: <style> ... </style>
 2. Inside it, write rules: selector { property: value; }
 3. Save and refresh the browser to see changes instantly.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 CSS styles HTML. Use selector { property: value; } to set colours, fonts, spacing and layout.
 
-✏️ TRY THIS
+TRY THIS
 Style your page: make the <h1> blue and centered, and give the <p> a bigger font size.`,
 
     "Basic JavaScript": `JavaScript makes pages interactive — buttons that do things, pop-ups, live updates. HTML = structure, CSS = looks, JavaScript = behaviour.
 
-📌 STARTER CONCEPTS
+STARTER CONCEPTS
 • Show a message: alert("Hello!");
 • Store data: let name = "Alim";
 • React to a click:
     <button onclick="alert('Clicked!')">Press me</button>
 • Change the page: document.getElementById("demo").innerText = "Changed!";
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 JavaScript brings a site to life. It's also one of the most in-demand skills for jobs and freelancing.
 
-🪜 STEPS
+STEPS
 1. Add a <script> tag in your HTML.
 2. Write JS inside it, e.g. alert("Welcome");
 3. Use onclick on a button to run code when clicked.
 4. Save and refresh to test.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 JavaScript adds actions. Use variables, alerts, and onclick to make pages respond to the user.
 
-✏️ TRY THIS
+TRY THIS
 Add a button that, when clicked, shows an alert saying "Thanks for visiting!".`,
 
     "Build Portfolio Website": `A portfolio website is your online resume — one page showing who you are, your skills, and your projects. It's the project that ties HTML, CSS and JS together.
 
-📌 SECTIONS TO INCLUDE
+SECTIONS TO INCLUDE
 • Header: your name + a one-line tagline.
 • About: 2–3 sentences about you.
 • Skills: a list of what you know.
 • Projects: titles + short descriptions (+ links if any).
 • Contact: email / phone / LinkedIn.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Clients and employers want to SEE your work. A portfolio proves your skills better than just saying them.
 
-🪜 STEPS
+STEPS
 1. Create index.html with the sections above.
 2. Style it with CSS (clean fonts, nice colours, spacing).
 3. Add a little JavaScript (e.g. a "scroll to top" button).
 4. Test it on your phone too (make it responsive).
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Portfolio = one styled page with About, Skills, Projects, Contact. It showcases everything you've learned.
 
-✏️ TRY THIS
+TRY THIS
 Build a simple one-page portfolio with your name, an About section, and 3 listed skills.`,
 
     "GitHub Hosting": `GitHub can host your website for FREE on the internet using "GitHub Pages" — so anyone can visit your portfolio with a link.
 
-📌 WHAT YOU GET
+WHAT YOU GET
 • A free public web address like  yourname.github.io
 • Free storage for your code.
 • A place to show projects to employers.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 A live link ("here's my site") is far more powerful than a file on your laptop. It's free, professional, and expected in tech jobs.
 
-🪜 STEPS
+STEPS
 1. Create a free account at github.com.
 2. Create a new repository (e.g. "portfolio").
 3. Upload your index.html (and CSS files) — Add file → Upload files.
 4. Go to Settings → Pages → set branch to "main" → Save.
 5. Wait 1–2 minutes; your live link appears there.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Upload your files to a GitHub repo, turn on GitHub Pages in Settings, and get a free live web link.
 
-✏️ TRY THIS
+TRY THIS
 Create a GitHub account and a repository named "portfolio" (you'll upload your site here next).`,
   },
 
   aitools: {
     "ChatGPT for Productivity": `ChatGPT (and similar AI chat tools) can write, summarise, explain and brainstorm for you in seconds — like a tireless assistant.
 
-📌 GREAT EVERYDAY USES
+GREAT EVERYDAY USES
 • Write emails, messages and applications.
 • Summarise long text or notes.
 • Explain hard topics simply.
 • Brainstorm ideas, captions, names.
 • Fix and improve your writing.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Used well, AI saves hours daily. The real skill is "prompting" — asking clearly to get great results.
 
-🪜 HOW TO PROMPT WELL
+HOW TO PROMPT WELL
 1. Give a ROLE: "Act as a career counselor."
 2. Give the TASK: "Write a polite job application email."
 3. Give DETAILS: your name, job, experience.
 4. Give the FORMAT: "Keep it under 120 words, formal tone."
 5. Ask it to improve: "Make it warmer / shorter."
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 AI chat = instant assistant. Get better answers by giving a role, a clear task, details, and the format you want.
 
-✏️ TRY THIS
+TRY THIS
 Ask an AI: "Act as a teacher. Explain photosynthesis to a 10-year-old in 4 simple lines."`,
 
     "AI Tools for Business": `Beyond chat, there are AI tools for almost every business task — images, writing, design, customer support and more.
 
-📌 CATEGORIES (with examples of the idea)
+CATEGORIES (with examples of the idea)
 • Writing/marketing: generate posts, ads, product descriptions.
 • Images/design: create logos, social posts, thumbnails.
 • Customer support: AI chatbots answer common questions 24/7.
 • Data/insight: summarise feedback, spot trends.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Small businesses can now do the work of a whole team. Knowing which tool to use for which job is a money-making skill.
 
-🪜 HOW TO ADOPT AI IN A BUSINESS
+HOW TO ADOPT AI IN A BUSINESS
 1. List the repetitive tasks (writing posts, replying to FAQs).
 2. Match each to an AI tool category.
 3. Try one tool for one task for a week.
 4. Keep what saves time; drop what doesn't.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 There's an AI tool for writing, design, support and analysis. Pick tasks to automate, test one tool at a time, keep what helps.
 
-✏️ TRY THIS
+TRY THIS
 List 3 tasks in a small shop (e.g. captions, replies, posters) and note which AI tool type fits each.`,
 
     "Automation Basics": `Automation means setting up tasks to happen by themselves — "when X happens, do Y" — without you clicking each time.
 
-📌 THE CORE IDEA: TRIGGER → ACTION
+THE CORE IDEA: TRIGGER → ACTION
 • Trigger = the event that starts it (a new email, a form submitted, a set time).
 • Action = what should happen (send a reply, save to a sheet, send a WhatsApp).
 Example: "When a new form response arrives (trigger) → add it to a Google Sheet and email me (actions)."
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Automation removes daily manual work and mistakes. It's the foundation skill before using tools like n8n or Zapier.
 
-🪜 HOW TO THINK ABOUT IT
+HOW TO THINK ABOUT IT
 1. Find a repeated task.
 2. Write it as "When ___ , then ___ ."
 3. Identify the trigger and the action(s).
 4. Pick a tool that connects the two apps.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Automation = Trigger → Action. Spot a repeated task, describe it as "when this, do that", then connect the apps.
 
-✏️ TRY THIS
+TRY THIS
 Write 3 "When ___ , then ___" sentences for tasks you'd love to automate in your day.`,
 
     "Workflow Automation (n8n)": `n8n is a free, visual automation tool. You connect "nodes" (blocks) on a canvas to build a workflow without heavy coding.
 
-📌 HOW IT LOOKS
+HOW IT LOOKS
 • Each app/step is a NODE (a box).
 • You draw lines from one node to the next.
 • First node = the Trigger (e.g. a new email / a schedule).
 • Next nodes = Actions (save data, send message, call an API).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 n8n links your apps (Gmail, Sheets, Telegram, APIs) so whole processes run on autopilot. Great for freelancing and business.
 
-🪜 BUILD A SIMPLE FLOW
+BUILD A SIMPLE FLOW
 1. Open n8n (cloud or self-hosted).
 2. Add a Trigger node (e.g. Schedule: every morning).
 3. Add an Action node (e.g. send a message / fetch data).
 4. Connect them with a line.
 5. Click Execute to test, then turn it Active.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 n8n = drag nodes, connect Trigger → Actions, test, activate. Visual automation that links your apps together.
 
-✏️ TRY THIS
+TRY THIS
 Sketch on paper a 3-node n8n flow: a daily trigger → fetch a quote → send it to yourself.`,
   },
 
   portfolio: {
     "Build Personal Portfolio Website": `Your portfolio site is the centre of your job search — one link that shows employers who you are and what you can do.
 
-📌 MUST-HAVE SECTIONS
+MUST-HAVE SECTIONS
 • Hero: name + role you want (e.g. "Aspiring Data Analyst").
 • About: a short, honest paragraph.
 • Skills: tools you know (Excel, Python, etc.).
 • Projects: 2–4 with title, what you did, and the result.
 • Contact: email, phone, LinkedIn, GitHub.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 A portfolio proves your skills with evidence. It makes you stand out from people who only have a plain resume.
 
-🪜 STEPS
+STEPS
 1. Use your HTML/CSS skills (or a free builder) to make one clean page.
 2. Fill the sections above with real content.
 3. Add even small/learning projects — show your journey.
 4. Keep it simple, fast and mobile-friendly.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Portfolio = one clean page: Hero, About, Skills, Projects, Contact. Show real projects, even small ones.
 
-✏️ TRY THIS
+TRY THIS
 Write the text for your Hero and About sections (just the words) — you'll put them on the page next.`,
 
     "GitHub Setup": `GitHub is where developers store and show their code. A tidy GitHub profile is like a resume for technical jobs.
 
-📌 WHAT TO SET UP
+WHAT TO SET UP
 • A clear username (close to your real name).
 • A profile photo and short bio.
 • Repositories for your projects, each with a README explaining it.
 • Host your portfolio free with GitHub Pages.
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Recruiters check GitHub. Active, well-described repos prove you actually build things, not just talk about them.
 
-🪜 STEPS
+STEPS
 1. Sign up at github.com and add a photo + bio.
 2. Create a repository for each project.
 3. Add a README.md to each: what it is, tools used, what you learned.
 4. Pin your best 3–4 repos on your profile.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Set up a clean GitHub profile, upload projects with clear READMEs, and pin your best work. It's your tech resume.
 
-✏️ TRY THIS
+TRY THIS
 Create your GitHub account and write a 2-line bio describing what you're learning and your goal.`,
 
     "Resume Building": `A resume is a 1-page summary that gets you the interview. For freshers, clarity and relevance beat fancy design.
 
-📌 SECTIONS IN ORDER
+SECTIONS IN ORDER
 • Name + contact + LinkedIn/GitHub.
 • A 2-line objective ("Fresher seeking a data role; skilled in Excel & Python").
 • Skills (list your tools).
@@ -2983,44 +3000,44 @@ Create your GitHub account and write a 2-line bio describing what you're learnin
 • Education.
 • Certifications/courses (like AllBee!).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Recruiters spend ~10 seconds per resume. A clean, relevant, error-free 1-pager gets you noticed.
 
-🪜 STEPS
+STEPS
 1. Use a simple clean template (one page).
 2. Lead with skills and projects for fresher roles.
 3. Use action words: built, created, automated, analysed.
 4. Add numbers where possible (saved 2 hours, 50 records).
 5. Proofread twice and save as PDF.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Resume = 1 clean page: contact, objective, skills, projects (with results), education. Action words, no errors, PDF.
 
-✏️ TRY THIS
+TRY THIS
 Write your 2-line objective and list 5 skills you can confidently put on a resume.`,
 
     "Job Application Guidance": `Getting a job is its own skill — where to apply, how to apply, and how to follow up.
 
-📌 WHERE & HOW TO APPLY
+WHERE & HOW TO APPLY
 • Job sites: LinkedIn, Naukri, Indeed, company career pages.
 • Tailor your resume slightly to each job's keywords.
 • Write a short, polite cover message (3–4 lines).
 • Keep a simple tracker (company, role, date, status).
 
-💡 WHY IT MATTERS
+WHY IT MATTERS
 Applying smartly to the right jobs with a tailored message beats sending the same resume everywhere. Follow-ups show you're serious.
 
-🪜 A SIMPLE ROUTINE
+A SIMPLE ROUTINE
 1. Set up a strong LinkedIn profile (photo, headline, skills).
 2. Apply to 3–5 relevant jobs daily, not 50 random ones.
 3. Add a 3-line note: who you are, why you fit, thanks.
 4. Follow up politely after 4–5 days if no reply.
 5. Practise common interview questions out loud.
 
-✅ QUICK SUMMARY
+QUICK SUMMARY
 Apply smart: strong LinkedIn, tailored resume, short cover note, a tracker, and polite follow-ups. Quality over quantity.
 
-✏️ TRY THIS
+TRY THIS
 Write a 3-line application message you could send with a resume for a job you want.`,
   },
 };
@@ -3067,15 +3084,15 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
       <div className="section-label" style={{ marginBottom: 12 }}>AI Tutor</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginBottom: 28 }}>
         <button onClick={() => onOpen("tutor")} className="card-hover" style={{ textAlign: "left", cursor: "pointer", border: "none", borderRadius: "var(--radius-xl)", padding: "20px 22px", color: "white", background: "linear-gradient(135deg,#4338ca 0%,#6366f1 100%)", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", right: -10, top: -10, fontSize: 78, opacity: 0.16 }}>🤖</div>
-          <div style={{ fontSize: 30, marginBottom: 10 }}>🤖</div>
+          <div style={{ position: "absolute", right: -10, top: -10, fontSize: 78, opacity: 0.16 }}></div>
+          <div style={{ fontSize: 30, marginBottom: 10 }}></div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, marginBottom: 4 }}>AI Tutor</div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>Ask anything — chat with examples, quizzes & notes in Tamil, English, Hindi or Arabic.</div>
           <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 700, color: "white", display: "flex", alignItems: "center", gap: 4 }}>Start chatting →</div>
         </button>
         <button onClick={() => onOpen("voice")} className="card-hover" style={{ textAlign: "left", cursor: "pointer", border: "none", borderRadius: "var(--radius-xl)", padding: "20px 22px", color: "white", background: "linear-gradient(135deg,#0e7490 0%,#06b6d4 100%)", position: "relative", overflow: "hidden" }}>
-          <div style={{ position: "absolute", right: -10, top: -10, fontSize: 78, opacity: 0.16 }}>🎙️</div>
-          <div style={{ fontSize: 30, marginBottom: 10 }}>🎙️</div>
+          <div style={{ position: "absolute", right: -10, top: -10, fontSize: 78, opacity: 0.16 }}></div>
+          <div style={{ fontSize: 30, marginBottom: 10 }}></div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, marginBottom: 4 }}>AI Voice Teacher</div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.85)", lineHeight: 1.5 }}>Speak your question and hear the answer spoken back — with language & speed control.</div>
           <div style={{ marginTop: 14, fontSize: 12.5, fontWeight: 700, color: "white", display: "flex", alignItems: "center", gap: 4 }}>Talk to your tutor →</div>
@@ -3110,7 +3127,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
       {/* Courses promo banner */}
       <div className="section-label" style={{ marginBottom: 12 }}>Courses</div>
       <div onClick={onCourses} style={{ background: "linear-gradient(135deg, #0f172a 0%, #134e4a 60%, #0f766e 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 16, cursor: "pointer", position: "relative", overflow: "hidden", border: "1px solid #115e59" }}>
-        <div style={{ position: "absolute", right: -30, bottom: -30, fontSize: 120, opacity: 0.07, pointerEvents: "none" }}>🎓</div>
+        <div style={{ position: "absolute", right: -30, bottom: -30, fontSize: 120, opacity: 0.07, pointerEvents: "none" }}></div>
         <div style={{ position: "absolute", top: 16, right: 16, background: "rgba(255,255,255,0.15)", backdropFilter: "blur(4px)", borderRadius: 99, padding: "4px 12px", fontSize: 11, fontWeight: 700, color: "white", border: "1px solid rgba(255,255,255,0.2)" }}>{COURSE_COUNT}+ Courses</div>
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
           <div style={{ width: 52, height: 52, background: "rgba(255,255,255,0.15)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, overflow: "hidden", padding: 6 }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain", filter: "brightness(10)" }} /></div>
@@ -3120,7 +3137,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {CATEGORIES.map(cat => (
                 <span key={cat.id} style={{ background: "rgba(255,255,255,0.11)", border: "1px solid rgba(255,255,255,0.18)", color: "rgba(255,255,255,0.88)", fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99 }}>
-                  {cat.emoji} {cat.name}
+                  {cat.name}
                 </span>
               ))}
             </div>
@@ -3133,7 +3150,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
 
       {/* Register CTA */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, background: "white", border: "1.5px solid var(--blue-200)", borderRadius: "var(--radius-lg)", padding: "16px 18px", marginBottom: 32, flexWrap: "wrap" }}>
-        <div style={{ width: 44, height: 44, background: "var(--blue-50)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>📝</div>
+        <div style={{ width: 44, height: 44, background: "var(--blue-50)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}></div>
         <div style={{ flex: 1, minWidth: 180 }}>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14.5, fontWeight: 700, color: "var(--slate-900)" }}>Want to enroll in a new course?</div>
           <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>Register with Allbee Solutions to join any course above.</div>
@@ -3153,7 +3170,7 @@ const Dashboard = ({ user, onFeature, onHistory, onCourses, onLogout, onOpen, on
               const feat = features.find(f => f.id === h.feature);
               return (
                 <div key={h.id} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ fontSize: 20, flexShrink: 0 }}>{feat?.emoji || "📝"}</div>
+                  <div style={{ fontSize: 20, flexShrink: 0 }}>{feat?.emoji || ""}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--slate-700)", marginBottom: 2 }}>{feat?.label}</div>
                     <div style={{ fontSize: 12, color: "var(--slate-400)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.input?.slice(0, 60)}...</div>
@@ -3225,7 +3242,7 @@ const MSOfficeScreen = ({ onBack }) => {
         <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
           <Icon name="back" size={18} color="var(--slate-600)" />
         </button>
-        <div style={{ width: 40, height: 40, background: "#e8f0fe", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🖥️</div>
+        <div style={{ width: 40, height: 40, background: "#e8f0fe", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}></div>
         <div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, color: "var(--slate-900)" }}>MS Office Helper</div>
           <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Word · Excel · PowerPoint — எல்லாம் கத்துக்கலாம்!</div>
@@ -3250,7 +3267,7 @@ const MSOfficeScreen = ({ onBack }) => {
 
       {/* Answer language */}
       <div style={{ marginBottom: 14 }}>
-        <div className="section-label" style={{ marginBottom: 8 }}>🌐 Answer language</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>Answer language</div>
         <LangPicker value={langId} onChange={setLangId} accent={app.color} accentBg={app.bg} />
       </div>
 
@@ -3260,7 +3277,7 @@ const MSOfficeScreen = ({ onBack }) => {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
           {app.subs.map(s => (
             <button key={s} onClick={() => handleSuggestion(`How to ${s} in ${app.label}?`)} style={{ padding: "6px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 500, border: `1.5px solid ${app.color}30`, background: app.bg, color: app.color, cursor: "pointer", transition: "all 0.18s", display: "flex", alignItems: "center", gap: 5 }}>
-              {app.emoji} {s}
+              {s}
             </button>
           ))}
         </div>
@@ -3276,7 +3293,7 @@ const MSOfficeScreen = ({ onBack }) => {
           rows={4}
           style={{ fontSize: 14.5, marginBottom: 10 }}
         />
-        {error && <div style={{ color: "var(--red-500)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--red-50)", borderRadius: "var(--radius-sm)" }}>⚠️ {error}</div>}
+        {error && <div style={{ color: "var(--red-500)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--red-50)", borderRadius: "var(--radius-sm)" }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }}>Clear</button>
           <button className="btn-primary" onClick={handleSubmit} disabled={loading} style={{ background: app.color }}>
@@ -3304,7 +3321,7 @@ const MSOfficeScreen = ({ onBack }) => {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ width: 8, height: 8, background: "var(--green-500)", borderRadius: "50%" }} />
-              <div className="section-label" style={{ marginBottom: 0 }}>{app.emoji} {app.label} — Allbee AI Answer</div>
+              <div className="section-label" style={{ marginBottom: 0 }}>{app.label} — Allbee AI Answer</div>
             </div>
             <button onClick={handleCopy} className="btn-ghost" style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
               {copied ? <><Icon name="check" size={14} color="var(--green-500)" /><span style={{ color: "var(--green-500)" }}>Copied!</span></> : <><Icon name="copy" size={14} /> Copy</>}
@@ -3312,9 +3329,9 @@ const MSOfficeScreen = ({ onBack }) => {
           </div>
           <div className="output-box">{renderOutput(output)}</div>
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }} style={{ fontSize: 13 }}>🔄 Ask Another</button>
+            <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }} style={{ fontSize: 13 }}>Ask Another</button>
             <div style={{ flex: 1 }} />
-            <div style={{ fontSize: 12, color: "var(--slate-400)" }}>✅ Saved to History</div>
+            <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Saved to History</div>
           </div>
         </div>
       )}
@@ -3397,7 +3414,7 @@ const FeatureScreen = ({ featureId, onBack }) => {
 
       {/* Answer language */}
       <div style={{ marginBottom: 14 }}>
-        <div className="section-label" style={{ marginBottom: 8 }}>🌐 Answer language</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>Answer language</div>
         <LangPicker value={langId} onChange={setLangId} accent="var(--blue-600)" accentBg="var(--blue-50)" />
       </div>
 
@@ -3411,7 +3428,7 @@ const FeatureScreen = ({ featureId, onBack }) => {
           rows={featureId === "code" ? 8 : 5}
           style={{ fontFamily: featureId === "code" ? "'JetBrains Mono', monospace" : "'DM Sans', sans-serif", fontSize: featureId === "code" ? 13 : 15, marginBottom: 12 }}
         />
-        {error && <div style={{ color: "var(--red-500)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--red-50)", borderRadius: "var(--radius-sm)" }}>⚠️ {error}</div>}
+        {error && <div style={{ color: "var(--red-500)", fontSize: 13, marginBottom: 10, padding: "8px 12px", background: "var(--red-50)", borderRadius: "var(--radius-sm)" }}>{error}</div>}
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
           <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }}>Clear</button>
           <button className="btn-primary" onClick={handleSubmit} disabled={loading}>
@@ -3426,7 +3443,7 @@ const FeatureScreen = ({ featureId, onBack }) => {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
             <div style={{ width: 48, height: 48, animation: "pulse 1.5s infinite" }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
             <div style={{ fontWeight: 600, color: "var(--slate-700)" }}>Allbee AI is thinking...</div>
-            <div style={{ fontSize: 13, color: "var(--slate-400)" }}>உனக்கு best answer தயார் பண்றேன்! ✨</div>
+            <div style={{ fontSize: 13, color: "var(--slate-400)" }}>உனக்கு best answer தயார் பண்றேன்!</div>
             <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
               {[0,1,2].map(i => <div key={i} style={{ width: 8, height: 8, background: "var(--blue-400)", borderRadius: "50%", animation: `pulse 1.4s ease ${i*0.2}s infinite` }} />)}
             </div>
@@ -3450,9 +3467,9 @@ const FeatureScreen = ({ featureId, onBack }) => {
             {renderOutput(output)}
           </div>
           <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }} style={{ fontSize: 13 }}>🔄 Try Another</button>
+            <button className="btn-secondary" onClick={() => { setInput(""); setOutput(""); }} style={{ fontSize: 13 }}>Try Another</button>
             <div style={{ flex: 1 }} />
-            <div style={{ fontSize: 12, color: "var(--slate-400)", alignSelf: "center" }}>✅ Saved to History</div>
+            <div style={{ fontSize: 12, color: "var(--slate-400)", alignSelf: "center" }}>Saved to History</div>
           </div>
         </div>
       )}
@@ -3511,16 +3528,16 @@ const HistoryScreen = ({ onBack }) => {
 
       {/* Filter tabs */}
       <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 16, scrollbarWidth: "none" }}>
-        {[{ id: "all", label: "All", emoji: "📋" }, ...features.map(f => ({ id: f.id, label: f.label.split(" ")[0], emoji: f.emoji }))].map(tab => (
+        {[{ id: "all", label: "All", emoji: "" }, ...features.map(f => ({ id: f.id, label: f.label.split(" ")[0], emoji: f.emoji }))].map(tab => (
           <button key={tab.id} onClick={() => setFilter(tab.id)} style={{ flexShrink: 0, padding: "7px 14px", borderRadius: 99, fontSize: 13, fontWeight: 500, border: "1.5px solid", cursor: "pointer", transition: "all 0.2s", borderColor: filter === tab.id ? "var(--blue-500)" : "var(--slate-200)", background: filter === tab.id ? "var(--blue-600)" : "white", color: filter === tab.id ? "white" : "var(--slate-600)", display: "flex", alignItems: "center", gap: 5 }}>
-            {tab.emoji} {tab.label}
+            {tab.label}
           </button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
         <div className="card" style={{ padding: 48, textAlign: "center" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+          <div style={{ fontSize: 48, marginBottom: 16 }}></div>
           <div style={{ fontWeight: 600, color: "var(--slate-600)", marginBottom: 8 }}>No history yet</div>
           <div style={{ fontSize: 13, color: "var(--slate-400)" }}>Start using a tool and your answers will be saved here!</div>
         </div>
@@ -3615,17 +3632,17 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
       "You are a professional trainer at Allbee Learn AI teaching school/college students and job-seekers in Tamil Nadu. " +
       "Write ONE clear, well-structured lesson on the given topic for a beginner who wants job-ready understanding. " +
       "Use simple, professional English with a little natural Tanglish only where it truly helps. " +
-      "Format the lesson EXACTLY with these emoji section headers, each on its own line, with short bullet points (•) or numbered steps under them:\n" +
-      "📌 WHAT YOU'LL LEARN\n" +
-      "📖 EXPLANATION (explain the concept clearly in 2-4 short paragraphs)\n" +
-      "🔑 KEY TERMS (3-5 important words, one-line meaning each)\n" +
-      "🧩 EXAMPLE (one concrete worked example a beginner can follow)\n" +
-      "🪜 STEP BY STEP (numbered practical steps)\n" +
-      "💼 WHERE IT'S USED (real job / real life uses)\n" +
-      "⚠️ COMMON MISTAKES (2-3 mistakes beginners make)\n" +
-      "✅ SUMMARY (3-4 quick takeaways)\n" +
-      "✏️ PRACTICE (2-3 small tasks or questions to try)\n" +
-      "Keep it accurate, practical and motivating, about 450-650 words. Do NOT use markdown symbols like # or *; use only the emoji headers and • bullets.";
+      "Format the lesson EXACTLY with these plain text section headers, each on its own line, with short bullet points (•) or numbered steps under them:\n" +
+      "WHAT YOU'LL LEARN\n" +
+      "EXPLANATION (explain the concept clearly in 2-4 short paragraphs)\n" +
+      "KEY TERMS (3-5 important words, one-line meaning each)\n" +
+      "EXAMPLE (one concrete worked example a beginner can follow)\n" +
+      "STEP BY STEP (numbered practical steps)\n" +
+      "WHERE IT'S USED (real job / real life uses)\n" +
+      "COMMON MISTAKES (2-3 mistakes beginners make)\n" +
+      "SUMMARY (3-4 quick takeaways)\n" +
+      "PRACTICE (2-3 small tasks or questions to try)\n" +
+      "Keep it accurate, practical and motivating, about 450-650 words. Do NOT use markdown symbols like # or *; use only the section headers and • bullets.";
     const usr =
       "Write the full beginner lesson for the topic \"" + topic + "\" from the \"" + course.title +
       "\" course. Assume the student is a complete beginner from Tamil Nadu.";
@@ -3664,9 +3681,9 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
     const sys =
       "You are a senior trainer at Allbee Learn AI creating in-depth, professional study notes for students and job-seekers in Tamil Nadu. " +
       "Write COMPREHENSIVE, exam-and-interview-ready notes on the given topic. Be thorough but still beginner-friendly, using clear professional English with light Tanglish only where it helps. " +
-      "Use these emoji section headers, each on its own line, with • bullets or numbered steps:\n" +
-      "📌 OVERVIEW\n🎯 LEARNING OBJECTIVES\n📖 DETAILED EXPLANATION (use sub-points; explain the 'why', not just the 'what')\n🔑 KEY TERMS & DEFINITIONS\n🧩 WORKED EXAMPLES (at least 2, with steps)\n🪜 STEP-BY-STEP METHOD\n💡 TIPS & BEST PRACTICES\n⚠️ COMMON MISTAKES & HOW TO AVOID THEM\n💼 REAL-WORLD / JOB APPLICATIONS\n🎤 LIKELY INTERVIEW / VIVA QUESTIONS (3-5 with short answers)\n✅ SUMMARY\n✏️ PRACTICE EXERCISES (4-5 tasks)\n" +
-      "Aim for about 800-1100 words. Be accurate and well-organised. Do NOT use markdown symbols like # or *; use only the emoji headers and • bullets.";
+      "Use these plain text section headers, each on its own line, with • bullets or numbered steps:\n" +
+      "OVERVIEW\nLEARNING OBJECTIVES\nDETAILED EXPLANATION (use sub-points; explain the 'why', not just the 'what')\nKEY TERMS & DEFINITIONS\nWORKED EXAMPLES (at least 2, with steps)\nSTEP-BY-STEP METHOD\nTIPS & BEST PRACTICES\nCOMMON MISTAKES & HOW TO AVOID THEM\nREAL-WORLD / JOB APPLICATIONS\nLIKELY INTERVIEW / VIVA QUESTIONS (3-5 with short answers)\nSUMMARY\nPRACTICE EXERCISES (4-5 tasks)\n" +
+      "Aim for about 800-1100 words. Be accurate and well-organised. Do NOT use markdown symbols like # or *; use only the section headers and • bullets.";
     const usr = "Write detailed professional study notes for the topic \"" + topic + "\" from the \"" + course.title + "\" course, for a beginner in Tamil Nadu who wants job-ready understanding.";
     try {
       const out = await callAI(sys, usr);
@@ -3706,15 +3723,15 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
         {/* Lesson hero */}
         <div style={{ background: c.gradient, borderRadius: "var(--radius-xl)", padding: "22px 24px", marginBottom: 20, color: "white", position: "relative", overflow: "hidden" }} className="fade-in">
           <div style={{ position: "absolute", right: -16, top: -16, fontSize: 90, opacity: 0.12, pointerEvents: "none" }}>{c.emoji}</div>
-          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, marginBottom: 6, letterSpacing: "0.05em" }}>📖 LESSON {String(idx + 1).padStart(2, "0")}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, opacity: 0.85, marginBottom: 6, letterSpacing: "0.05em" }}>LESSON {String(idx + 1).padStart(2, "0")}</div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em" }}>{lesson.topic}</div>
         </div>
 
-        {/* 👩‍🏫 Teacher's notes (added by the teacher in Admin → Notes) */}
+        {/* Teacher's notes (added by the teacher in Admin → Notes) */}
         {teacherNote && (
           <div className="card fade-in" style={{ padding: "16px 18px", marginBottom: 16, background: "#fffdf5", border: "1.5px solid #fde68a", borderLeft: "4px solid #f59e0b" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 18 }}>👩‍🏫</span>
+              <span style={{ fontSize: 18 }}></span>
               <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 14, color: "#b45309" }}>Teacher's Notes</span>
             </div>
             <div className="output-box" style={{ background: "transparent", border: "none", padding: 0 }}>{teacherNote}</div>
@@ -3723,7 +3740,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
 
         {/* Notes depth: quick summary vs full professional notes */}
         <div style={{ display: "flex", gap: 6, marginBottom: 14, background: "var(--slate-100)", padding: 4, borderRadius: 99, width: "fit-content" }}>
-          {[{ k: false, label: "📄 Quick notes" }, { k: true, label: "📖 Detailed notes" }].map(opt => (
+          {[{ k: false, label: "Quick notes" }, { k: true, label: "Detailed notes" }].map(opt => (
             <button key={String(opt.k)} onClick={() => { setDetail(opt.k); if (opt.k && !detailText && !detailLoading) generateDetailed(c, lesson.topic, false); }}
               style={{ border: "none", cursor: "pointer", padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: 700, background: detail === opt.k ? "white" : "transparent", color: detail === opt.k ? c.color : "var(--slate-500)", boxShadow: detail === opt.k ? "0 1px 3px rgba(0,0,0,0.08)" : "none", transition: "all .15s" }}>
               {opt.label}
@@ -3736,7 +3753,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
           detailLoading ? (
             <div className="card fade-in" style={{ padding: "26px 22px", marginBottom: 18, textAlign: "center" }}>
               <div style={{ width: 30, height: 30, margin: "0 auto 14px", border: `3px solid ${c.color}30`, borderTopColor: c.color, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--slate-800)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>📖 Preparing detailed notes…</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--slate-800)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Preparing detailed notes…</div>
               <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginTop: 5 }}>Writing in-depth professional notes with examples. Saved for instant reopening.</div>
             </div>
           ) : detailText ? (
@@ -3755,7 +3772,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
         ) : lessonLoading ? (
           <div className="card fade-in" style={{ padding: "26px 22px", marginBottom: 18, textAlign: "center" }}>
             <div style={{ width: 30, height: 30, margin: "0 auto 14px", border: `3px solid ${c.color}30`, borderTopColor: c.color, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--slate-800)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✍️ Writing your lesson…</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--slate-800)", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Writing your lesson…</div>
             <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginTop: 5 }}>Just a few seconds. We'll save it so it opens instantly next time.</div>
           </div>
         ) : lessonText ? (
@@ -3766,7 +3783,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
                 <button onClick={() => generateLesson(c, lesson.topic, true)} style={{ background: "none", border: "none", color: "var(--slate-400)", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 4 }}>↻ Regenerate lesson</button>
               </div>
             ) : (
-              <div style={{ marginBottom: 14, fontSize: 12.5, color: "var(--slate-400)" }}>💡 Want more depth, examples & interview questions? Tap <b style={{ color: c.color }}>📖 Detailed notes</b> above.</div>
+              <div style={{ marginBottom: 14, fontSize: 12.5, color: "var(--slate-400)" }}>Want more depth, examples & interview questions? Tap <b style={{ color: c.color }}>Detailed notes</b> above.</div>
             )}
           </>
         ) : (
@@ -3774,7 +3791,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
             <div style={{ fontSize: 14, color: "var(--slate-600)", marginBottom: 12 }}>The AI is very busy right now and couldn't finish this lesson. Please try again — it usually works on the next try.</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button className="btn-primary" onClick={() => generateLesson(c, lesson.topic, true)} style={{ background: c.gradient, border: "none" }}>↻ Try Again</button>
-              <button className="btn-secondary" onClick={() => onAskAI(`Teach me the topic "${lesson.topic}" from the "${c.title}" course step by step for a beginner.`)} style={{ color: c.color, borderColor: `${c.color}40` }}>🤖 Ask AI Instead</button>
+              <button className="btn-secondary" onClick={() => onAskAI(`Teach me the topic "${lesson.topic}" from the "${c.title}" course step by step for a beginner.`)} style={{ color: c.color, borderColor: `${c.color}40` }}>Ask AI Instead</button>
             </div>
           </div>
         )}
@@ -3782,7 +3799,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
         {/* Lesson actions */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
           <button className="btn-secondary" onClick={() => onAskAI(`I just read the lesson on "${lesson.topic}" from the "${c.title}" course. I have a doubt about it: `)} style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}>
-            ❓ Ask a Doubt
+Ask a Doubt
           </button>
         </div>
 
@@ -3793,7 +3810,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
           </button>
         ) : (
           <div style={{ textAlign: "center", padding: "16px", background: c.bg, borderRadius: "var(--radius-lg)", border: `1px solid ${c.color}25`, color: c.color, fontWeight: 600, fontSize: 14 }}>
-            🎉 You've completed all topics of {c.title}!
+You've completed all topics of {c.title}!
           </div>
         )}
       </div>
@@ -3817,10 +3834,10 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
         <div style={{ background: c.gradient, borderRadius: "var(--radius-xl)", padding: "28px 26px 24px", marginBottom: 20, position: "relative", overflow: "hidden", color: "white" }} className="fade-in">
           <div style={{ position: "absolute", right: -20, top: -20, fontSize: 100, opacity: 0.12, pointerEvents: "none" }}>{c.emoji}</div>
           <div style={{ background: "rgba(255,255,255,0.18)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 99, display: "inline-block", padding: "3px 12px", fontSize: 11, fontWeight: 700, marginBottom: 12 }}>{c.tag}</div>
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 8 }}>{c.emoji} {c.title}</div>
-          <div style={{ fontSize: 14, opacity: 0.85, marginBottom: 20, lineHeight: 1.55 }}>🎯 {c.outcome}</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 8 }}>{c.title}</div>
+          <div style={{ fontSize: 14, opacity: 0.85, marginBottom: 20, lineHeight: 1.55 }}>{c.outcome}</div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {[`⏱️ ${c.duration}`, `📊 ${c.level}`, `👥 ${c.bestFor.split(",")[0]}`].map(t => (
+            {[`${c.duration}`, `${c.level}`, `${c.bestFor.split(",")[0]}`].map(t => (
               <span key={t} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 99, padding: "5px 13px", fontSize: 12, fontWeight: 600 }}>{t}</span>
             ))}
           </div>
@@ -3828,8 +3845,8 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
 
         {/* Topics — tap to read the lesson */}
         <div className="card fade-in" style={{ padding: "20px 22px", marginBottom: 16 }}>
-          <div className="section-label" style={{ marginBottom: 6 }}>📋 Course Topics</div>
-          <div style={{ fontSize: 12.5, color: "var(--slate-400)", marginBottom: 14 }}>Tap any topic to read a full beginner lesson 👇</div>
+          <div className="section-label" style={{ marginBottom: 6 }}>Course Topics</div>
+          <div style={{ fontSize: 12.5, color: "var(--slate-400)", marginBottom: 14 }}>Tap any topic to read a full beginner lesson</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {c.topics.map((t, i) => (
               <div
@@ -3853,12 +3870,12 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
           className="btn-primary"
           style={{ width: "100%", justifyContent: "center", background: c.gradient, border: "none", marginBottom: 20 }}
         >
-          📖 Start Learning — Topic 1
+Start Learning — Topic 1
         </button>
 
         {/* Best for */}
         <div className="card fade-in" style={{ padding: "18px 22px", marginBottom: 20, background: c.bg, border: `1.5px solid ${c.color}25` }}>
-          <div className="section-label" style={{ marginBottom: 8 }}>💡 Best For</div>
+          <div className="section-label" style={{ marginBottom: 8 }}>Best For</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: c.color, lineHeight: 1.55 }}>{c.bestFor}</div>
         </div>
 
@@ -3869,14 +3886,14 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
             className="btn-secondary"
             style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}
           >
-            🤖 Ask AI about this Course
+Ask AI about this Course
           </button>
           <button
             onClick={() => onAskAI(`Create a study plan for learning ${c.title}. I am a beginner. Give me a week-by-week schedule.`)}
             className="btn-secondary"
             style={{ flex: 1, justifyContent: "center", color: c.color, borderColor: `${c.color}40` }}
           >
-            📅 Get Study Plan
+Get Study Plan
           </button>
         </div>
 
@@ -3886,7 +3903,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
           className="btn-primary"
           style={{ width: "100%", justifyContent: "center", marginTop: 14, background: c.gradient, border: "none" }}
         >
-          📝 Enroll in {c.title} →
+Enroll in {c.title} →
         </button>
         <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--slate-400)", marginTop: 8 }}>
           Free lessons & AI help above · Register to join the full course with Allbee
@@ -3933,7 +3950,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
 
       {/* Register CTA */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, background: "white", border: "1.5px solid var(--blue-200)", borderRadius: "var(--radius-lg)", padding: "14px 16px", marginBottom: 20, flexWrap: "wrap" }}>
-        <div style={{ width: 42, height: 42, background: "var(--blue-50)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}>📝</div>
+        <div style={{ width: 42, height: 42, background: "var(--blue-50)", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 21, flexShrink: 0 }}></div>
         <div style={{ flex: 1, minWidth: 170 }}>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 14, fontWeight: 700, color: "var(--slate-900)" }}>Ready to enroll?</div>
           <div style={{ fontSize: 12.5, color: "var(--slate-500)", lineHeight: 1.5 }}>Register with Allbee Solutions to join any course.</div>
@@ -3943,7 +3960,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
 
       {/* Search */}
       <div style={{ position: "relative", marginBottom: 16 }}>
-        <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16, pointerEvents: "none" }}>🔍</span>
+        <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", fontSize: 16, pointerEvents: "none" }}></span>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -3967,7 +3984,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
 
       {/* Category filter pills */}
       <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 22, WebkitOverflowScrolling: "touch" }}>
-        {[{ id: "all", name: "All", emoji: "✨" }, ...CATEGORIES].map((cat) => {
+        {[{ id: "all", name: "All", emoji: "" }, ...CATEGORIES].map((cat) => {
           const active = catFilter === cat.id;
           return (
             <button
@@ -3981,20 +3998,20 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
                 color: active ? "white" : "var(--slate-600)", cursor: "pointer", whiteSpace: "nowrap",
               }}
             >
-              <span>{cat.emoji}</span> {cat.name}
+              {cat.name}
             </button>
           );
         })}
       </div>
 
-      {/* ⭐ Featured / important courses shown FIRST */}
+      {/* Featured / important courses shown FIRST */}
       {!q && catFilter === "all" && (
         <div style={{ marginBottom: 30 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#d97706,#f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>⭐</div>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#d97706,#f59e0b)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}></div>
             <div style={{ flex: 1 }}>
               <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 16, fontWeight: 800, color: "var(--slate-900)" }}>Popular Courses</div>
-              <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>Most in-demand — start here 🔥</div>
+              <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>Most in-demand — start here</div>
             </div>
             <span style={{ background: "#fffbeb", color: "#d97706", fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{FEATURED_COURSES.length}</span>
           </div>
@@ -4005,19 +4022,19 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
                   <div style={{ position: "absolute", right: -10, top: -10, fontSize: 56, opacity: 0.15, pointerEvents: "none" }}>{c.emoji}</div>
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 }}>
                     <div style={{ fontSize: 26 }}>{c.emoji}</div>
-                    <div style={{ background: "rgba(255,255,255,0.22)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 700, color: "white" }}>⭐ Popular</div>
+                    <div style={{ background: "rgba(255,255,255,0.22)", border: "1px solid rgba(255,255,255,0.3)", borderRadius: 99, padding: "2px 9px", fontSize: 10, fontWeight: 700, color: "white" }}>Popular</div>
                   </div>
                   <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "white", lineHeight: 1.3 }}>{c.title}</div>
                 </div>
                 <div style={{ padding: "12px 16px 14px" }}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                    <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>⏱️ {c.duration}</span>
-                    <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>📘 {c.topics.length} lessons</span>
+                    <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>{c.duration}</span>
+                    <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>{c.topics.length} lessons</span>
                   </div>
                   <div style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 12, lineHeight: 1.5 }}><strong style={{ color: "var(--slate-700)" }}>Topics:</strong> {c.topics.slice(0, 3).join(" · ")}{c.topics.length > 3 ? ` +${c.topics.length - 3} more` : ""}</div>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: c.color }}>View Details →</span>
-                    <span style={{ fontSize: 10.5, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>🤖 AI</span>
+                    <span style={{ fontSize: 10.5, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>AI</span>
                   </div>
                 </div>
               </button>
@@ -4031,7 +4048,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
       {/* Category sections */}
       {visibleCats.length === 0 ? (
         <div className="card" style={{ padding: "32px 20px", textAlign: "center", color: "var(--slate-500)" }}>
-          <div style={{ fontSize: 30, marginBottom: 8 }}>🔍</div>
+          <div style={{ fontSize: 30, marginBottom: 8 }}></div>
           <div style={{ fontWeight: 600, color: "var(--slate-700)", marginBottom: 4 }}>No courses found for “{query}”</div>
           <div style={{ fontSize: 13 }}>Try another keyword, or tap <strong>All</strong> above.</div>
         </div>
@@ -4072,15 +4089,15 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
                     {/* Card body */}
                     <div style={{ padding: "12px 16px 14px" }}>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-                        <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>⏱️ {c.duration}</span>
-                        <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>📘 {c.topics.length} lessons</span>
+                        <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>{c.duration}</span>
+                        <span style={{ background: c.bg, color: c.color, fontSize: 10.5, fontWeight: 600, padding: "3px 9px", borderRadius: 99 }}>{c.topics.length} lessons</span>
                       </div>
                       <div style={{ fontSize: 12, color: "var(--slate-500)", marginBottom: 12, lineHeight: 1.5 }}>
                         <strong style={{ color: "var(--slate-700)" }}>Topics:</strong> {c.topics.slice(0, 3).join(" · ")}{c.topics.length > 3 ? ` +${c.topics.length - 3} more` : ""}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: c.color }}>View Details →</span>
-                        <span style={{ fontSize: 10.5, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>🤖 AI</span>
+                        <span style={{ fontSize: 10.5, background: c.bg, color: c.color, padding: "3px 9px", borderRadius: 99, fontWeight: 600 }}>AI</span>
                       </div>
                     </div>
                   </button>
@@ -4096,7 +4113,7 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
         <div style={{ width: 40, height: 40, margin: "0 auto 8px" }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
         <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--blue-800)", marginBottom: 4 }}>AI-Powered Learning Support</div>
         <div style={{ fontSize: 13, color: "var(--blue-600)", marginBottom: 14 }}>Every course includes free AI lessons, doubt solving, study plans &amp; viva prep through Allbee Learn AI!</div>
-        <button className="btn-primary" onClick={openRegister} style={{ justifyContent: "center" }}>📝 Register for a Course</button>
+        <button className="btn-primary" onClick={openRegister} style={{ justifyContent: "center" }}>Register for a Course</button>
       </div>
     </div>
   );
@@ -4106,11 +4123,11 @@ const CoursesScreen = ({ onBack, onAskAI, initialCourseId = null }) => {
 const BottomNav = ({ view, onNav }) => {
   const navItems = [
     { id: "dashboard", label: "Home",    icon: "home"    },
-    { id: "courses",   label: "Courses", emoji: "🎓"     },
-    { id: "live",      label: "Live",    emoji: "🔴" },
-    { id: "labs",      label: "Practice", emoji: "🧪" },
+    { id: "courses",   label: "Courses",  icon: "book"      },
+    { id: "live",      label: "Live",     icon: "play"      },
+    { id: "labs",      label: "Practice", icon: "target"    },
     { id: "jobs",      label: "Jobs",     icon: "briefcase" },
-    { id: "rewards",   label: "Rewards",  emoji: "🏆" },
+    { id: "rewards",   label: "Rewards",  icon: "trophy"    },
   ];
   return (
     <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: "white", borderTop: "1px solid var(--slate-200)", padding: "10px 0 6px", display: "flex", justifyContent: "space-around", zIndex: 100, backdropFilter: "blur(10px)", boxShadow: "0 -4px 12px rgba(0,0,0,0.06)" }}>
@@ -4318,14 +4335,14 @@ function DashboardBee({ onOpen }) {
         <div style={{ width: 48, height: 48, background: "rgba(255,255,255,0.16)", borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{lvl.current.emoji}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>{lvl.current.name}</div>
-          <div style={{ fontSize: 12.5, opacity: 0.85 }}>{points} points{streak.count > 0 ? "  ·  🔥 " + streak.count + "-day streak" : ""}</div>
+          <div style={{ fontSize: 12.5, opacity: 0.85 }}>{points} points{streak.count > 0 ? " · " + streak.count + "-day streak" : ""}</div>
         </div>
         <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.9, whiteSpace: "nowrap" }}>Rewards →</div>
       </div>
       <div style={{ position: "relative" }}>
         <Bar pct={lvl.pct} color="rgba(255,255,255,0.95)" track="rgba(255,255,255,0.22)" height={7} />
         <div style={{ fontSize: 11, opacity: 0.85, marginTop: 6 }}>
-          {lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached 👑 — you're a legend!"}
+          {lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached — you're a legend!"}
         </div>
       </div>
     </div>
@@ -4336,13 +4353,13 @@ function DashboardBee({ onOpen }) {
 function DashboardStats() {
   const p = getProgress();
   const cards = [
-    { emoji: "💬", label: "AI Questions", value: getHistory().length, color: "var(--blue-600)" },
-    { emoji: "📚", label: "Lessons Read", value: p.lessonsRead, color: "#0d9488" },
-    { emoji: "🔥", label: "Day Streak", value: getStreak().count, color: "#d97706" },
-    { emoji: "🎤", label: "Best Interview", value: bestInterviewScore() + "%", color: "#7c3aed" },
-    { emoji: "🧪", label: "Labs Solved", value: p.labsDone, color: "#0891b2" },
-    { emoji: "💼", label: "Jobs Applied", value: p.jobsApplied, color: "#059669" },
-    { emoji: "🎓", label: "Certificates", value: p.certificates, color: "#a855f7" },
+    { emoji: "", label: "AI Questions", value: getHistory().length, color: "var(--blue-600)" },
+    { emoji: "", label: "Lessons Read", value: p.lessonsRead, color: "#0d9488" },
+    { emoji: "", label: "Day Streak", value: getStreak().count, color: "#d97706" },
+    { emoji: "", label: "Best Interview", value: bestInterviewScore() + "%", color: "#7c3aed" },
+    { emoji: "", label: "Labs Solved", value: p.labsDone, color: "#0891b2" },
+    { emoji: "", label: "Jobs Applied", value: p.jobsApplied, color: "#059669" },
+    { emoji: "", label: "Certificates", value: p.certificates, color: "#a855f7" },
   ];
   return (
     <>
@@ -4367,7 +4384,7 @@ function SkillProgress() {
   return (
     <div className="card" style={{ padding: "18px 20px", marginBottom: 28 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <div className="section-label" style={{ marginBottom: 0 }}>📈 Learning Progress</div>
+        <div className="section-label" style={{ marginBottom: 0 }}>Learning Progress</div>
         {!any && <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>Ask the AI tutor to grow these</div>}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
@@ -4386,12 +4403,12 @@ function SkillProgress() {
 
 // ── Dashboard: career & practice module grid ─────────────────────────────────
 const CAREER_MODULES = [
-  { id: "live",           emoji: "🔴", label: "Live Class",           desc: "Join your teacher's live online class + Q&A", color: "#dc2626", bg: "#fef2f2" },
-  { id: "resume_builder", emoji: "📄", label: "Resume Builder",       desc: "Templates, ATS review, cover letter & export", color: "#0d9488", bg: "#f0fdfa" },
-  { id: "interview",      emoji: "🎤", label: "AI Mock Interview",    desc: "Role questions, voice, scoring & report",      color: "#7c3aed", bg: "#f5f3ff" },
-  { id: "labs",           emoji: "🧪", label: "AI Practice Labs",     desc: "9 topics · 100+ questions each with AI feedback", color: "#0891b2", bg: "#ecfeff" },
-  { id: "jobs",           emoji: "💼", label: "Job Portal",           desc: "Search, apply, save & track jobs",             color: "#d97706", bg: "#fffbeb" },
-  { id: "rewards",        emoji: "🏆", label: "Rewards & Bee Levels", desc: "Points, streak, leaderboard & certificates",   color: "#a855f7", bg: "#faf5ff" },
+  { id: "live",           emoji: "", label: "Live Class",           desc: "Join your teacher's live online class + Q&A", color: "#dc2626", bg: "#fef2f2" },
+  { id: "resume_builder", emoji: "", label: "Resume Builder",       desc: "Templates, ATS review, cover letter & export", color: "#0d9488", bg: "#f0fdfa" },
+  { id: "interview",      emoji: "", label: "AI Mock Interview",    desc: "Role questions, voice, scoring & report",      color: "#7c3aed", bg: "#f5f3ff" },
+  { id: "labs",           emoji: "", label: "AI Practice Labs",     desc: "9 topics · 100+ questions each with AI feedback", color: "#0891b2", bg: "#ecfeff" },
+  { id: "jobs",           emoji: "", label: "Job Portal",           desc: "Search, apply, save & track jobs",             color: "#d97706", bg: "#fffbeb" },
+  { id: "rewards",        emoji: "", label: "Rewards & Bee Levels", desc: "Points, streak, leaderboard & certificates",   color: "#a855f7", bg: "#faf5ff" },
 ];
 function CareerGrid({ onOpen }) {
   return (
@@ -4415,13 +4432,13 @@ function CareerGrid({ onOpen }) {
 //  REWARDS · Bee levels, points, leaderboard, badges, certificates
 // ═══════════════════════════════════════════════════════════════════════════
 const POINT_RULES = [
-  { emoji: "💬", label: "Ask the AI tutor a question", pts: "+10" },
-  { emoji: "📖", label: "Read a course lesson",        pts: "+15" },
-  { emoji: "🧪", label: "Solve a practice challenge",  pts: "+20" },
-  { emoji: "📄", label: "Build / export a resume",     pts: "+25" },
-  { emoji: "🎤", label: "Finish a mock interview",     pts: "+30" },
-  { emoji: "💼", label: "Apply to a job",              pts: "+15" },
-  { emoji: "🎓", label: "Earn a certificate",          pts: "+50" },
+  { emoji: "", label: "Ask the AI tutor a question", pts: "+10" },
+  { emoji: "", label: "Read a course lesson",        pts: "+15" },
+  { emoji: "", label: "Solve a practice challenge",  pts: "+20" },
+  { emoji: "", label: "Build / export a resume",     pts: "+25" },
+  { emoji: "", label: "Finish a mock interview",     pts: "+30" },
+  { emoji: "", label: "Apply to a job",              pts: "+15" },
+  { emoji: "", label: "Earn a certificate",          pts: "+50" },
 ];
 
 function CertificateBlock({ user }) {
@@ -4470,20 +4487,20 @@ function CertificateBlock({ user }) {
     await requestCert(phone, (user && user.name) || "", cName);
     await load();
     setBusy(false);
-    setMsg("✅ Request sent! Your teacher will review and approve it.");
+    setMsg("Request sent! Your teacher will review and approve it.");
   };
 
   return (
     <div className="card" style={{ padding: "18px 20px", marginBottom: 20 }}>
-      <div className="section-label" style={{ marginBottom: 6 }}>🎓 Certificates</div>
+      <div className="section-label" style={{ marginBottom: 6 }}>Certificates</div>
       <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 14, lineHeight: 1.6 }}>Request a certificate for a course you've completed. Your teacher approves it, then you can download it.</div>
 
-      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 12.5, marginBottom: 12, lineHeight: 1.6 }}>⚠️ Certificate approval needs your class Google Sheet connected. Please ask your teacher.</div>}
+      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 12.5, marginBottom: 12, lineHeight: 1.6 }}>Certificate approval needs your class Google Sheet connected. Please ask your teacher.</div>}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <select value={course} onChange={e => setCourse(e.target.value)} style={{ flex: 1, minWidth: 200, padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--slate-200)", fontSize: 14, background: "white" }}>
           <option value="">Choose a course…</option>
-          {COURSES.map(c => <option key={c.id} value={c.title}>{c.emoji} {c.title}</option>)}
+          {COURSES.map(c => <option key={c.id} value={c.title}>{c.title}</option>)}
         </select>
         <button className="btn-primary" onClick={request} disabled={busy}>{busy ? <><span className="spinner" /> Sending…</> : <><Icon name="award" size={16} color="white" /> Request certificate</>}</button>
       </div>
@@ -4496,7 +4513,7 @@ function CertificateBlock({ user }) {
           <div className="section-label" style={{ marginBottom: 0 }}>My requests</div>
           {myCerts.map((c, i) => {
             const st = c.status || "pending";
-            const badge = st === "approved" ? { t: "✅ Approved", bg: "#dcfce7", fg: "#166534" } : st === "rejected" ? { t: "✕ Not approved", bg: "#fee2e2", fg: "#b91c1c" } : { t: "⏳ Pending", bg: "#fef9c3", fg: "#854d0e" };
+            const badge = st === "approved" ? { t: "Approved", bg: "#dcfce7", fg: "#166534" } : st === "rejected" ? { t: "✕ Not approved", bg: "#fee2e2", fg: "#b91c1c" } : { t: "Pending", bg: "#fef9c3", fg: "#854d0e" };
             return (
               <div key={i} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ flex: 1, minWidth: 160 }}>
@@ -4540,20 +4557,20 @@ function RewardsScreen({ user, onBack }) {
   const showMeExtra = myRank > 8 ? board.find(r => r.me) : null;
 
   const badges = [
-    { got: getHistory().length >= 1, emoji: "🎯", label: "First Step", desc: "Asked your first question" },
-    { got: streak.count >= 3, emoji: "🔥", label: "On Fire", desc: "3-day streak" },
-    { got: streak.count >= 7, emoji: "⚡", label: "Unstoppable", desc: "7-day streak" },
-    { got: p.interviews >= 1, emoji: "🎤", label: "Interviewed", desc: "Completed a mock interview" },
-    { got: best >= 80, emoji: "🏅", label: "Interview Ace", desc: "Scored 80+ in an interview" },
-    { got: p.labsDone >= 3, emoji: "🧪", label: "Lab Rat", desc: "Solved 3 practice challenges" },
-    { got: p.resumes >= 1, emoji: "📄", label: "Job Ready", desc: "Built a resume" },
-    { got: p.jobsApplied >= 1, emoji: "💼", label: "Applicant", desc: "Applied to a job" },
+    { got: getHistory().length >= 1, emoji: "", label: "First Step", desc: "Asked your first question" },
+    { got: streak.count >= 3, emoji: "", label: "On Fire", desc: "3-day streak" },
+    { got: streak.count >= 7, emoji: "", label: "Unstoppable", desc: "7-day streak" },
+    { got: p.interviews >= 1, emoji: "", label: "Interviewed", desc: "Completed a mock interview" },
+    { got: best >= 80, emoji: "", label: "Interview Ace", desc: "Scored 80+ in an interview" },
+    { got: p.labsDone >= 3, emoji: "", label: "Lab Rat", desc: "Solved 3 practice challenges" },
+    { got: p.resumes >= 1, emoji: "", label: "Job Ready", desc: "Built a resume" },
+    { got: p.jobsApplied >= 1, emoji: "", label: "Applicant", desc: "Applied to a job" },
   ];
   const earned = badges.filter(b => b.got).length;
 
   return (
     <div style={PAGE}>
-      <ScreenHeader emoji="🏆" title="Rewards & Bee Levels" subtitle="Points · streak · leaderboard" onBack={onBack} tint="#faf5ff" />
+      <ScreenHeader emoji="" title="Rewards & Bee Levels" subtitle="Points · streak · leaderboard" onBack={onBack} tint="#faf5ff" />
 
       {/* Level hero */}
       <div style={{ background: "linear-gradient(135deg, #115e59 0%, #0d9488 55%, #14b8a6 100%)", borderRadius: "var(--radius-xl)", padding: "22px 24px", color: "white", marginBottom: 18, position: "relative", overflow: "hidden" }}>
@@ -4562,37 +4579,37 @@ function RewardsScreen({ user, onBack }) {
           <div style={{ width: 60, height: 60, background: "rgba(255,255,255,0.16)", borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34 }}>{lvl.current.emoji}</div>
           <div>
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 22, fontWeight: 800 }}>{lvl.current.name}</div>
-            <div style={{ fontSize: 13.5, opacity: 0.9 }}>{points} points · Rank #{myRank} · 🔥 {streak.count}-day streak</div>
+            <div style={{ fontSize: 13.5, opacity: 0.9 }}>{points} points · Rank #{myRank} · {streak.count}-day streak</div>
           </div>
         </div>
         <Bar pct={lvl.pct} color="rgba(255,255,255,0.95)" track="rgba(255,255,255,0.22)" height={8} />
-        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 8 }}>{lvl.next ? `${lvl.next.min - points} points to ${lvl.next.name} ${lvl.next.emoji}` : "👑 Max level — Queen Bee!"}</div>
+        <div style={{ fontSize: 12, opacity: 0.9, marginTop: 8 }}>{lvl.next ? `${lvl.next.min - points} points to ${lvl.next.name} ${lvl.next.emoji}` : "Max level — Queen Bee!"}</div>
         <div style={{ display: "flex", gap: 8, marginTop: 14, flexWrap: "wrap" }}>
           {BEE_LEVELS.map((b, i) => (
-            <div key={b.name} style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99, background: i <= lvl.idx ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)", opacity: i <= lvl.idx ? 1 : 0.65 }}>{b.emoji} {b.name.split(" ")[0]}</div>
+            <div key={b.name} style={{ fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99, background: i <= lvl.idx ? "rgba(255,255,255,0.22)" : "rgba(255,255,255,0.08)", opacity: i <= lvl.idx ? 1 : 0.65 }}>{b.name.split(" ")[0]}</div>
           ))}
         </div>
       </div>
 
       {/* Badges */}
-      <div className="section-label" style={{ marginBottom: 12 }}>🏅 Badges · {earned}/{badges.length}</div>
+      <div className="section-label" style={{ marginBottom: 12 }}>Badges · {earned}/{badges.length}</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 26 }}>
         {badges.map(b => (
           <div key={b.label} className="card" style={{ padding: "14px 14px", textAlign: "center", opacity: b.got ? 1 : 0.5, filter: b.got ? "none" : "grayscale(0.7)", border: b.got ? "1.5px solid var(--blue-200)" : "1px solid var(--slate-200)" }}>
             <div style={{ fontSize: 30, marginBottom: 6 }}>{b.emoji}</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-800)" }}>{b.label}</div>
             <div style={{ fontSize: 11, color: "var(--slate-500)", marginTop: 3, lineHeight: 1.4 }}>{b.desc}</div>
-            {!b.got && <div style={{ fontSize: 10, color: "var(--slate-400)", marginTop: 5, fontWeight: 600 }}>🔒 Locked</div>}
+            {!b.got && <div style={{ fontSize: 10, color: "var(--slate-400)", marginTop: 5, fontWeight: 600 }}>Locked</div>}
           </div>
         ))}
       </div>
 
       {/* Leaderboard */}
-      <div className="section-label" style={{ marginBottom: 12 }}>👑 Leaderboard <span style={{ textTransform: "none", fontWeight: 500, color: "var(--slate-400)" }}>(sample class)</span></div>
+      <div className="section-label" style={{ marginBottom: 12 }}>Leaderboard <span style={{ textTransform: "none", fontWeight: 500, color: "var(--slate-400)" }}>(sample class)</span></div>
       <div className="card" style={{ padding: "8px 8px", marginBottom: 26 }}>
         {top.map(r => (
           <div key={r.rank} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: "var(--radius)", background: r.me ? "var(--blue-50)" : "transparent", border: r.me ? "1.5px solid var(--blue-200)" : "1.5px solid transparent", marginBottom: 2 }}>
-            <div style={{ width: 26, textAlign: "center", fontWeight: 800, fontSize: 14, color: r.rank <= 3 ? "#d97706" : "var(--slate-400)" }}>{r.rank <= 3 ? ["🥇", "🥈", "🥉"][r.rank - 1] : r.rank}</div>
+            <div style={{ width: 26, textAlign: "center", fontWeight: 800, fontSize: 14, color: r.rank <= 3 ? "#d97706" : "var(--slate-400)" }}>{r.rank <= 3 ? ["", "", ""][r.rank - 1] : r.rank}</div>
             <div style={{ width: 32, height: 32, borderRadius: "50%", background: r.me ? "var(--blue-600)" : "var(--slate-200)", color: r.me ? "white" : "var(--slate-600)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{(r.n[0] || "?").toUpperCase()}</div>
             <div style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: r.me ? 800 : 600, color: "var(--slate-800)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.n}{r.me ? "  (You)" : ""}</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--blue-700)" }}>{r.p} pts</div>
@@ -4615,7 +4632,7 @@ function RewardsScreen({ user, onBack }) {
       <CertificateBlock user={user} />
 
       {/* How to earn */}
-      <div className="section-label" style={{ marginBottom: 12 }}>💡 How to earn points</div>
+      <div className="section-label" style={{ marginBottom: 12 }}>How to earn points</div>
       <div className="card" style={{ padding: "8px 6px", marginBottom: 10 }}>
         {POINT_RULES.map(r => (
           <div key={r.label} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px" }}>
@@ -4693,18 +4710,19 @@ function ResumeBuilderScreen({ user, onBack }) {
     setBusy("enhance"); setNote("");
     try {
       const out = await callAI(PROMPTS.resumeEnhance, resumeText());
-      // parse sections by their emoji headers
-      const grab = (label, next) => {
-        const re = new RegExp(label + "[:：]?\\s*([\\s\\S]*?)(?=" + (next || "$") + ")", "i");
+      // parse sections by their plain text headers
+      const grab = (start, next) => {
+        const stop = next ? "^[ \\t]*(?:" + next + ")[^\\n]*[:：]" : "(?![\\s\\S])";
+        const re = new RegExp("^[ \\t]*(?:" + start + ")[^\\n]*[:：][ \\t]*([\\s\\S]*?)(?=" + stop + ")", "im");
         const m = out.match(re); return m ? m[1].trim() : "";
       };
-      const summary = grab("🎯[^:]*", "🛠️|Skills");
-      const sk = grab("🛠️[^:]*", "💼|Experience");
-      const exp = grab("💼[^:]*", "$");
+      const summary = grab("Professional Summary|Summary", "Skills");
+      const sk = grab("Skills", "Experience|Projects");
+      const exp = grab("Experience|Projects", "");
       setD(p => ({ ...p, summary: summary || p.summary, skills: (sk || p.skills).replace(/\n/g, ", "), experience: exp || p.experience }));
       bumpOnce();
-      setNote("✨ Applied AI-enhanced summary, skills & experience.");
-    } catch (e) { setNote("⚠️ " + (e.message || "Couldn't enhance right now.")); }
+      setNote("Applied AI-enhanced summary, skills & experience.");
+    } catch (e) { setNote((e.message || "Couldn't enhance right now.")); }
     setBusy("");
   };
   const runAts = async () => {
@@ -4712,7 +4730,7 @@ function ResumeBuilderScreen({ user, onBack }) {
     try {
       const out = await callAI(PROMPTS.resumeReview, resumeText());
       setAts({ score: parseLeadingScore(out, "ATS SCORE") ?? 60, text: out.replace(/^ATS SCORE:.*\n?/i, "") });
-    } catch (e) { setAts({ score: 0, text: "⚠️ " + (e.message || "Review failed.") }); }
+    } catch (e) { setAts({ score: 0, text: (e.message || "Review failed.") }); }
     setBusy("");
   };
   const runCover = async () => {
@@ -4720,7 +4738,7 @@ function ResumeBuilderScreen({ user, onBack }) {
     try {
       const out = await callAI(PROMPTS.coverLetter, resumeText() + "\nTarget role/company: " + (target || "a suitable entry-level role"));
       setCover(out); bumpOnce();
-    } catch (e) { setCover("⚠️ " + (e.message || "Couldn't generate.")); }
+    } catch (e) { setCover((e.message || "Couldn't generate.")); }
     setBusy("");
   };
   const exportPDF = () => { printHTML(resumeHTML(d)); bumpOnce(); };
@@ -4737,7 +4755,7 @@ function ResumeBuilderScreen({ user, onBack }) {
 
   return (
     <div style={PAGE}>
-      <ScreenHeader emoji="📄" title="Resume Builder" subtitle="ATS-friendly · AI-reviewed · export PDF/Word" onBack={onBack} tint="#f0fdfa" />
+      <ScreenHeader emoji="" title="Resume Builder" subtitle="ATS-friendly · AI-reviewed · export PDF/Word" onBack={onBack} tint="#f0fdfa" />
 
       {/* Template picker */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
@@ -4757,14 +4775,14 @@ function ResumeBuilderScreen({ user, onBack }) {
             <F label="Email" k="email" ph="you@email.com" />
           </div>
           <F label="Location" k="location" ph="Trichy, Tamil Nadu" />
-          <F label="Professional Summary" k="summary" area rows={3} ph="2-3 lines about you… or tap ✨ AI Enhance" />
+          <F label="Professional Summary" k="summary" area rows={3} ph="2-3 lines about you… or tap AI Enhance" />
           <F label="Skills (comma separated)" k="skills" area rows={2} ph="Python, SQL, MS Excel, Communication" />
           <F label="Experience / Projects (one per line)" k="experience" area rows={4} ph={"Built a billing app in Python\nInternship at ABC — data entry & reports"} />
           <F label="Education (one per line)" k="education" area rows={3} ph={"B.Com, Bharathidasan University — 2024\nHSC — 78%"} />
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
             <button className="btn-primary" onClick={runEnhance} disabled={!!busy}>{busy === "enhance" ? <><span className="spinner" /> Enhancing…</> : <><Icon name="sparkles" size={15} color="white" /> AI Enhance</>}</button>
-            <button className="btn-secondary" onClick={runAts} disabled={!!busy}>{busy === "ats" ? "Reviewing…" : "🎯 ATS Review"}</button>
+            <button className="btn-secondary" onClick={runAts} disabled={!!busy}>{busy === "ats" ? "Reviewing…" : "ATS Review"}</button>
           </div>
           {note && <div style={{ marginTop: 10, fontSize: 12.5, color: "var(--slate-600)", background: "var(--slate-50)", padding: "8px 12px", borderRadius: "var(--radius-sm)" }}>{note}</div>}
         </div>
@@ -4783,7 +4801,7 @@ function ResumeBuilderScreen({ user, onBack }) {
               {d.skills && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 6 }}>Skills</div><div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>{d.skills.split(/[,\n]/).map(s => s.trim()).filter(Boolean).map((s, i) => <span key={i} style={{ background: "var(--blue-50)", color: "var(--blue-800)", border: "1px solid var(--blue-200)", borderRadius: 99, padding: "3px 10px", fontSize: 12 }}>{s}</span>)}</div></>}
               {d.experience && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 5 }}>Experience & Projects</div><ul style={{ margin: "0 0 12px", paddingLeft: 18 }}>{d.experience.split("\n").map(l => l.trim()).filter(Boolean).map((l, i) => <li key={i} style={{ fontSize: 13, color: "var(--slate-700)", marginBottom: 3 }}>{l.replace(/^[-•]\s*/, "")}</li>)}</ul></>}
               {d.education && <><div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--blue-700)", marginBottom: 5 }}>Education</div><ul style={{ margin: 0, paddingLeft: 18 }}>{d.education.split("\n").map(l => l.trim()).filter(Boolean).map((l, i) => <li key={i} style={{ fontSize: 13, color: "var(--slate-700)", marginBottom: 3 }}>{l.replace(/^[-•]\s*/, "")}</li>)}</ul></>}
-              {!d.name && !d.summary && <div style={{ color: "var(--slate-400)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Fill the form to see your resume here ✨</div>}
+              {!d.name && !d.summary && <div style={{ color: "var(--slate-400)", fontSize: 13, textAlign: "center", padding: "20px 0" }}>Fill the form to see your resume here</div>}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
@@ -4799,7 +4817,7 @@ function ResumeBuilderScreen({ user, onBack }) {
           <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
             <ScoreRing value={ats.score} size={96} color={ats.score >= 75 ? "var(--green-500)" : ats.score >= 50 ? "#d97706" : "var(--red-500)"} />
             <div style={{ flex: 1, minWidth: 220 }}>
-              <div className="section-label" style={{ marginBottom: 8 }}>🎯 ATS Review</div>
+              <div className="section-label" style={{ marginBottom: 8 }}>ATS Review</div>
               <div className="output-box" style={{ minHeight: 0 }}><AiText text={ats.text} /></div>
             </div>
           </div>
@@ -4808,7 +4826,7 @@ function ResumeBuilderScreen({ user, onBack }) {
 
       {/* Cover letter */}
       <div className="card" style={{ padding: "18px 20px", marginTop: 16 }}>
-        <div className="section-label" style={{ marginBottom: 10 }}>✉️ Cover Letter Generator</div>
+        <div className="section-label" style={{ marginBottom: 10 }}>Cover Letter Generator</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
           <input value={target} onChange={e => setTarget(e.target.value)} placeholder="Target role / company (optional)" style={{ fontSize: 14, flex: 1, minWidth: 200 }} />
           <button className="btn-primary" onClick={runCover} disabled={!!busy}>{busy === "cover" ? <><span className="spinner" /> Writing…</> : "Generate"}</button>
@@ -4832,24 +4850,24 @@ function ResumeBuilderScreen({ user, onBack }) {
 // ═══════════════════════════════════════════════════════════════════════════
 const INTERVIEW_Q_COUNT = 8;
 const INTERVIEW_ROLES = [
-  { id: "Python Developer",       emoji: "🐍", bg: "#f0fdfa" },
-  { id: "Web Developer",          emoji: "🌐", bg: "#eef2ff" },
-  { id: "Java Developer",         emoji: "☕", bg: "#fff7ed" },
-  { id: "React Developer",        emoji: "⚛️", bg: "#ecfeff" },
-  { id: "Data Analyst",           emoji: "📊", bg: "#eff6ff" },
-  { id: "Power BI Developer",     emoji: "📈", bg: "#e0f2fe" },
-  { id: "Accountant",             emoji: "🧾", bg: "#f0fdf4" },
-  { id: "Tally / GST Accountant", emoji: "📒", bg: "#fefce8" },
-  { id: "Office Executive",       emoji: "🗂️", bg: "#fff7ed" },
-  { id: "Data Entry Operator",    emoji: "⌨️", bg: "#f1f5f9" },
-  { id: "Digital Marketing",      emoji: "📣", bg: "#faf5ff" },
-  { id: "SEO Specialist",         emoji: "🔍", bg: "#f5f3ff" },
-  { id: "Graphic Designer",       emoji: "🎨", bg: "#fdf2f8" },
-  { id: "Video Editor",           emoji: "🎬", bg: "#fef2f2" },
-  { id: "Content Writer",         emoji: "✍️", bg: "#f0fdfa" },
-  { id: "Sales Executive",        emoji: "🤝", bg: "#fffbeb" },
-  { id: "HR Executive",           emoji: "👔", bg: "#eff6ff" },
-  { id: "Customer Support",       emoji: "🎧", bg: "#fef2f2" },
+  { id: "Python Developer",       emoji: "", bg: "#f0fdfa" },
+  { id: "Web Developer",          emoji: "", bg: "#eef2ff" },
+  { id: "Java Developer",         emoji: "", bg: "#fff7ed" },
+  { id: "React Developer",        emoji: "", bg: "#ecfeff" },
+  { id: "Data Analyst",           emoji: "", bg: "#eff6ff" },
+  { id: "Power BI Developer",     emoji: "", bg: "#e0f2fe" },
+  { id: "Accountant",             emoji: "", bg: "#f0fdf4" },
+  { id: "Tally / GST Accountant", emoji: "", bg: "#fefce8" },
+  { id: "Office Executive",       emoji: "", bg: "#fff7ed" },
+  { id: "Data Entry Operator",    emoji: "", bg: "#f1f5f9" },
+  { id: "Digital Marketing",      emoji: "", bg: "#faf5ff" },
+  { id: "SEO Specialist",         emoji: "", bg: "#f5f3ff" },
+  { id: "Graphic Designer",       emoji: "", bg: "#fdf2f8" },
+  { id: "Video Editor",           emoji: "", bg: "#fef2f2" },
+  { id: "Content Writer",         emoji: "", bg: "#f0fdfa" },
+  { id: "Sales Executive",        emoji: "", bg: "#fffbeb" },
+  { id: "HR Executive",           emoji: "", bg: "#eff6ff" },
+  { id: "Customer Support",       emoji: "", bg: "#fef2f2" },
 ];
 
 // Fallback questions if the AI is momentarily unavailable — shuffled per attempt
@@ -4910,7 +4928,7 @@ function InterviewScreen({ onBack }) {
       setStage("result");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
-      setResult({ score: 0, text: "⚠️ " + (e.message || "Scoring failed. Please try again.") });
+      setResult({ score: 0, text: (e.message || "Scoring failed. Please try again.") });
       setStage("result");
     }
     setLoading(false);
@@ -4931,9 +4949,9 @@ function InterviewScreen({ onBack }) {
   if (stage === "pick") {
     return (
       <div style={PAGE}>
-        <ScreenHeader emoji="🎤" title="AI Mock Interview" subtitle="Pick a role — AI will interview & score you" onBack={onBack} tint="#f5f3ff" />
+        <ScreenHeader emoji="" title="AI Mock Interview" subtitle="Pick a role — AI will interview & score you" onBack={onBack} tint="#f5f3ff" />
         <div className="card" style={{ padding: "16px 18px", marginBottom: 18, display: "flex", gap: 12, alignItems: "center", background: "linear-gradient(135deg,#faf5ff,#ffffff)" }}>
-          <div style={{ fontSize: 26 }}>🧑‍💼</div>
+          <div style={{ fontSize: 26 }}></div>
           <div style={{ fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>Choose a role. You'll get <b>{INTERVIEW_Q_COUNT} questions</b>, answer by typing{SPEECH_OK ? " or voice" : ""}, then get a <b>score /100</b> with feedback and a downloadable report.</div>
         </div>
         <div className="section-label" style={{ marginBottom: 12 }}>Choose a role</div>
@@ -4956,14 +4974,14 @@ function InterviewScreen({ onBack }) {
     const good = result.score >= 75, ok = result.score >= 50;
     return (
       <div style={PAGE}>
-        <ScreenHeader emoji="🎤" title="Interview Result" subtitle={role} onBack={onBack} tint="#f5f3ff" />
+        <ScreenHeader emoji="" title="Interview Result" subtitle={role} onBack={onBack} tint="#f5f3ff" />
         <div className="card fade-in" style={{ padding: "22px 22px", marginBottom: 16, textAlign: "center" }}>
           <ScoreRing value={result.score} size={128} color={good ? "var(--green-500)" : ok ? "#d97706" : "var(--red-500)"} />
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, marginTop: 12, color: "var(--slate-900)" }}>{good ? "Great job! 🎉" : ok ? "Good effort! 💪" : "Keep practising! 🌱"}</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, marginTop: 12, color: "var(--slate-900)" }}>{good ? "Great job!" : ok ? "Good effort!" : "Keep practising!"}</div>
           <div style={{ fontSize: 13, color: "var(--slate-500)", marginTop: 2 }}>{role} · saved to your progress (+30 pts)</div>
         </div>
         <div className="card" style={{ padding: "18px 20px", marginBottom: 16 }}>
-          <div className="section-label" style={{ marginBottom: 10 }}>📝 Feedback</div>
+          <div className="section-label" style={{ marginBottom: 10 }}>Feedback</div>
           <div className="output-box"><AiText text={result.text} /></div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -4978,7 +4996,7 @@ function InterviewScreen({ onBack }) {
   // ── ANSWER ──
   return (
     <div style={PAGE}>
-      <ScreenHeader emoji="🎤" title="Mock Interview" subtitle={role} onBack={() => setStage("pick")} tint="#f5f3ff" />
+      <ScreenHeader emoji="" title="Mock Interview" subtitle={role} onBack={() => setStage("pick")} tint="#f5f3ff" />
       {loading && questions.length === 0 ? (
         <div className="card" style={{ padding: 30, textAlign: "center" }}>
           <div style={{ width: 46, height: 46, margin: "0 auto 12px", animation: "pulse 1.5s infinite" }}><img src={LOGO_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
@@ -4986,7 +5004,7 @@ function InterviewScreen({ onBack }) {
         </div>
       ) : (
         <>
-          <div style={{ fontSize: 13, color: "var(--slate-500)", marginBottom: 14 }}>Answer all {questions.length} questions, then submit for scoring.{SPEECH_OK ? " You can type or use 🎙️ voice." : ""}</div>
+          <div style={{ fontSize: 13, color: "var(--slate-500)", marginBottom: 14 }}>Answer all {questions.length} questions, then submit for scoring.{SPEECH_OK ? " You can type or use voice." : ""}</div>
           {questions.map((q, i) => (
             <div key={i} className="card" style={{ padding: "16px 18px", marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
@@ -5012,7 +5030,7 @@ function InterviewScreen({ onBack }) {
 // ═══════════════════════════════════════════════════════════════════════════
 const LABS = [
   {
-    id: "python", label: "Python Lab", emoji: "🐍", color: "#0d9488", bg: "#f0fdfa", mono: true, voice: false,
+    id: "python", label: "Python Lab", emoji: "", color: "#0d9488", bg: "#f0fdfa", mono: true, voice: false,
     intro: "Solve coding challenges. AI checks your logic, explains errors & gives hints.",
     ph: "# write your Python here",
     challenges: [
@@ -5035,7 +5053,7 @@ const LABS = [
     ],
   },
   {
-    id: "excel", label: "Excel Lab", emoji: "📊", color: "#1d6f42", bg: "#e6f4ea", mono: true, voice: false,
+    id: "excel", label: "Excel Lab", emoji: "", color: "#1d6f42", bg: "#e6f4ea", mono: true, voice: false,
     intro: "Practice real formulas. AI verifies your formula and shows the correct one.",
     ph: "=YOUR_FORMULA(...)",
     challenges: [
@@ -5058,7 +5076,7 @@ const LABS = [
     ],
   },
   {
-    id: "tally", label: "Tally & GST Lab", emoji: "🧾", color: "#b45309", bg: "#fff7ed", mono: false, voice: false,
+    id: "tally", label: "Tally & GST Lab", emoji: "", color: "#b45309", bg: "#fff7ed", mono: false, voice: false,
     intro: "Practice journal entries & GST. AI checks debit/credit and GST treatment.",
     ph: "Dr … / Cr … (with amounts)",
     challenges: [
@@ -5077,7 +5095,7 @@ const LABS = [
     ],
   },
   {
-    id: "english", label: "Spoken English Lab", emoji: "🗣️", color: "#dc2626", bg: "#fef2f2", mono: false, voice: true,
+    id: "english", label: "Spoken English Lab", emoji: "", color: "#dc2626", bg: "#fef2f2", mono: false, voice: true,
     intro: "Your AI speaking partner. Speak or type — get grammar fixes & a confidence score.",
     ph: "Speak or type your answer in English…",
     challenges: [
@@ -5096,7 +5114,7 @@ const LABS = [
     ],
   },
   {
-    id: "sql", label: "SQL Lab", emoji: "🗃️", color: "#4f46e5", bg: "#eef2ff", mono: true, voice: false,
+    id: "sql", label: "SQL Lab", emoji: "", color: "#4f46e5", bg: "#eef2ff", mono: true, voice: false,
     intro: "Practice database queries. AI checks your SQL and shows the correct query.",
     ph: "SELECT ...",
     challenges: [
@@ -5115,7 +5133,7 @@ const LABS = [
     ],
   },
   {
-    id: "webjs", label: "Web / JavaScript Lab", emoji: "🟨", color: "#7c3aed", bg: "#f5f3ff", mono: true, voice: false,
+    id: "webjs", label: "Web / JavaScript Lab", emoji: "", color: "#7c3aed", bg: "#f5f3ff", mono: true, voice: false,
     intro: "Practice JavaScript & web basics. AI checks your code and explains fixes.",
     ph: "// write your JavaScript here",
     challenges: [
@@ -5134,7 +5152,7 @@ const LABS = [
     ],
   },
   {
-    id: "java", label: "Java Lab", emoji: "☕", color: "#ea580c", bg: "#fff7ed", mono: true, voice: false,
+    id: "java", label: "Java Lab", emoji: "", color: "#ea580c", bg: "#fff7ed", mono: true, voice: false,
     intro: "Practice core Java. AI checks your logic & syntax and shows corrected code.",
     ph: "// write your Java here",
     challenges: [
@@ -5151,7 +5169,7 @@ const LABS = [
     ],
   },
   {
-    id: "aptitude", label: "Aptitude & Reasoning Lab", emoji: "🧠", color: "#0891b2", bg: "#ecfeff", mono: false, voice: false,
+    id: "aptitude", label: "Aptitude & Reasoning Lab", emoji: "", color: "#0891b2", bg: "#ecfeff", mono: false, voice: false,
     intro: "Sharpen aptitude for placements. Solve, then AI checks your answer & method.",
     ph: "Write your answer and the steps…",
     challenges: [
@@ -5170,7 +5188,7 @@ const LABS = [
     ],
   },
   {
-    id: "powerbi", label: "Power BI / Data Lab", emoji: "📈", color: "#d97706", bg: "#fffbeb", mono: false, voice: false,
+    id: "powerbi", label: "Power BI / Data Lab", emoji: "", color: "#d97706", bg: "#fffbeb", mono: false, voice: false,
     intro: "Practice DAX & data thinking. AI checks your measure or reasoning.",
     ph: "Write your DAX measure or answer…",
     challenges: [
@@ -5251,19 +5269,21 @@ function LabRunner({ lab, ch, onBack, qIndex, qTotal, isAI, onNext, onNewAI, gen
   const bumped = useRef(false);
 
   const check = async () => {
-    if (!code.trim()) { setFb("RESULT: ❌ Not yet\n\nPlease write your attempt first."); return; }
+    if (!code.trim()) { setFb("RESULT: Not yet\n\nPlease write your attempt first."); return; }
     setLoading(true); setFb("");
     try {
       const msg = `LAB: ${lab.label}\nCHALLENGE: ${ch.prompt}\nSTUDENT'S ATTEMPT:\n${code}`;
       const out = await callAI(PROMPTS.lab, msg);
       setFb(out);
       if (!bumped.current) { bumpProgress("labsDone"); bumped.current = true; }
-    } catch (e) { setFb("RESULT: ⚠️ Almost\n\n" + (e.message || "Couldn't check right now.")); }
+    } catch (e) { setFb("RESULT: Almost\n\n" + (e.message || "Couldn't check right now.")); }
     setLoading(false);
   };
 
   const resultLine = (fb.split("\n")[0] || "");
-  const rColor = resultLine.includes("✅") ? "var(--green-500)" : resultLine.includes("❌") ? "var(--red-500)" : "#d97706";
+  const rOk   = /\bcorrect\b/i.test(resultLine) && !/not\s*yet/i.test(resultLine);
+  const rBad  = /not\s*yet/i.test(resultLine);
+  const rColor = rOk ? "var(--green-500)" : rBad ? "var(--red-500)" : "#d97706";
 
   return (
     <div style={PAGE}>
@@ -5273,7 +5293,7 @@ function LabRunner({ lab, ch, onBack, qIndex, qTotal, isAI, onNext, onNewAI, gen
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
           <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)" }}>Challenge</div>
           <span style={{ fontSize: 11, fontWeight: 700, color: lab.color, background: lab.bg, padding: "3px 10px", borderRadius: 99 }}>
-            {isAI ? "🎲 AI question" : (qTotal ? "Question " + qIndex + " of " + qTotal : "")}
+            {isAI ? "AI question" : (qTotal ? "Question " + qIndex + " of " + qTotal : "")}
           </span>
         </div>
         <div style={{ fontSize: 14.5, color: "var(--slate-800)", lineHeight: 1.6 }}>{ch.prompt}</div>
@@ -5306,7 +5326,7 @@ function LabRunner({ lab, ch, onBack, qIndex, qTotal, isAI, onNext, onNewAI, gen
       {(onNext || onNewAI) && (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {onNext && <button className="btn-primary" style={{ flex: 1, justifyContent: "center", minWidth: 150, background: lab.color, border: "none" }} onClick={onNext}>Next question →</button>}
-          {onNewAI && <button className="btn-secondary" style={{ flex: 1, justifyContent: "center", minWidth: 150, color: lab.color, borderColor: lab.color + "55" }} onClick={onNewAI} disabled={generating}>{generating ? <><span className="spinner spinner-blue" /> Generating…</> : <>🎲 New AI question</>}</button>}
+          {onNewAI && <button className="btn-secondary" style={{ flex: 1, justifyContent: "center", minWidth: 150, color: lab.color, borderColor: lab.color + "55" }} onClick={onNewAI} disabled={generating}>{generating ? <><span className="spinner spinner-blue" /> Generating…</> : <>New AI question</>}</button>}
         </div>
       )}
     </div>
@@ -5320,9 +5340,9 @@ function LabsScreen({ onBack }) {
   const totalQ = LABS.reduce((a, l) => a + (LAB_QUESTIONS[l.id] || l.challenges).length, 0);
   return (
     <div style={PAGE}>
-      <ScreenHeader emoji="🧪" title="AI Practice Labs" subtitle="Hands-on practice with instant AI feedback" onBack={onBack} tint="#ecfeff" />
+      <ScreenHeader emoji="" title="AI Practice Labs" subtitle="Hands-on practice with instant AI feedback" onBack={onBack} tint="#ecfeff" />
       <div className="card" style={{ padding: "12px 16px", marginBottom: 16, background: "linear-gradient(135deg,#ecfeff,#ffffff)", fontSize: 13, color: "var(--slate-600)", lineHeight: 1.6 }}>
-        {LABS.length} topics · {totalQ}+ practice questions · one question at a time, plus endless 🎲 AI-generated challenges.
+        {LABS.length} topics · {totalQ}+ practice questions · one question at a time, plus endless AI-generated challenges.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 16 }}>
         {LABS.map((l, i) => (
@@ -5358,7 +5378,7 @@ function JobDetail({ job, saved, applied, onToggleSave, onApply, onWithdraw, onC
       const msg = `SKILLS: ${skills || "(not provided — general fresher)"}\nJOB: ${job.title} at ${job.company}\nRequired skills: ${job.skills.join(", ")}\nDescription: ${job.desc}`;
       const out = await callAI(PROMPTS.jobFit, msg);
       setFit({ score: parseLeadingScore(out, "FIT") ?? 50, text: out.replace(/^FIT:.*\n?/i, "") });
-    } catch (e) { setFit({ score: 0, text: "⚠️ " + (e.message || "Couldn't check.") }); }
+    } catch (e) { setFit({ score: 0, text: (e.message || "Couldn't check.") }); }
     setLoading(false);
   };
   return (
@@ -5366,7 +5386,7 @@ function JobDetail({ job, saved, applied, onToggleSave, onApply, onWithdraw, onC
       <div onClick={e => e.stopPropagation()} className="slide-in" style={{ background: "white", borderRadius: "20px 20px 0 0", width: "100%", maxWidth: 620, maxHeight: "90vh", overflowY: "auto", padding: "20px 20px 28px" }}>
         <div style={{ width: 40, height: 4, background: "var(--slate-200)", borderRadius: 99, margin: "0 auto 16px" }} />
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
-          <div style={{ width: 46, height: 46, borderRadius: 12, background: "var(--blue-50)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>💼</div>
+          <div style={{ width: 46, height: 46, borderRadius: 12, background: "var(--blue-50)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}></div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 18, fontWeight: 800, color: "var(--slate-900)" }}>{job.title}</div>
             <div style={{ fontSize: 13.5, color: "var(--slate-500)" }}>{job.company} · {job.location}</div>
@@ -5396,7 +5416,7 @@ function JobDetail({ job, saved, applied, onToggleSave, onApply, onWithdraw, onC
             ? <button className="btn-secondary" onClick={() => onWithdraw(job.id)} style={{ borderColor: "var(--red-200, #fecaca)", color: "var(--red-500)" }}>✓ Applied — Withdraw</button>
             : <button className="btn-primary" onClick={() => onApply(job.id)}><Icon name="check" size={15} color="white" /> Apply Now</button>}
           <button className="btn-secondary" onClick={() => onToggleSave(job.id)}><Icon name="bookmark" size={14} /> {saved ? "Saved" : "Save"}</button>
-          <button className="btn-secondary" onClick={checkFit} disabled={loading}>{loading ? "Checking…" : "🎯 AI Fit Check"}</button>
+          <button className="btn-secondary" onClick={checkFit} disabled={loading}>{loading ? "Checking…" : "AI Fit Check"}</button>
         </div>
       </div>
     </div>
@@ -5407,7 +5427,7 @@ function JobCard({ job, saved, applied, onOpen, onToggleSave }) {
   return (
     <div className="card card-hover" style={{ padding: "16px 18px", cursor: "pointer" }} onClick={() => onOpen(job)}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 10, background: "var(--blue-50)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, flexShrink: 0 }}>💼</div>
+        <div style={{ width: 42, height: 42, borderRadius: 10, background: "var(--blue-50)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, flexShrink: 0 }}></div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700, color: "var(--slate-900)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.title}</div>
           <div style={{ fontSize: 12.5, color: "var(--slate-500)" }}>{job.company} · {job.location}</div>
@@ -5470,7 +5490,7 @@ function JobsScreen({ onBack, onOpen }) {
 
   return (
     <div style={PAGE}>
-      <ScreenHeader emoji="💼" title="Job Portal" subtitle="Search · apply · save · track" onBack={onBack} tint="#fffbeb" />
+      <ScreenHeader emoji="" title="Job Portal" subtitle="Search · apply · save · track" onBack={onBack} tint="#fffbeb" />
       <div style={{ fontSize: 11.5, color: "var(--slate-400)", marginBottom: 12 }}>Openings shared by your teacher — apply, save and track your applications.</div>
 
       {/* Tabs */}
@@ -5493,7 +5513,7 @@ function JobsScreen({ onBack, onOpen }) {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
             {filtered.length ? filtered.map(j => <JobCard key={j.id} job={j} saved={isSaved(j.id)} applied={isApplied(j.id)} onOpen={setSel} onToggleSave={toggleSave} />)
-              : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "40px 16px" }}>{allJobs.length === 0 ? <><div style={{ fontSize: 40, marginBottom: 10 }}>💼</div><div style={{ fontWeight: 700, color: "var(--slate-600)", marginBottom: 4 }}>No job openings yet</div><div style={{ fontSize: 13 }}>Your teacher will post openings here soon — check back later.</div></> : "No jobs match your search."}</div>}
+              : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "40px 16px" }}>{allJobs.length === 0 ? <><div style={{ fontSize: 40, marginBottom: 10 }}></div><div style={{ fontWeight: 700, color: "var(--slate-600)", marginBottom: 4 }}>No job openings yet</div><div style={{ fontSize: 13 }}>Your teacher will post openings here soon — check back later.</div></> : "No jobs match your search."}</div>}
           </div>
         </>
       )}
@@ -5501,7 +5521,7 @@ function JobsScreen({ onBack, onOpen }) {
       {tab === "saved" && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
           {savedJobs.length ? savedJobs.map(j => <JobCard key={j.id} job={j} saved applied={isApplied(j.id)} onOpen={setSel} onToggleSave={toggleSave} />)
-            : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "36px 0" }}>🔖 No saved jobs yet. Tap the bookmark on any job.</div>}
+            : <div style={{ gridColumn: "1/-1", textAlign: "center", color: "var(--slate-400)", padding: "36px 0" }}>No saved jobs yet. Tap the bookmark on any job.</div>}
         </div>
       )}
 
@@ -5528,13 +5548,13 @@ function JobsScreen({ onBack, onOpen }) {
                 ))}
               </div>
             </div>
-          )) : <div style={{ textAlign: "center", color: "var(--slate-400)", padding: "36px 0" }}>📮 No applications yet. Apply to a job to track it here.</div>}
+          )) : <div style={{ textAlign: "center", color: "var(--slate-400)", padding: "36px 0" }}>No applications yet. Apply to a job to track it here.</div>}
         </div>
       )}
 
       {tab === "post" && (
         <div className="card" style={{ padding: "18px 20px" }}>
-          <div className="section-label" style={{ marginBottom: 12 }}>🏢 Post a Job (Employer)</div>
+          <div className="section-label" style={{ marginBottom: 12 }}>Post a Job (Employer)</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Job title *" style={{ fontSize: 14 }} />
             <input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} placeholder="Company *" style={{ fontSize: 14 }} />
@@ -5674,12 +5694,12 @@ function CourseAskScreen({ onBack, prefill = "" }) {
           <Icon name="back" size={18} color="var(--slate-600)" />
         </button>
         <div>
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>🤖 AI Course Assistant</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>AI Course Assistant</div>
           <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Powered by Allbee Learn AI</div>
         </div>
       </div>
       <div className="card" style={{ padding: "18px 18px 14px", marginBottom: 14 }}>
-        <div className="section-label" style={{ marginBottom: 8 }}>🌐 Answer language</div>
+        <div className="section-label" style={{ marginBottom: 8 }}>Answer language</div>
         <LangPicker value={langId} onChange={setLangId} />
         <div className="section-label" style={{ marginTop: 14 }}>Your Question</div>
         <textarea value={input} onChange={e => setInput(e.target.value)} rows={4} style={{ fontSize: 14.5, marginBottom: 10 }} />
@@ -5693,7 +5713,7 @@ function CourseAskScreen({ onBack, prefill = "" }) {
       {loading && (
         <div className="card fade-in" style={{ padding: 28, textAlign: "center" }}>
           <div style={{ width: 48, height: 48, animation: "pulse 1.5s infinite", marginBottom: 10 }}><img src={LOGO_SRC} alt="Allbee" style={{ width: "100%", height: "100%", objectFit: "contain" }} /></div>
-          <div style={{ fontWeight: 600, color: "var(--slate-700)" }}>உனக்கு best answer தயார் பண்றேன்! ✨</div>
+          <div style={{ fontWeight: 600, color: "var(--slate-700)" }}>உனக்கு best answer தயார் பண்றேன்!</div>
         </div>
       )}
       {output && !loading && (
@@ -5858,7 +5878,7 @@ function LiveBanner({ onJoin }) {
     <div onClick={onJoin} className="card-hover" style={{ cursor: "pointer", background: "linear-gradient(135deg,#b91c1c,#dc2626)", color: "white", borderRadius: "var(--radius-xl)", padding: "16px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
       <span style={{ width: 12, height: 12, borderRadius: "50%", background: "white", animation: "pulse 1s infinite", flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16 }}>🔴 LIVE class in progress</div>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16 }}>LIVE class in progress</div>
         <div style={{ fontSize: 13, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{live.topic ? live.topic : "Tap to join your teacher now"}</div>
       </div>
       <div style={{ background: "white", color: "#dc2626", fontWeight: 800, fontSize: 13, padding: "8px 16px", borderRadius: 99, flexShrink: 0 }}>Join →</div>
@@ -5963,7 +5983,7 @@ function LiveClassScreen({ user, onBack, host }) {
   const room   = (live && live.room)  ? live.room  : ALLBEE_DEFAULT_ROOM;
   const topic  = (live && live.topic) ? live.topic : "";
   const isLive = live ? live.liveOn : null;
-  const displayName = host ? "👨‍🏫 Teacher" : (user && user.name ? user.name : "Student");
+  const displayName = host ? "Teacher" : (user && user.name ? user.name : "Student");
   const showRoom = host || isLive === true;   // students join ONLY when the teacher has started
 
   return (
@@ -5974,7 +5994,7 @@ function LiveClassScreen({ user, onBack, host }) {
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
-            🔴 Live Class
+Live Class
             {isLive === true && <span className="badge" style={{ background: "#fee2e2", color: "#b91c1c" }}>LIVE NOW</span>}
           </div>
           <div style={{ fontSize: 12, color: "var(--slate-400)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{topic || "Allbee Learn AI — online live class"}</div>
@@ -5984,9 +6004,9 @@ function LiveClassScreen({ user, onBack, host }) {
 
       {!host && isLive !== true && (
         <div className="card" style={{ padding: 28, textAlign: "center", marginBottom: 14 }}>
-          <div style={{ fontSize: 44, marginBottom: 10 }}>⏳</div>
+          <div style={{ fontSize: 44, marginBottom: 10 }}></div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 17, marginBottom: 6 }}>No live class right now</div>
-          <div style={{ fontSize: 13.5, color: "var(--slate-500)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>Your teacher hasn't started a class yet. When they do, a red <b>LIVE</b> banner appears on your home screen and this room opens automatically. 🐝</div>
+          <div style={{ fontSize: 13.5, color: "var(--slate-500)", lineHeight: 1.6, maxWidth: 420, margin: "0 auto" }}>Your teacher hasn't started a class yet. When they do, a red <b>LIVE</b> banner appears on your home screen and this room opens automatically.</div>
         </div>
       )}
 
@@ -6020,7 +6040,7 @@ function AdminGate({ onAdmin }) {
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate-400)", fontSize: 12.5, fontWeight: 600 }}>
-        🔒 Teacher / Admin login
+Teacher / Admin login
       </button>
     );
   }
@@ -6033,7 +6053,7 @@ function AdminGate({ onAdmin }) {
           onKeyDown={e => { if (e.key === "Enter") submit(); }} style={{ fontSize: 14 }} />
         <button className="btn-primary" onClick={submit} style={{ flexShrink: 0 }}>Enter</button>
       </div>
-      {err && <div style={{ color: "var(--red-500)", fontSize: 12.5, marginTop: 8 }}>⚠️ {err}</div>}
+      {err && <div style={{ color: "var(--red-500)", fontSize: 12.5, marginTop: 8 }}>{err}</div>}
       <button onClick={() => { setOpen(false); setCode(""); setErr(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--slate-400)", fontSize: 12, marginTop: 8 }}>Cancel</button>
     </div>
   );
@@ -6074,7 +6094,7 @@ function AdminScreen({ onExit }) {
     setNote(on ? "Starting class…" : "Ending class…");
     await cloudPost({ action: "setLive", live: { liveOn: on, room: roomInput || ALLBEE_DEFAULT_ROOM, topic: topicInput } });
     await load();
-    setNote(on ? "🔴 Class is now LIVE — students see a Join banner on their home screen." : "Class ended.");
+    setNote(on ? "Class is now LIVE — students see a Join banner on their home screen." : "Class ended.");
   };
 
   if (hosting) {
@@ -6118,14 +6138,14 @@ function AdminScreen({ onExit }) {
   const live = cloud && cloud.live;
 
   const TABS = [
-    { id: "overview",   label: "Overview",   emoji: "📊" },
-    { id: "students",   label: "Students",   emoji: "👥" },
-    { id: "notes",      label: "Notes",      emoji: "📝" },
-    { id: "jobs",       label: "Jobs",       emoji: "💼" },
-    { id: "certs",      label: "Certificates", emoji: "🎓" },
-    { id: "live",       label: "Live Class", emoji: "🔴" },
-    { id: "recordings", label: "Recordings", emoji: "🎥" },
-    { id: "setup",      label: "Setup",      emoji: "⚙️" },
+    { id: "overview",   label: "Overview",   emoji: "" },
+    { id: "students",   label: "Students",   emoji: "" },
+    { id: "notes",      label: "Notes",      emoji: "" },
+    { id: "jobs",       label: "Jobs",       emoji: "" },
+    { id: "certs",      label: "Certificates", emoji: "" },
+    { id: "live",       label: "Live Class", emoji: "" },
+    { id: "recordings", label: "Recordings", emoji: "" },
+    { id: "setup",      label: "Setup",      emoji: "" },
   ];
 
   const statCard = (emoji, label, value, color) => (
@@ -6154,7 +6174,7 @@ function AdminScreen({ onExit }) {
 
       <div style={{ display: "flex", gap: 8, marginBottom: 18, overflowX: "auto", paddingBottom: 4 }}>
         {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{ flexShrink: 0, padding: "8px 16px", borderRadius: 99, fontSize: 13.5, fontWeight: 700, border: "1.5px solid", borderColor: tab === t.id ? "var(--blue-600)" : "var(--slate-200)", background: tab === t.id ? "var(--blue-600)" : "white", color: tab === t.id ? "white" : "var(--slate-600)" }}>{t.emoji} {t.label}</button>
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ flexShrink: 0, padding: "8px 16px", borderRadius: 99, fontSize: 13.5, fontWeight: 700, border: "1.5px solid", borderColor: tab === t.id ? "var(--blue-600)" : "var(--slate-200)", background: tab === t.id ? "var(--blue-600)" : "white", color: tab === t.id ? "white" : "var(--slate-600)" }}>{t.label}</button>
         ))}
       </div>
 
@@ -6164,14 +6184,14 @@ function AdminScreen({ onExit }) {
       {!loading && tab === "overview" && (
         <div className="fade-in">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 12, marginBottom: 20 }}>
-            {statCard("👥", "Students", totals.students, "var(--blue-600)")}
-            {statCard("🟢", "Active today", totals.activeToday, "#059669")}
-            {statCard("💬", "AI questions", totals.aiQuestions, "#0891b2")}
-            {statCard("📚", "Lessons read", totals.lessonsRead, "#d97706")}
-            {statCard("🎤", "Interviews", totals.interviews, "#7c3aed")}
-            {statCard("📄", "Resumes", totals.resumes, "#0d9488")}
-            {statCard("💼", "Jobs applied", totals.jobsApplied, "#059669")}
-            {statCard("🎓", "Certificates", totals.certificates, "#a855f7")}
+            {statCard("", "Students", totals.students, "var(--blue-600)")}
+            {statCard("", "Active today", totals.activeToday, "#059669")}
+            {statCard("", "AI questions", totals.aiQuestions, "#0891b2")}
+            {statCard("", "Lessons read", totals.lessonsRead, "#d97706")}
+            {statCard("", "Interviews", totals.interviews, "#7c3aed")}
+            {statCard("", "Resumes", totals.resumes, "#0d9488")}
+            {statCard("", "Jobs applied", totals.jobsApplied, "#059669")}
+            {statCard("", "Certificates", totals.certificates, "#a855f7")}
           </div>
           {!cloudEnabled() && (
             <div className="card" style={{ padding: 18, fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>
@@ -6206,7 +6226,7 @@ function AdminScreen({ onExit }) {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 780 }}>
               <thead>
                 <tr style={{ background: "var(--slate-50)", textAlign: "left" }}>
-                  {["#", "Name", "Course", "Points", "Level", "🔥", "AI Q", "Lessons", "Interview", "Labs", "Resumes", "Jobs", "Certs", "Last active"].map(h => (
+                  {["#", "Name", "Course", "Points", "Level", "", "AI Q", "Lessons", "Interview", "Labs", "Resumes", "Jobs", "Certs", "Last active"].map(h => (
                     <th key={h} style={{ padding: "10px 12px", fontWeight: 700, color: "var(--slate-500)", whiteSpace: "nowrap", borderBottom: "1px solid var(--slate-200)" }}>{h}</th>
                   ))}
                 </tr>
@@ -6257,9 +6277,9 @@ function AdminScreen({ onExit }) {
               {live && live.liveOn
                 ? <button onClick={() => setLiveState(false)} style={{ background: "var(--slate-200)", color: "var(--slate-700)", padding: "12px 20px", borderRadius: "var(--radius)", fontWeight: 700, fontSize: 14 }}>■ End class</button>
                 : <button className="btn-primary" style={{ background: "#dc2626" }} onClick={() => setLiveState(true)}>● Start live class</button>}
-              <button className="btn-primary" onClick={() => setHosting(true)}>🎥 Open room as host</button>
+              <button className="btn-primary" onClick={() => setHosting(true)}>Open room as host</button>
             </div>
-            {!cloudEnabled() && <div style={{ marginTop: 14, fontSize: 12.5, color: "#b45309" }}>⚠️ Connect your Google Sheet (Setup tab) so students get the LIVE banner automatically. You can still open the room and share the room name manually.</div>}
+            {!cloudEnabled() && <div style={{ marginTop: 14, fontSize: 12.5, color: "#b45309" }}>Connect your Google Sheet (Setup tab) so students get the LIVE banner automatically. You can still open the room and share the room name manually.</div>}
           </div>
           <div className="card" style={{ padding: 18, marginTop: 14, fontSize: 13, color: "var(--slate-600)", lineHeight: 1.7 }}>
             <b>How it works:</b> tap <b>Start live class</b>, then <b>Open room as host</b> to join the video call and press <b>Record class</b> to save the session. Students tap the red <b>LIVE</b> banner on their home screen and join the same room. When finished, tap <b>End class</b>.
@@ -6282,7 +6302,7 @@ function AdminScreen({ onExit }) {
             : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {recs.map(r => (
                   <div key={r.id} className="card" style={{ padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ fontSize: 22 }}>🎥</div>
+                    <div style={{ fontSize: 22 }}></div>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-700)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
                       <div style={{ fontSize: 11.5, color: "var(--slate-400)" }}>{formatTime(r.date)} · {Math.floor((r.seconds || 0) / 60)}m {(r.seconds || 0) % 60}s{r.size ? " · " + (r.size / 1048576).toFixed(1) + " MB" : ""}</div>
@@ -6290,7 +6310,7 @@ function AdminScreen({ onExit }) {
                   </div>
                 ))}
               </div>}
-          <div style={{ marginTop: 14, fontSize: 12, color: "var(--slate-400)", lineHeight: 1.6 }}>ℹ️ Files are saved on your computer (not uploaded). To share a recording, upload the downloaded video to YouTube or Google Drive and send students the link.</div>
+          <div style={{ marginTop: 14, fontSize: 12, color: "var(--slate-400)", lineHeight: 1.6 }}>ℹ Files are saved on your computer (not uploaded). To share a recording, upload the downloaded video to YouTube or Google Drive and send students the link.</div>
         </div>
       )}
 
@@ -6349,7 +6369,7 @@ function CourseProgress({ onOpenCourse, onOpenCourses }) {
   return (
     <div className="card" style={{ padding: "18px 20px", marginBottom: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: hasStarted ? 14 : 8 }}>
-        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "var(--slate-900)", display: "flex", alignItems: "center", gap: 8 }}>📚 My Learning</div>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 800, color: "var(--slate-900)", display: "flex", alignItems: "center", gap: 8 }}>My Learning</div>
         <button onClick={onOpenCourses} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--blue-600)", fontSize: 12.5, fontWeight: 700 }}>Browse all →</button>
       </div>
 
@@ -6365,14 +6385,14 @@ function CourseProgress({ onOpenCourse, onOpenCourses }) {
               <div style={{ height: 8, borderRadius: 99, background: "var(--slate-100)", overflow: "hidden" }}>
                 <div style={{ width: pct + "%", height: "100%", borderRadius: 99, background: c.gradient, transition: "width .4s" }} />
               </div>
-              <div style={{ fontSize: 11, color: "var(--slate-400)", marginTop: 4 }}>{read} of {total} lessons read{pct === 100 ? " · ✅ done" : " · continue →"}</div>
+              <div style={{ fontSize: 11, color: "var(--slate-400)", marginTop: 4 }}>{read} of {total} lessons read{pct === 100 ? " · done" : " · continue →"}</div>
             </button>
           ))}
         </div>
       ) : (
         <>
           <div style={{ fontSize: 13, color: "var(--slate-500)", lineHeight: 1.6, marginBottom: 14 }}>
-            You haven't started a course yet. Tap one below to read your first lesson — your progress will then show up here. 🐝
+            You haven't started a course yet. Tap one below to read your first lesson — your progress will then show up here.
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 10 }}>
             {suggestions.map((c) => (
@@ -6412,7 +6432,7 @@ function AdminNotes() {
     setSaving(true); setMsg("");
     const m = await setTeacherNote(courseId, topic, text);
     setNotes({ ...m }); setSaving(false);
-    setMsg(text.trim() ? "✅ Saved. Students will see this on that lesson." : "Note cleared.");
+    setMsg(text.trim() ? "Saved. Students will see this on that lesson." : "Note cleared.");
   };
   const del = async () => {
     setSaving(true);
@@ -6423,7 +6443,7 @@ function AdminNotes() {
   const list = Object.keys(notes).map(k => {
     const [cid, tp] = k.split("::");
     const c = COURSES.find(x => x.id === cid);
-    return { key: k, cid, tp, title: c ? c.title : cid, emoji: c ? c.emoji : "📘", text: notes[k] };
+    return { key: k, cid, tp, title: c ? c.title : cid, emoji: c ? c.emoji : "", text: notes[k] };
   });
   const selStyle = { marginBottom: 14, width: "100%", padding: "10px 12px", borderRadius: "var(--radius-sm)", border: "1.5px solid var(--slate-200)", fontSize: 14, background: "white" };
 
@@ -6431,16 +6451,16 @@ function AdminNotes() {
     <div className="fade-in" style={{ maxWidth: 760 }}>
       {!cloudEnabled() && (
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>
-          ⚠️ Your Google Sheet isn't connected yet, so notes save only on this device. Connect it in the <b>Setup</b> tab so your students see the notes on their phones.
+Your Google Sheet isn't connected yet, so notes save only on this device. Connect it in the <b>Setup</b> tab so your students see the notes on their phones.
         </div>
       )}
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
-        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 4 }}>✍️ Add a note to a lesson</div>
-        <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Pick a course and topic, write your note, then Save. Students see it as “👩‍🏫 Teacher's Notes” at the top of that lesson.</div>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 4 }}>Add a note to a lesson</div>
+        <div style={{ fontSize: 12.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Pick a course and topic, write your note, then Save. Students see it as “ Teacher's Notes” at the top of that lesson.</div>
 
         <div className="section-label">Course</div>
         <select value={courseId} onChange={e => setCourseId(e.target.value)} style={selStyle}>
-          {COURSES.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.title}</option>)}
+          {COURSES.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
         </select>
 
         <div className="section-label">Topic / Lesson</div>
@@ -6452,7 +6472,7 @@ function AdminNotes() {
         <textarea value={text} onChange={e => setText(e.target.value)} rows={6} placeholder="Type your note, tips, exam pointers, or important instructions for students…" style={{ marginBottom: 12, fontFamily: "'DM Sans', sans-serif", fontSize: 14 }} />
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <button className="btn-primary" onClick={save} disabled={saving || !topic}>{saving ? <><span className="spinner" /> Saving…</> : "💾 Save note"}</button>
+          <button className="btn-primary" onClick={save} disabled={saving || !topic}>{saving ? <><span className="spinner" /> Saving…</> : "Save note"}</button>
           {notes[noteKey(courseId, topic)] && <button className="btn-secondary" onClick={del} disabled={saving} style={{ color: "var(--red-500)", borderColor: "#fecaca" }}>Delete</button>}
           <button className="btn-ghost" onClick={load} style={{ marginLeft: "auto" }}>Refresh</button>
         </div>
@@ -6468,7 +6488,7 @@ function AdminNotes() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {list.map(n => (
             <button key={n.key} onClick={() => { setCourseId(n.cid); setTopic(n.tp); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="card card-hover" style={{ padding: "12px 16px", textAlign: "left", cursor: "pointer", background: "white" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-800)", marginBottom: 2 }}>{n.emoji} {n.title} <span style={{ color: "var(--slate-400)", fontWeight: 500 }}>· {n.tp}</span></div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--slate-800)", marginBottom: 2 }}>{n.title} <span style={{ color: "var(--slate-400)", fontWeight: 500 }}>· {n.tp}</span></div>
               <div style={{ fontSize: 12.5, color: "var(--slate-500)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{n.text}</div>
             </button>
           ))}
@@ -6480,7 +6500,7 @@ function AdminNotes() {
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  LARGE PRACTICE-QUESTION BANKS — 100+ per lab, built from templates.
-//  (The "🎲 New AI question" button still adds unlimited fresh ones on top.)
+//  (The "New AI question" button still adds unlimited fresh ones on top.)
 // ═══════════════════════════════════════════════════════════════════════════
 const _inr = (n) => { try { return n.toLocaleString("en-IN"); } catch { return String(n); } };
 const _WORDS = ["allbee","python","education","success","student","tamilnadu","computer","learning","developer","knowledge","program","future","excellent","opportunity","confidence","language","practice","function","internet","keyboard"];
@@ -6658,12 +6678,12 @@ function DashboardHero({ user, onOpen }) {
           <div style={{ width: 40, height: 40, borderRadius: 11, background: "rgba(255,255,255,0.14)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 }}>{lvl.current.emoji}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 15, fontWeight: 700 }}>{lvl.current.name}</div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{points} points{streak.count > 0 ? "  ·  🔥 " + streak.count + "-day streak" : ""}</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{points} points{streak.count > 0 ? " · " + streak.count + "-day streak" : ""}</div>
           </div>
           <div style={{ fontSize: 12, fontWeight: 700, color: "#5eead4", whiteSpace: "nowrap" }}>Rewards →</div>
         </div>
         <Bar pct={lvl.pct} color="rgba(255,255,255,0.92)" track="rgba(255,255,255,0.16)" height={6} />
-        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>{lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached 👑"}</div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)", marginTop: 6 }}>{lvl.next ? `${lvl.next.min - points} pts to ${lvl.next.name} ${lvl.next.emoji}` : "Max level reached"}</div>
       </div>
     </div>
   );
@@ -6738,7 +6758,7 @@ function AITutorScreen({ user, onBack }) {
       setMessages(m => [...m, { role: "assistant", text: out }]);
       try { saveHistory({ feature: "AI Tutor", input: q, output: out }); } catch { /* */ }
     } catch (e) {
-      setMessages(m => [...m, { role: "assistant", text: "⚠️ Couldn't get an answer just now. Please tap Send again." }]);
+      setMessages(m => [...m, { role: "assistant", text: "Couldn't get an answer just now. Please tap Send again." }]);
     }
     setLoading(false);
   };
@@ -6758,10 +6778,10 @@ function AITutorScreen({ user, onBack }) {
 
   const suggestions = ["Explain Python loops", "Teach Excel Pivot Table", "Explain GST in simple terms", "Create a resume for an Accountant", "What is Prompt Engineering?"];
   const actions = [
-    { label: "📝 Example", q: "Give me one more simple, real-world example for that." },
-    { label: "❓ Quiz", q: "Create a short 5-question quiz (with the answers at the end) on that topic." },
-    { label: "✍️ Practice", q: "Give me 5 practice questions on that topic for me to try myself." },
-    { label: "🔎 Simpler", q: "Explain that again even more simply, as if I am a complete beginner." },
+    { label: "Example", q: "Give me one more simple, real-world example for that." },
+    { label: "Quiz", q: "Create a short 5-question quiz (with the answers at the end) on that topic." },
+    { label: "Practice", q: "Give me 5 practice questions on that topic for me to try myself." },
+    { label: "Simpler", q: "Explain that again even more simply, as if I am a complete beginner." },
   ];
 
   return (
@@ -6769,7 +6789,7 @@ function AITutorScreen({ user, onBack }) {
       <div style={{ paddingTop: 18, paddingBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name="back" size={18} color="var(--slate-600)" /></button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>🤖 AI Tutor</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>AI Tutor</div>
           <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Ask any topic — get a clear answer with examples</div>
         </div>
         {messages.length > 0 && <button className="btn-ghost" onClick={() => { setMessages([]); stopSpeaking(); }} style={{ fontSize: 12.5, color: "var(--slate-500)" }}>Clear</button>}
@@ -6779,7 +6799,7 @@ function AITutorScreen({ user, onBack }) {
 
       {messages.length === 0 ? (
         <div className="card" style={{ padding: "24px 20px", marginBottom: 14, textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🤖</div>
+          <div style={{ fontSize: 40, marginBottom: 8 }}></div>
           <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 16, marginBottom: 6 }}>Hi {user && user.name ? user.name.split(" ")[0] : "there"}! What shall we learn?</div>
           <div style={{ fontSize: 13.5, color: "var(--slate-500)", marginBottom: 16, lineHeight: 1.6 }}>Ask me to explain a topic, teach a skill, or create something. Try one of these:</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
@@ -6793,7 +6813,7 @@ function AITutorScreen({ user, onBack }) {
           ) : (
             <div key={i} style={{ alignSelf: "flex-start", maxWidth: "92%", background: "white", border: "1px solid var(--slate-200)", borderRadius: "16px 16px 16px 4px", padding: "12px 16px" }}>
               <div dir={lang.rtl ? "rtl" : "ltr"} style={{ fontSize: 14, color: "var(--slate-800)" }}><AiText text={m.text} /></div>
-              {TTS_OK && <button onClick={() => readAloud(m.text, i)} style={{ marginTop: 8, background: speakingIdx === i ? "#fee2e2" : "var(--slate-100)", color: speakingIdx === i ? "#b91c1c" : "var(--slate-500)", border: "none", borderRadius: 99, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{speakingIdx === i ? "■ Stop" : "🔊 Read aloud"}</button>}
+              {TTS_OK && <button onClick={() => readAloud(m.text, i)} style={{ marginTop: 8, background: speakingIdx === i ? "#fee2e2" : "var(--slate-100)", color: speakingIdx === i ? "#b91c1c" : "var(--slate-500)", border: "none", borderRadius: 99, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{speakingIdx === i ? "■ Stop" : "Read aloud"}</button>}
             </div>
           ))}
           {loading && <div style={{ alignSelf: "flex-start", background: "white", border: "1px solid var(--slate-200)", borderRadius: 16, padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, color: "var(--slate-500)", fontSize: 13 }}><span className="spinner spinner-blue" /> Tutor is thinking…</div>}
@@ -6804,7 +6824,7 @@ function AITutorScreen({ user, onBack }) {
       {lastAssistant && !loading && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
           {actions.map(a => <button key={a.label} onClick={() => ask(a.q)} style={{ background: "white", border: "1px solid var(--slate-200)", borderRadius: 99, padding: "7px 13px", fontSize: 12.5, fontWeight: 600, color: "var(--slate-600)", cursor: "pointer" }}>{a.label}</button>)}
-          <button onClick={saveNotes} style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 99, padding: "7px 13px", fontSize: 12.5, fontWeight: 700, color: "#047857", cursor: "pointer" }}>⬇️ Save notes</button>
+          <button onClick={saveNotes} style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 99, padding: "7px 13px", fontSize: 12.5, fontWeight: 700, color: "#047857", cursor: "pointer" }}>Save notes</button>
         </div>
       )}
 
@@ -6847,7 +6867,7 @@ function VoiceTeacherScreen({ user, onBack }) {
       setSpeaking(true);
       speakAdvanced(out, lang.tts, rate, () => setSpeaking(false));
     } catch (e) {
-      setHistory(m => [...m, { role: "assistant", text: "⚠️ Sorry, I couldn't answer. Please try again." }]);
+      setHistory(m => [...m, { role: "assistant", text: "Sorry, I couldn't answer. Please try again." }]);
       setThinking(false);
     }
   };
@@ -6874,7 +6894,7 @@ function VoiceTeacherScreen({ user, onBack }) {
       <div style={{ paddingTop: 18, paddingBottom: 12, display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ background: "var(--slate-100)", border: "none", borderRadius: "var(--radius-sm)", width: 36, height: 36, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}><Icon name="back" size={18} color="var(--slate-600)" /></button>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>🎙️ AI Voice Teacher</div>
+          <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontSize: 17, fontWeight: 800 }}>AI Voice Teacher</div>
           <div style={{ fontSize: 12, color: "var(--slate-400)" }}>Speak your question, hear the answer</div>
         </div>
         {history.length > 0 && <button className="btn-ghost" onClick={() => { setHistory([]); stopSpeaking(); }} style={{ fontSize: 12.5, color: "var(--slate-500)" }}>Clear</button>}
@@ -6883,14 +6903,14 @@ function VoiceTeacherScreen({ user, onBack }) {
       <div style={{ marginBottom: 12 }}><LangPicker value={langId} onChange={setLangId} accent="#0e7490" accentBg="#ecfeff" /></div>
 
       <div className="card" style={{ padding: "12px 16px", marginBottom: 18, display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--slate-500)", whiteSpace: "nowrap" }}>🐢 Voice speed</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--slate-500)", whiteSpace: "nowrap" }}>Voice speed</span>
         <input type="range" min="0.6" max="1.4" step="0.1" value={rate} onChange={e => setRate(parseFloat(e.target.value))} style={{ flex: 1 }} />
         <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--slate-700)", width: 40, textAlign: "right" }}>{rate.toFixed(1)}×</span>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 22 }}>
         <button onClick={listen} style={{ width: 122, height: 122, borderRadius: "50%", border: "none", cursor: "pointer", color: "white", fontSize: 44, display: "flex", alignItems: "center", justifyContent: "center", background: listening ? "linear-gradient(135deg,#dc2626,#ef4444)" : "linear-gradient(135deg,#0e7490,#06b6d4)", boxShadow: listening ? "0 0 0 10px rgba(239,68,68,0.14)" : "0 10px 30px rgba(6,182,212,0.35)", transition: "all .2s" }}>
-          {listening ? "■" : "🎤"}
+          {listening ? "■" : ""}
         </button>
         <div style={{ marginTop: 14, fontSize: 13.5, fontWeight: 600, color: "var(--slate-600)", minHeight: 20, textAlign: "center" }}>{status}</div>
         {speaking && <button onClick={() => { stopSpeaking(); setSpeaking(false); }} className="btn-secondary" style={{ marginTop: 10 }}>■ Stop speaking</button>}
@@ -6904,7 +6924,7 @@ function VoiceTeacherScreen({ user, onBack }) {
               <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "90%", background: m.role === "user" ? "#ecfeff" : "white", border: "1px solid " + (m.role === "user" ? "#a5f3fc" : "var(--slate-200)"), borderRadius: 12, padding: "10px 14px" }}>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 1, textTransform: "uppercase", color: "var(--slate-400)", marginBottom: 3 }}>{m.role === "user" ? "You said" : "Tutor"}</div>
                 <div dir={lang.rtl ? "rtl" : "ltr"} style={{ fontSize: 14, color: "var(--slate-800)", lineHeight: 1.6 }}>{m.text}</div>
-                {m.role === "assistant" && TTS_OK && <button onClick={() => { stopSpeaking(); setSpeaking(true); speakAdvanced(m.text, lang.tts, rate, () => setSpeaking(false)); }} style={{ marginTop: 6, background: "var(--slate-100)", border: "none", borderRadius: 99, padding: "3px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--slate-500)", cursor: "pointer" }}>🔊 Repeat</button>}
+                {m.role === "assistant" && TTS_OK && <button onClick={() => { stopSpeaking(); setSpeaking(true); speakAdvanced(m.text, lang.tts, rate, () => setSpeaking(false)); }} style={{ marginTop: 6, background: "var(--slate-100)", border: "none", borderRadius: 99, padding: "3px 10px", fontSize: 11.5, fontWeight: 600, color: "var(--slate-500)", cursor: "pointer" }}>Repeat</button>}
               </div>
             ))}
             {thinking && <div style={{ alignSelf: "flex-start", color: "var(--slate-500)", fontSize: 13, display: "flex", gap: 8, alignItems: "center" }}><span className="spinner spinner-blue" /> Thinking…</div>}
@@ -6917,7 +6937,7 @@ function VoiceTeacherScreen({ user, onBack }) {
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { handleUser(input); setInput(""); } }} placeholder="…or type your question" style={{ flex: 1, fontSize: 14 }} />
         <button className="btn-primary" onClick={() => { handleUser(input); setInput(""); }} disabled={thinking || !input.trim()} style={{ flexShrink: 0 }}>Ask</button>
       </div>
-      {!SPEECH_OK && <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>ℹ️ Voice input needs Chrome or Edge. You can type your question above and still hear the spoken answer.</div>}
+      {!SPEECH_OK && <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>ℹ Voice input needs Chrome or Edge. You can type your question above and still hear the spoken answer.</div>}
     </div>
   );
 }
@@ -6948,9 +6968,9 @@ function AdminJobs() {
 
   return (
     <div className="fade-in" style={{ maxWidth: 760 }}>
-      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>⚠️ Connect your Google Sheet (Setup tab) so posted jobs reach students on their phones. Jobs save on this device meanwhile.</div>}
+      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>Connect your Google Sheet (Setup tab) so posted jobs reach students on their phones. Jobs save on this device meanwhile.</div>}
       <div className="card" style={{ padding: 20, marginBottom: 16 }}>
-        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 14 }}>{editId ? "✏️ Edit job" : "➕ Post a job opening"}</div>
+        <div style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 15, marginBottom: 14 }}>{editId ? "Edit job" : "Post a job opening"}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <input placeholder="Job title *" value={f.title} onChange={e => setF({ ...f, title: e.target.value })} style={inp} />
           <input placeholder="Company *" value={f.company} onChange={e => setF({ ...f, company: e.target.value })} style={inp} />
@@ -7012,7 +7032,7 @@ function AdminCerts() {
           <button className="btn-secondary" onClick={() => decide(c, "rejected")} disabled={busy === c.phone + c.course} style={{ padding: "8px 14px", color: "var(--red-500)", borderColor: "#fecaca" }}>Reject</button>
         </div>
       ) : (
-        <span style={{ background: c.status === "approved" ? "#dcfce7" : "#fee2e2", color: c.status === "approved" ? "#166534" : "#b91c1c", fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{c.status === "approved" ? "✅ Approved" : "✕ Rejected"}{c.status === "approved" ? "" : ""}</span>
+        <span style={{ background: c.status === "approved" ? "#dcfce7" : "#fee2e2", color: c.status === "approved" ? "#166534" : "#b91c1c", fontSize: 11.5, fontWeight: 700, padding: "4px 10px", borderRadius: 99 }}>{c.status === "approved" ? "Approved" : "✕ Rejected"}{c.status === "approved" ? "" : ""}</span>
       )}
       {c.status !== "pending" && !showActions && c.status === "rejected" && <button className="btn-ghost" onClick={() => decide(c, "approved")} style={{ fontSize: 12 }}>Approve now</button>}
     </div>
@@ -7020,7 +7040,7 @@ function AdminCerts() {
 
   return (
     <div className="fade-in" style={{ maxWidth: 760 }}>
-      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>⚠️ Connect your Google Sheet (Setup tab) so students can request certificates and you can approve them.</div>}
+      {!cloudEnabled() && <div style={{ background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: "var(--radius-sm)", padding: "10px 14px", fontSize: 13, marginBottom: 14, lineHeight: 1.6 }}>Connect your Google Sheet (Setup tab) so students can request certificates and you can approve them.</div>}
       <div className="card" style={{ padding: 18, marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
         <div style={{ flex: 1, fontSize: 13.5, color: "var(--slate-600)", lineHeight: 1.6 }}>Students request a certificate for a completed course; approve it here and it becomes downloadable for them.</div>
         <button className="btn-ghost" onClick={load}>Refresh</button>
@@ -7028,7 +7048,7 @@ function AdminCerts() {
 
       <div className="section-label" style={{ marginBottom: 10 }}>Pending approval ({pending.length})</div>
       {loading ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-500)" }}><span className="spinner spinner-blue" /> Loading…</div>
-        : pending.length === 0 ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-400)", fontSize: 13.5 }}>No pending requests. 🎉</div>
+        : pending.length === 0 ? <div className="card" style={{ padding: 20, textAlign: "center", color: "var(--slate-400)", fontSize: 13.5 }}>No pending requests.</div>
         : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{pending.map(c => row(c, true))}</div>}
 
       {others.length > 0 && <>
